@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+
+    <!-- HEARMARK logo: 8 sound bars that form a checkmark wave profile -->
+    <path
+        android:strokeWidth="6"
+        android:strokeColor="#6750A4"
+        android:strokeLineCap="round"
+        android:pathData="M 16.75,39 L 16.75,81" />
+
+    <path
+        android:strokeWidth="6"
+        android:strokeColor="#6750A4"
+        android:strokeLineCap="round"
+        android:pathData="M 26.25,45 L 26.25,81" />
+
+    <path
+        android:strokeWidth="6"
+        android:strokeColor="#6750A4"
+        android:strokeLineCap="round"
+        android:pathData="M 35.75,54 L 35.75,81" />
+
+    <path
+        android:strokeWidth="6"
+        android:strokeColor="#6750A4"
+        android:strokeLineCap="round"
+        android:pathData="M 45.25,63 L 45.25,81" />
+
+    <path
+        android:strokeWidth="6"
+        android:strokeColor="#6750A4"
+        android:strokeLineCap="round"
+        android:pathData="M 54.75,50 L 54.75,81" />
+
+    <path
+        android:strokeWidth="6"
+        android:strokeColor="#6750A4"
+        android:strokeLineCap="round"
+        android:pathData="M 64.25,36 L 64.25,81" />
+
+    <path
+        android:strokeWidth="6"
+        android:strokeColor="#6750A4"
+        android:strokeLineCap="round"
+        android:pathData="M 73.75,27 L 73.75,81" />
+
+    <path
+        android:strokeWidth="6"
+        android:strokeColor="#6750A4"
+        android:strokeLineCap="round"
+        android:pathData="M 83.25,19 L 83.25,81" />
+
+</vector>

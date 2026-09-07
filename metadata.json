@@ -1,0 +1,8 @@
+{
+  "name": "Remix Hearmark v-02 -production",
+  "description": "Smart local audio player that automatically tracks task completion progress based on actual file listening threshold.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Scale and translate the 100x100 logo to 76x76 and center it at (16, 16) inside the 108dp canvas -->
+    <group
+        android:translateX="16.0"
+        android:translateY="16.0"
+        android:scaleX="0.76"
+        android:scaleY="0.76">
+
+        <!-- Outer glow/shadow paths to make sure the white launcher icon is highly visible and has depth -->
+        <!-- First layer: Deep violet shadow/glow with slightly thicker stroke (8.5) -->
+        <path
+            android:strokeWidth="8.5"
+            android:strokeColor="#1C0E35"
+            android:strokeLineCap="round"
+            android:pathData="M 16.75,39 L 16.75,81" />
+
+        <path
+            android:strokeWidth="8.5"
+            android:strokeColor="#1C0E35"
+            android:strokeLineCap="round"
+            android:pathData="M 26.25,45 L 26.25,81" />
+
+        <path
+            android:strokeWidth="8.5"
+            android:strokeColor="#1C0E35"
+            android:strokeLineCap="round"
+            android:pathData="M 35.75,54 L 35.75,81" />
+
+        <path
+            android:strokeWidth="8.5"
+            android:strokeColor="#1C0E35"
+            android:strokeLineCap="round"
+            android:pathData="M 45.25,63 L 45.25,81" />
+
+        <path
+            android:strokeWidth="8.5"
+            android:strokeColor="#1C0E35"
+            android:strokeLineCap="round"
+            android:pathData="M 54.75,50 L 54.75,81" />
+
+        <path
+            android:strokeWidth="8.5"
+            android:strokeColor="#1C0E35"
+            android:strokeLineCap="round"
+            android:pathData="M 64.25,36 L 64.25,81" />
+
+        <path
+            android:strokeWidth="8.5"
+            android:strokeColor="#1C0E35"
+            android:strokeLineCap="round"
+            android:pathData="M 73.75,27 L 73.75,81" />
+
+        <path
+            android:strokeWidth="8.5"
+            android:strokeColor="#1C0E35"
+            android:strokeLineCap="round"
+            android:pathData="M 83.25,19 L 83.25,81" />
+
+        <!-- Second layer: Safe white foreground with perfect brand contrast (strokeWidth 6.0) -->
+        <path
+            android:strokeWidth="6"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineCap="round"
+            android:pathData="M 16.75,39 L 16.75,81" />
+
+        <path
+            android:strokeWidth="6"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineCap="round"
+            android:pathData="M 26.25,45 L 26.25,81" />
+
+        <path
+            android:strokeWidth="6"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineCap="round"
+            android:pathData="M 35.75,54 L 35.75,81" />
+
+        <path
+            android:strokeWidth="6"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineCap="round"
+            android:pathData="M 45.25,63 L 45.25,81" />
+
+        <path
+            android:strokeWidth="6"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineCap="round"
+            android:pathData="M 54.75,50 L 54.75,81" />
+
+        <path
+            android:strokeWidth="6"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineCap="round"
+            android:pathData="M 64.25,36 L 64.25,81" />
+
+        <path
+            android:strokeWidth="6"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineCap="round"
+            android:pathData="M 73.75,27 L 73.75,81" />
+
+        <path
+            android:strokeWidth="6"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineCap="round"
+            android:pathData="M 83.25,19 L 83.25,81" />
+
+    </group>
+</vector>
