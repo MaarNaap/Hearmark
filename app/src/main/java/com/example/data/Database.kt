@@ -194,7 +194,13 @@ data class Task(
 ) {
     fun getLabelsList(): List<String> {
         if (labels.isBlank()) return emptyList()
-        return labels.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        return labels.split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .map { label ->
+                label.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.ROOT) else it.toString() }
+            }
+            .sortedWith(String.CASE_INSENSITIVE_ORDER)
     }
 
     fun getFormattedLabels(): String {

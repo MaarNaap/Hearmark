@@ -166,11 +166,13 @@ class AlarmReceiver : BroadcastReceiver() {
                     }
                     val pendingIntent = PendingIntent.getActivity(context, taskId.toInt(), launchIntent, flags)
 
+                    val displayTaskTitle = task.getDisplayTitle()
+
                     // Action 1: Play Now action intent
                     val playIntent = Intent(context, AlarmReceiver::class.java).apply {
                         this.action = ACTION_PLAY_TASK_TRACK
                         putExtra("TASK_ID", taskId)
-                        putExtra("TASK_TITLE", taskTitle)
+                        putExtra("TASK_TITLE", displayTaskTitle)
                     }
                     val playPendingIntent = PendingIntent.getBroadcast(
                         context,
@@ -183,7 +185,7 @@ class AlarmReceiver : BroadcastReceiver() {
                     val snoozeIntent = Intent(context, AlarmReceiver::class.java).apply {
                         this.action = ACTION_SNOOZE_TASK
                         putExtra("TASK_ID", taskId)
-                        putExtra("TASK_TITLE", taskTitle)
+                        putExtra("TASK_TITLE", displayTaskTitle)
                         putExtra("SCHEDULED_DAYS", scheduledDays)
                         putExtra("REMINDER_TIME", reminderTime)
                     }
@@ -197,7 +199,7 @@ class AlarmReceiver : BroadcastReceiver() {
                     // Notification title and description
                     val title = Loc.getText("reminder_desc")
                     val progressText = String.format(Locale.getDefault(), Loc.getText("task_progress_format"), progressPercent)
-                    val bigTextContent = "$taskTitle\n$progressText"
+                    val bigTextContent = "$displayTaskTitle\n$progressText"
 
                     val isDark = try {
                         val sharedPref = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
@@ -228,7 +230,7 @@ class AlarmReceiver : BroadcastReceiver() {
                     val notification = NotificationCompat.Builder(context, channelId)
                         .setSmallIcon(com.example.R.drawable.ic_logo)
                         .setContentTitle(title)
-                        .setContentText(taskTitle)
+                        .setContentText(displayTaskTitle)
                         .setStyle(bigTextStyle)
                         .setProgress(100, progressPercent, false)
                         .setColor(notifBgColor)
@@ -250,7 +252,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 }
                 
                 // Reschedule alarm for tomorrow at this same time
-                rescheduleNextDay(context, taskId, taskTitle, scheduledDays, reminderTime)
+                rescheduleNextDay(context, taskId, task.getDisplayTitle(), scheduledDays, reminderTime)
             } catch (e: Exception) {
                 Log.e("AlarmReceiver", "Error in async onReceive for task $taskId", e)
             } finally {

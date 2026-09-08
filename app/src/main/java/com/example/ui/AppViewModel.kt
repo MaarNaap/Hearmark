@@ -719,11 +719,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
+            val createdTask = repository.getTaskById(taskId)
             // Schedule daily alarm reminder
             com.example.receiver.AlarmReceiver.scheduleAlarm(
                 getApplication(),
                 taskId,
-                title,
+                createdTask?.getDisplayTitle() ?: title,
                 scheduledDays,
                 reminderTime
             )
@@ -826,7 +827,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 com.example.receiver.AlarmReceiver.scheduleAlarm(
                     getApplication(),
                     taskId,
-                    title,
+                    finalTask.getDisplayTitle(),
                     scheduledDays,
                     reminderTime
                 )
@@ -857,7 +858,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 com.example.receiver.AlarmReceiver.scheduleAlarm(
                     getApplication(),
                     task.id,
-                    task.title,
+                    task.getDisplayTitle(),
                     task.scheduledDays,
                     task.reminderTime
                 )
@@ -907,11 +908,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
+            val createdTask = repository.getTaskById(newTaskId)
             // Schedule daily alarm reminder for the new task
             com.example.receiver.AlarmReceiver.scheduleAlarm(
                 getApplication(),
                 newTaskId,
-                originalTask.title,
+                createdTask?.getDisplayTitle() ?: originalTask.getDisplayTitle(),
                 originalTask.scheduledDays,
                 originalTask.reminderTime
             )
@@ -1118,11 +1120,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val cleanName = rawName.substringBeforeLast(".").replace("\t", " ").replace("\r", "").replace("\n", " ").trim()
 
             val tasksForTrack = tasksList.filter { task ->
-                when (task.sourceType) {
+                task.status == "ACTIVE" && !task.isCompleted && when (task.sourceType) {
                     "FOLDER" -> track?.parentFolderId != null && track.parentFolderId == task.sourceId
                     else -> progressList.any { it.taskId == task.id && it.trackId == log.trackId }
                 }
-            }.map { it.title.replace("\t", " ").replace("\r", "").replace("\n", " ").trim() }.distinct()
+            }.map { it.getDisplayTitle().replace("\t", " ").replace("\r", "").replace("\n", " ").trim() }.distinct()
             val tasksStr = if (tasksForTrack.isNotEmpty()) tasksForTrack.joinToString(", ") else "-"
 
             val speed = if (log.playbackSpeed > 0f) log.playbackSpeed else 1.0f

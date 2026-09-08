@@ -700,7 +700,7 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                                         currentPositionMs = pos,
                                         formattedPosition = formattedPos,
                                         activeSubtitleLine = cue?.text,
-                                        activeTaskTitle = activeTaskForDetails?.title
+                                        activeTaskTitle = activeTaskForDetails?.getDisplayTitle()
                                     )
                                 )
                             }
@@ -4471,7 +4471,7 @@ fun AudioPlayerOverlay(
                                 currentPositionMs = playPositionState,
                                 formattedPosition = formattedPos,
                                 activeSubtitleLine = null,
-                                activeTaskTitle = relatedTasks.firstOrNull()?.title,
+                                activeTaskTitle = relatedTasks.firstOrNull()?.getDisplayTitle(),
                                 fullSubtitlesText = fullTranscript.ifBlank { null },
                                 isFullSubtitlesContext = true,
                                 audioFilePath = track.filePath,
@@ -5024,7 +5024,7 @@ fun AudioPlayerOverlay(
                                     currentPositionMs = startMs,
                                     formattedPosition = formattedPos,
                                     activeSubtitleLine = cueText,
-                                    activeTaskTitle = relatedTasks.firstOrNull()?.title
+                                    activeTaskTitle = relatedTasks.firstOrNull()?.getDisplayTitle()
                                 )
                             )
                         },
@@ -6475,7 +6475,7 @@ fun TasksView(
                             true
                         } else {
                             val query = searchQuery.trim().lowercase(Locale.getDefault())
-                            val matchesTaskTitle = task.title.lowercase(Locale.getDefault()).contains(query)
+                            val matchesTaskTitle = task.getDisplayTitle().lowercase(Locale.getDefault()).contains(query)
                             val matchesLabels = task.labels.lowercase(Locale.getDefault()).contains(query)
                             val matchesTracks = tracks.any { track ->
                                 val meta = trackMetadataCache[track.id]
@@ -6492,7 +6492,7 @@ fun TasksView(
                     when (sortBy) {
                         "date" -> filtered.sortedByDescending { it.first.startDate }
                         "progress" -> filtered.sortedByDescending { it.second }
-                        "alphabetical" -> filtered.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.first.title })
+                        "alphabetical" -> filtered.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.first.getDisplayTitle() })
                         else -> filtered
                     }
                 }
