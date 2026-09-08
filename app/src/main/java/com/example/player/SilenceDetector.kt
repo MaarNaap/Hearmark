@@ -9,7 +9,6 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.sqrt
 
@@ -17,9 +16,9 @@ object SilenceDetector {
     private const val TAG = "SilenceDetector"
 
     private const val WINDOW_MS = 100L // 100ms analysis window
-    private const val MIN_SILENCE_DURATION_MS = 300L // At least 300ms of silence for a pause boundary
+    private const val MIN_SILENCE_DURATION_MS = 300L // At least 300ms of silence for a natural speech pause
     private const val MIN_SEGMENT_DURATION_MS = 2500L // At least 2.5s for a meaningful speech segment
-    private const val MAX_SEGMENT_DURATION_MS = 9000L // At most 9s before forcing a cut at the quietest point
+    private const val MAX_SEGMENT_DURATION_MS = 8500L // At most 8.5s before forcing a cut at the quietest point
     private const val FALLBACK_SEGMENT_DURATION_MS = 5000L // 5s segments if decoding fails
 
     suspend fun detectBoundaries(
@@ -30,7 +29,7 @@ object SilenceDetector {
         try {
             val boundaries = analyzeAudioPcmSilence(context, filePath, totalDurationMs)
             if (boundaries.isNotEmpty()) {
-                Log.d(TAG, "Detected ${boundaries.size} silence boundaries for $filePath")
+                Log.d(TAG, "Detected ${boundaries.size} silence boundaries across entire file for $filePath")
                 return@withContext boundaries
             }
         } catch (e: Exception) {
@@ -48,7 +47,7 @@ object SilenceDetector {
             current += FALLBACK_SEGMENT_DURATION_MS
         }
         list.add(effectiveDuration)
-        return list
+        return list.distinct().sorted()
     }
 
     private fun analyzeAudioPcmSilence(
@@ -94,10 +93,16 @@ object SilenceDetector {
                 44100
             }
             val channelCount = if (audioFormat.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) {
-                audioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                audioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT).coerceAtLeast(1)
             } else {
                 2
             }
+
+            val formatDurationUs = if (audioFormat.containsKey(MediaFormat.KEY_DURATION)) {
+                audioFormat.getLong(MediaFormat.KEY_DURATION)
+            } else 0L
+            val formatDurationMs = formatDurationUs / 1000L
+            val resolvedDurationMs = if (totalDurationMs > 0) totalDurationMs else formatDurationMs
 
             codec = MediaCodec.createDecoderByType(mime)
             codec.configure(audioFormat, null, null, 0)
@@ -108,18 +113,21 @@ object SilenceDetector {
             var sawInputEOS = false
             var sawOutputEOS = false
 
-            val samplesPerWindow = ((sampleRate.toLong() * channelCount * WINDOW_MS) / 1000L).toInt().coerceAtLeast(100)
+            // Samples needed per 100ms window (stepping by channelCount)
+            val samplesPerWindow = ((sampleRate.toLong() * WINDOW_MS) / 1000L).toInt().coerceAtLeast(100)
             var currentWindowSumSquares = 0.0
             var currentWindowSampleCount = 0
             var currentWindowStartMs = 0L
 
-            val maxDurationLimitMs = if (totalDurationMs > 0) totalDurationMs else 3600000L // 1 hour max
+            val shortArray = ShortArray(4096)
+            var consecutiveEmptyOutputs = 0
             val startTimeWall = System.currentTimeMillis()
+            val maxWallClockMs = 90000L
 
-            while (!sawOutputEOS && (System.currentTimeMillis() - startTimeWall) < 15000L) {
+            while (!sawOutputEOS && (System.currentTimeMillis() - startTimeWall) < maxWallClockMs) {
                 // Feed input
                 if (!sawInputEOS) {
-                    val inputIndex = codec.dequeueInputBuffer(4000L)
+                    val inputIndex = codec.dequeueInputBuffer(1000L)
                     if (inputIndex >= 0) {
                         val inputBuffer = codec.getInputBuffer(inputIndex)
                         if (inputBuffer != null) {
@@ -137,8 +145,9 @@ object SilenceDetector {
                 }
 
                 // Process output
-                val outputIndex = codec.dequeueOutputBuffer(info, 4000L)
+                val outputIndex = codec.dequeueOutputBuffer(info, 1000L)
                 if (outputIndex >= 0) {
+                    consecutiveEmptyOutputs = 0
                     if ((info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                         sawOutputEOS = true
                     }
@@ -150,30 +159,40 @@ object SilenceDetector {
                         outputBuffer.order(ByteOrder.LITTLE_ENDIAN)
 
                         val shortBuffer = outputBuffer.asShortBuffer()
-                        val numShorts = shortBuffer.remaining()
+                        while (shortBuffer.hasRemaining()) {
+                            val toRead = minOf(shortBuffer.remaining(), shortArray.size)
+                            shortBuffer.get(shortArray, 0, toRead)
 
-                        var i = 0
-                        while (i < numShorts) {
-                            val sample = shortBuffer.get()
-                            currentWindowSumSquares += (sample.toDouble() * sample.toDouble())
-                            currentWindowSampleCount++
+                            var i = 0
+                            while (i < toRead) {
+                                val sample = shortArray[i].toDouble()
+                                currentWindowSumSquares += sample * sample
+                                currentWindowSampleCount++
 
-                            if (currentWindowSampleCount >= samplesPerWindow) {
-                                val rms = sqrt(currentWindowSumSquares / currentWindowSampleCount)
-                                windows.add(AudioWindow(timeMs = currentWindowStartMs, rms = rms))
-                                currentWindowStartMs += WINDOW_MS
-                                currentWindowSumSquares = 0.0
-                                currentWindowSampleCount = 0
+                                if (currentWindowSampleCount >= samplesPerWindow) {
+                                    val rms = sqrt(currentWindowSumSquares / currentWindowSampleCount)
+                                    windows.add(AudioWindow(timeMs = currentWindowStartMs, rms = rms))
+                                    currentWindowStartMs += WINDOW_MS
+                                    currentWindowSumSquares = 0.0
+                                    currentWindowSampleCount = 0
 
-                                if (currentWindowStartMs > maxDurationLimitMs) {
-                                    sawOutputEOS = true
-                                    break
+                                    if (resolvedDurationMs > 0 && currentWindowStartMs > resolvedDurationMs) {
+                                        sawOutputEOS = true
+                                        break
+                                    }
                                 }
+                                i += channelCount
                             }
-                            i++
                         }
                     }
                     codec.releaseOutputBuffer(outputIndex, false)
+                } else {
+                    if (sawInputEOS) {
+                        consecutiveEmptyOutputs++
+                        if (consecutiveEmptyOutputs > 60) {
+                            sawOutputEOS = true
+                        }
+                    }
                 }
             }
 
@@ -182,7 +201,7 @@ object SilenceDetector {
                 windows.add(AudioWindow(timeMs = currentWindowStartMs, rms = rms))
             }
 
-            return extractBoundariesFromWindows(windows, totalDurationMs)
+            return extractBoundariesFromWindows(windows, resolvedDurationMs)
         } finally {
             try {
                 codec?.stop()
@@ -205,9 +224,11 @@ object SilenceDetector {
         if (windows.isEmpty()) return generateFallbackSegments(totalDurationMs)
 
         val peakRms = windows.maxOfOrNull { it.rms } ?: 1.0
+        val effectiveDuration = if (totalDurationMs > 0) totalDurationMs else (windows.last().timeMs + WINDOW_MS)
+
         if (peakRms < 10.0) {
             // Audio is nearly silent throughout
-            return generateFallbackSegments(totalDurationMs)
+            return generateFallbackSegments(effectiveDuration)
         }
 
         // Adaptive silence threshold: 7% of peak RMS or baseline 250
@@ -251,37 +272,41 @@ object SilenceDetector {
             }
         }
 
-        val effectiveDuration = if (totalDurationMs > 0) totalDurationMs else (windows.last().timeMs + WINDOW_MS)
         val boundaries = mutableListOf<Long>()
         var lastBoundary = 0L
 
         for (span in silenceSpans) {
             val candidateCut = (span.startMs + span.endMs) / 2L
-            val segmentLength = candidateCut - lastBoundary
+            var segmentLength = candidateCut - lastBoundary
 
             if (segmentLength >= MIN_SEGMENT_DURATION_MS) {
-                // If segment exceeds MAX_SEGMENT_DURATION_MS, we could have inserted an intermediate cut
-                if (segmentLength > MAX_SEGMENT_DURATION_MS) {
-                    // Find intermediate minimum RMS between lastBoundary + 3000 and candidateCut - 2000
-                    val subStart = lastBoundary + 3000L
-                    val subEnd = candidateCut - 2000L
-                    val intermediate = windows.filter { it.timeMs in subStart..subEnd }.minByOrNull { it.rms }
-                    if (intermediate != null) {
-                        boundaries.add(intermediate.timeMs)
-                        lastBoundary = intermediate.timeMs
-                    }
+                // If segment exceeds MAX_SEGMENT_DURATION_MS, split at quietest intermediate points or natural intervals
+                while (segmentLength > MAX_SEGMENT_DURATION_MS) {
+                    val subStart = lastBoundary + 2500L
+                    val subEnd = minOf(lastBoundary + MAX_SEGMENT_DURATION_MS, candidateCut - 2000L)
+                    val intermediate = if (subEnd > subStart) {
+                        windows.filter { it.timeMs in subStart..subEnd }.minByOrNull { it.rms }?.timeMs
+                    } else null
+
+                    val cutPoint = intermediate ?: (lastBoundary + 5000L)
+                    boundaries.add(cutPoint)
+                    lastBoundary = cutPoint
+                    segmentLength = candidateCut - lastBoundary
                 }
                 boundaries.add(candidateCut)
                 lastBoundary = candidateCut
             }
         }
 
-        // Check tail segment
-        if (effectiveDuration - lastBoundary > MIN_SEGMENT_DURATION_MS) {
-            boundaries.add(effectiveDuration)
-        } else if (boundaries.isNotEmpty()) {
-            boundaries[boundaries.lastIndex] = effectiveDuration
-        } else {
+        // Fill remaining tail of the audio file to effectiveDuration
+        var tailLength = effectiveDuration - lastBoundary
+        while (tailLength > MAX_SEGMENT_DURATION_MS) {
+            val cutPoint = lastBoundary + 5000L
+            boundaries.add(cutPoint)
+            lastBoundary = cutPoint
+            tailLength = effectiveDuration - lastBoundary
+        }
+        if (effectiveDuration > lastBoundary) {
             boundaries.add(effectiveDuration)
         }
 

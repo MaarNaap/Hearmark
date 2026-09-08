@@ -2086,8 +2086,8 @@ object AudioPlayerManager {
 
     // --- PRACTICE MODE (Silence Detection & Imitation Pauses) ---
 
-    fun togglePracticeMode(context: Context, repository: AppRepository) {
-        if (_isPracticeMode.value) {
+    fun togglePracticeMode(context: Context, repository: AppRepository, forceReanalyze: Boolean = false) {
+        if (_isPracticeMode.value && !forceReanalyze) {
             _isPracticeMode.value = false
             practicePauseJob?.cancel()
             val wasPausing = _isPracticePausing.value
@@ -2099,7 +2099,10 @@ object AudioPlayerManager {
         } else {
             val track = currentTrackValue ?: return
             val existing = track.getPracticeSegmentsList()
-            if (existing.isNotEmpty()) {
+            val effectiveDuration = if (track.duration > 0) track.duration else _duration.value
+            val isTruncated = effectiveDuration > 20000L && existing.isNotEmpty() && existing.last() < (effectiveDuration * 0.85f)
+
+            if (existing.isNotEmpty() && !forceReanalyze && !isTruncated) {
                 _currentPracticeSegments.value = existing
                 _isPracticeMode.value = true
                 resetPracticeSegmentTracking(_currentPosition.value)
@@ -2110,7 +2113,7 @@ object AudioPlayerManager {
                 _isPracticeAnalyzing.value = true
                 coroutineScope.launch(Dispatchers.IO) {
                     try {
-                        val boundaries = SilenceDetector.detectBoundaries(context, track.filePath, track.duration)
+                        val boundaries = SilenceDetector.detectBoundaries(context, track.filePath, effectiveDuration)
                         val segmentsStr = boundaries.joinToString(",")
                         repository.updateTrackPracticeSegments(track.id, segmentsStr)
                         updateTrackState { it.copy(practiceSegments = segmentsStr) }
