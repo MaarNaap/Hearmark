@@ -1159,11 +1159,33 @@ fun StatsView(viewModel: AppViewModel) {
     }
 
     // Combine time filter and selected entity filters
-    val rangeFiltered = remember(timeFiltered, combinedAllowedTrackIds) {
-        if (combinedAllowedTrackIds == null) {
-            timeFiltered
+    val rangeFiltered = remember(timeFiltered, selectedTaskIds, combinedAllowedTrackIds, allowedTrackIdsForTasks, allowedTrackIdsForFolderFiles, allTasks) {
+        if (selectedTaskIds.isEmpty()) {
+            if (combinedAllowedTrackIds == null) {
+                timeFiltered
+            } else {
+                timeFiltered.filter { it.trackId in combinedAllowedTrackIds }
+            }
         } else {
-            timeFiltered.filter { it.trackId in combinedAllowedTrackIds }
+            val selectedTasks = allTasks.filter { it.id in selectedTaskIds }
+            val selectedTitles = selectedTasks.map { it.getDisplayTitle() }.toSet()
+            timeFiltered.filter { item ->
+                val taskIds = item.getActiveTaskIds()
+                val taskTitles = item.getActiveTasksList()
+                val matchesTask = if (taskIds.isNotEmpty()) {
+                    taskIds.any { it in selectedTaskIds } || taskTitles.any { it in selectedTitles }
+                } else if (item.activeTasks.isBlank() && allowedTrackIdsForTasks != null) {
+                    item.trackId in allowedTrackIdsForTasks
+                } else {
+                    false
+                }
+                val matchesFolderFile = if (allowedTrackIdsForFolderFiles != null) {
+                    item.trackId in allowedTrackIdsForFolderFiles
+                } else {
+                    true
+                }
+                matchesTask && matchesFolderFile
+            }
         }
     }
 
@@ -1232,13 +1254,25 @@ fun StatsView(viewModel: AppViewModel) {
                         }
                     }
 
-                    val attachedTaskNames = allTasks.filter { task ->
-                        task.status == "ACTIVE" && !task.isCompleted && when (task.sourceType) {
-                            "FOLDER" -> track?.parentFolderId == task.sourceId
-                            "TRACKS" -> allTaskProgress.any { it.taskId == task.id && it.trackId == trackId }
-                            else -> allTaskProgress.any { it.taskId == task.id && it.trackId == trackId }
+                    val attachedTaskNames = trackRecs.flatMap { r ->
+                        val logged = r.getActiveTasksList()
+                        if (logged.isNotEmpty()) {
+                            logged
+                        } else if (r.activeTasks.isBlank()) {
+                            // Fallback for legacy records: only include tasks active at r.completedAt
+                            val trackId = r.trackId
+                            allTasks.filter { task ->
+                                val wasActiveThen = r.completedAt >= task.startDate && (task.endDate == null || r.completedAt <= task.endDate)
+                                wasActiveThen && when (task.sourceType) {
+                                    "FOLDER" -> track?.parentFolderId == task.sourceId
+                                    "TRACKS" -> allTaskProgress.any { it.taskId == task.id && it.trackId == trackId }
+                                    else -> allTaskProgress.any { it.taskId == task.id && it.trackId == trackId }
+                                }
+                            }.map { it.getDisplayTitle() }
+                        } else {
+                            emptyList()
                         }
-                    }.map { it.getDisplayTitle() }.distinct()
+                    }.filter { it.isNotBlank() }.distinct()
 
                     DayTrackItem(
                         trackId = trackId,
@@ -3006,16 +3040,25 @@ fun StatsView(viewModel: AppViewModel) {
                                 val title = track?.getDisplayTitle() ?: logItem.trackName
                                 val formattedDate = sdf.format(Date(logItem.completedAt))
 
-                                // Retrieve attached active task names for this track (active tasks only, with labels in title)
-                                val attachedTaskNames = remember(logItem.trackId, allTasks, allTaskProgress) {
-                                    val trackId = logItem.trackId
-                                    allTasks.filter { task ->
-                                        task.status == "ACTIVE" && !task.isCompleted && when (task.sourceType) {
-                                            "FOLDER" -> track?.parentFolderId == task.sourceId
-                                            "TRACKS" -> allTaskProgress.any { it.taskId == task.id && it.trackId == trackId }
-                                            else -> allTaskProgress.any { it.taskId == task.id && it.trackId == trackId }
-                                        }
-                                    }.map { it.getDisplayTitle() }.distinct()
+                                // Retrieve attached active task names logged at the time of playback
+                                val attachedTaskNames = remember(logItem, allTasks, allTaskProgress) {
+                                    val logged = logItem.getActiveTasksList()
+                                    if (logged.isNotEmpty()) {
+                                        logged
+                                    } else if (logItem.activeTasks.isBlank()) {
+                                        // Fallback for legacy records: only include tasks active at logItem.completedAt
+                                        val trackId = logItem.trackId
+                                        allTasks.filter { task ->
+                                            val wasActiveThen = logItem.completedAt >= task.startDate && (task.endDate == null || logItem.completedAt <= task.endDate)
+                                            wasActiveThen && when (task.sourceType) {
+                                                "FOLDER" -> track?.parentFolderId == task.sourceId
+                                                "TRACKS" -> allTaskProgress.any { it.taskId == task.id && it.trackId == trackId }
+                                                else -> allTaskProgress.any { it.taskId == task.id && it.trackId == trackId }
+                                            }
+                                        }.map { it.getDisplayTitle() }.distinct()
+                                    } else {
+                                        emptyList()
+                                    }
                                 }
 
                                 Card(

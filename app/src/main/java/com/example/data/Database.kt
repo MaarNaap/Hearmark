@@ -240,7 +240,37 @@ data class PlaybackHistory(
     val completedAt: Long, // timestamp
     val durationMs: Long = 0L,
     val playbackSpeed: Float = 1.0f,
-    val actualListenedMs: Long = 0L
+    val actualListenedMs: Long = 0L,
+    val activeTasks: String = "" // JSON array of active tasks at playback time: [{"id": 1, "title": "Task 1"}]
+) {
+    fun getLoggedTasks(): List<LoggedTaskInfo> {
+        if (activeTasks.isBlank()) return emptyList()
+        return try {
+            val arr = org.json.JSONArray(activeTasks)
+            val list = mutableListOf<LoggedTaskInfo>()
+            for (i in 0 until arr.length()) {
+                val item = arr.get(i)
+                if (item is org.json.JSONObject) {
+                    val id = item.optLong("id", 0L)
+                    val title = item.optString("title", "")
+                    if (title.isNotBlank()) list.add(LoggedTaskInfo(id, title))
+                } else if (item is String && item.isNotBlank()) {
+                    list.add(LoggedTaskInfo(0L, item))
+                }
+            }
+            list
+        } catch (e: Exception) {
+            activeTasks.split("||").map { it.trim() }.filter { it.isNotEmpty() }.map { LoggedTaskInfo(0L, it) }
+        }
+    }
+
+    fun getActiveTasksList(): List<String> = getLoggedTasks().map { it.title }
+    fun getActiveTaskIds(): List<Long> = getLoggedTasks().map { it.id }.filter { it > 0L }
+}
+
+data class LoggedTaskInfo(
+    val id: Long,
+    val title: String
 )
 
 @Entity(tableName = "notes")
@@ -566,7 +596,7 @@ interface AppDao {
         NoteTag::class,
         TaskLabel::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -667,6 +697,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE playback_history ADD COLUMN activeTasks TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -674,7 +710,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smart_audio_tasks_db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()
                 INSTANCE = instance
@@ -946,6 +982,38 @@ class AppRepository(val dao: AppDao) {
     }
 
     // Stats
+    suspend fun getActiveTasksForTrackDirect(track: AudioTrack): List<Task> {
+        val allTasks = dao.getAllTasksDirect()
+        val allFolders = dao.getAllFoldersDirect()
+
+        fun isFolderDescendant(folderId: Long?, targetParentId: Long?): Boolean {
+            if (folderId == null || targetParentId == null) return false
+            var current: Long? = folderId
+            var depth = 0
+            while (current != null && depth < 20) {
+                if (current == targetParentId) return true
+                current = allFolders.find { it.id == current }?.parentFolderId
+                depth++
+            }
+            return false
+        }
+
+        val result = mutableListOf<Task>()
+        for (task in allTasks) {
+            if (task.isCompleted || task.status != "ACTIVE") continue
+
+            val progressList = dao.getProgressForTask(task.id)
+            val inProgress = progressList.any { it.trackId == track.id }
+            val inFolder = task.sourceType == "FOLDER" && task.sourceId != null &&
+                    (track.parentFolderId == task.sourceId || isFolderDescendant(track.parentFolderId, task.sourceId))
+
+            if (inProgress || inFolder) {
+                result.add(task)
+            }
+        }
+        return result
+    }
+
     fun getPlaybackHistoryFiltered(startTime: Long, endTime: Long): Flow<List<PlaybackHistory>> {
         return dao.getPlaybackHistoryFilteredFlow(startTime, endTime)
     }

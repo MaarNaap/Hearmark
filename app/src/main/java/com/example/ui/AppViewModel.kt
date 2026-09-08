@@ -1119,12 +1119,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val rawName = log.trackName.ifBlank { track?.fileName ?: "Track #${log.trackId}" }
             val cleanName = rawName.substringBeforeLast(".").replace("\t", " ").replace("\r", "").replace("\n", " ").trim()
 
-            val tasksForTrack = tasksList.filter { task ->
-                task.status == "ACTIVE" && !task.isCompleted && when (task.sourceType) {
-                    "FOLDER" -> track?.parentFolderId != null && track.parentFolderId == task.sourceId
-                    else -> progressList.any { it.taskId == task.id && it.trackId == log.trackId }
+            val tasksForTrack = run {
+                val logged = log.getActiveTasksList()
+                if (logged.isNotEmpty()) {
+                    logged
+                } else if (log.activeTasks.isBlank()) {
+                    // Fallback for legacy records: check tasks active at log.completedAt
+                    val trackId = log.trackId
+                    tasksList.filter { task ->
+                        val wasActiveThen = log.completedAt >= task.startDate && (task.endDate == null || log.completedAt <= task.endDate)
+                        wasActiveThen && when (task.sourceType) {
+                            "FOLDER" -> track?.parentFolderId != null && track.parentFolderId == task.sourceId
+                            else -> progressList.any { it.taskId == task.id && it.trackId == trackId }
+                        }
+                    }.map { it.getDisplayTitle() }
+                } else {
+                    emptyList()
                 }
-            }.map { it.getDisplayTitle().replace("\t", " ").replace("\r", "").replace("\n", " ").trim() }.distinct()
+            }.map { it.replace("\t", " ").replace("\r", "").replace("\n", " ").trim() }.distinct()
             val tasksStr = if (tasksForTrack.isNotEmpty()) tasksForTrack.joinToString(", ") else "-"
 
             val speed = if (log.playbackSpeed > 0f) log.playbackSpeed else 1.0f
@@ -1697,6 +1709,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 obj.put("durationMs", item.durationMs)
                 obj.put("playbackSpeed", item.playbackSpeed.toDouble())
                 obj.put("actualListenedMs", item.actualListenedMs)
+                obj.put("activeTasks", item.activeTasks)
                 historyArray.put(obj)
             }
             root.put("playbackHistory", historyArray)
@@ -1795,7 +1808,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             completedAt = obj.optLong("completedAt", System.currentTimeMillis()),
                             durationMs = obj.optLong("durationMs", 0L),
                             playbackSpeed = obj.optDouble("playbackSpeed", 1.0).toFloat(),
-                            actualListenedMs = obj.optLong("actualListenedMs", 0L)
+                            actualListenedMs = obj.optLong("actualListenedMs", 0L),
+                            activeTasks = obj.optString("activeTasks", "")
                         )
                         repository.insertPlaybackHistory(history)
                     }

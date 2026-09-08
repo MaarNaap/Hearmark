@@ -1371,14 +1371,29 @@ object AudioPlayerManager {
             }
             sessionActualListeningMs = 0L // Reset for next iteration/repeat
 
-            // 2. Save into History
+            // 2. Save into History with active tasks snapshot at this exact moment
+            val activeTasksAtThatTime = repository?.getActiveTasksForTrackDirect(track) ?: emptyList()
+            val activeTasksJson = if (activeTasksAtThatTime.isNotEmpty()) {
+                val arr = org.json.JSONArray()
+                activeTasksAtThatTime.forEach { t ->
+                    val obj = org.json.JSONObject()
+                    obj.put("id", t.id)
+                    obj.put("title", t.getDisplayTitle())
+                    arr.put(obj)
+                }
+                arr.toString()
+            } else {
+                ""
+            }
+
             val history = PlaybackHistory(
                 trackId = track.id,
                 trackName = track.fileName,
                 completedAt = System.currentTimeMillis(),
                 durationMs = track.duration,
                 playbackSpeed = playbackSpeed.value,
-                actualListenedMs = recordedActualMs
+                actualListenedMs = recordedActualMs,
+                activeTasks = activeTasksJson
             )
             repository?.insertPlaybackHistory(history)
 

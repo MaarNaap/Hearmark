@@ -7046,8 +7046,13 @@ fun TaskDetailsView(
         val playbackHistoryList by viewModel.playbackHistory.collectAsStateWithLifecycle()
         val taskTrackIds = remember(progressList) { progressList.map { it.trackId }.toSet() }
         
-        val taskPlaybackHistory = remember(playbackHistoryList, taskTrackIds, currentTask.startDate) {
-            playbackHistoryList.filter { it.trackId in taskTrackIds && it.completedAt >= currentTask.startDate }
+        val taskPlaybackHistory = remember(playbackHistoryList, taskTrackIds, currentTask.startDate, currentTask.id) {
+            val taskTitle = currentTask.getDisplayTitle()
+            playbackHistoryList.filter { item ->
+                val matchesLoggedTask = item.getActiveTaskIds().contains(currentTask.id) || item.getActiveTasksList().contains(taskTitle)
+                val matchesLegacy = item.activeTasks.isBlank() && item.trackId in taskTrackIds
+                (matchesLoggedTask || matchesLegacy) && item.completedAt >= currentTask.startDate
+            }
         }
         
         val firstPlayTimestamp = remember(taskPlaybackHistory) {
