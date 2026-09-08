@@ -1,5 +1,5 @@
 {
-  "name": "Hearmark",
+  "name": "Hearmark -c",
   "description": "Smart local audio player that automatically tracks task completion progress based on actual file listening threshold.",
   "requestFramePermissions": [],
   "majorCapabilities": [
