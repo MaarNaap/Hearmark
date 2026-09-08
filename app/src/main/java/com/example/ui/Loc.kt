@@ -85,6 +85,13 @@ object Loc {
 
         // Player Screen
         "sleep_timer" to mapOf("en" to "Sleep Timer", "ar" to "إيقاف تلقائي"),
+        "practice_mode" to mapOf("en" to "Practice Mode", "ar" to "وضع الترديد والمحاكاة"),
+        "practice_mode_on" to mapOf("en" to "Practice Mode: ON", "ar" to "وضع الترديد: مفعل"),
+        "practice_mode_off" to mapOf("en" to "Practice Mode: OFF", "ar" to "وضع الترديد: متوقف"),
+        "practice_mode_analyzing" to mapOf("en" to "Analyzing speech pauses...", "ar" to "جاري تحليل الوقفات الصوتية..."),
+        "practice_your_turn" to mapOf("en" to "Your Turn to Speak", "ar" to "دورك في الترديد والمحاكاة"),
+        "practice_skip_pause" to mapOf("en" to "Skip Pause", "ar" to "تخطي الوقف"),
+        "practice_segments_count" to mapOf("en" to "%d practice segments", "ar" to "%d مقطع للترديد"),
         "speed" to mapOf("en" to "Speed", "ar" to "سرعة التشغيل"),
         "ends_at" to mapOf("en" to "End of file", "ar" to "نهاية الملف"),
         "timer_cancelled" to mapOf("en" to "Cancelled", "ar" to "تم الإلغاء"),

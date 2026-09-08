@@ -39,8 +39,18 @@ data class AudioTrack(
     val endOffsetMs: Long? = null,
     val isVirtualScene: Boolean = false,
     val parentTrackId: Long? = null,
-    val sceneNumber: Int? = null
+    val sceneNumber: Int? = null,
+    val practiceSegments: String? = null
 ) {
+    fun getPracticeSegmentsList(): List<Long> {
+        if (practiceSegments.isNullOrBlank()) return emptyList()
+        return practiceSegments.split(",")
+            .mapNotNull { it.trim().toLongOrNull() }
+            .filter { it > 0 }
+            .distinct()
+            .sorted()
+    }
+
     fun getAdaptiveNumSegments(): Int {
         val durationS = duration / 1000
         return if (durationS > 0) minOf(durationS.toInt(), 100).coerceAtLeast(10) else 100
@@ -402,6 +412,9 @@ interface AppDao {
     @Update
     suspend fun updateTrack(track: AudioTrack)
 
+    @Query("UPDATE audio_tracks SET practiceSegments = :segments WHERE id = :trackId")
+    suspend fun updateTrackPracticeSegments(trackId: Long, segments: String?)
+
     @Delete
     suspend fun deleteTrack(track: AudioTrack)
 
@@ -628,7 +641,7 @@ interface AppDao {
         NoteTag::class,
         TaskLabel::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -735,6 +748,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE audio_tracks ADD COLUMN practiceSegments TEXT DEFAULT NULL")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -742,7 +761,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smart_audio_tasks_db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()
                 INSTANCE = instance
@@ -803,6 +822,7 @@ class AppRepository(val dao: AppDao) {
     suspend fun getTrackByPath(path: String) = dao.getTrackByPath(path)
     suspend fun insertTrack(track: AudioTrack) = dao.insertTrack(track)
     suspend fun updateTrack(track: AudioTrack) = dao.updateTrack(track)
+    suspend fun updateTrackPracticeSegments(trackId: Long, segments: String?) = dao.updateTrackPracticeSegments(trackId, segments)
     suspend fun deleteTrack(track: AudioTrack) = dao.deleteTrack(track)
     suspend fun deleteTrackById(id: Long) = dao.deleteTrackById(id)
     fun getScenesForParentTrackFlow(parentTrackId: Long) = dao.getScenesForParentTrackFlow(parentTrackId)

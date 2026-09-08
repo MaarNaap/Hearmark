@@ -72,4 +72,61 @@ class ExampleUnitTest {
         assertEquals("Morning Reading [Loud. Slow]", task.getDisplayTitle())
         assertEquals("Morning Reading", task.getBaseTitle())
     }
+
+    @Test
+    fun audioTrack_getPracticeSegmentsList_parsesAndSortsCorrectly() {
+        val track = com.example.data.AudioTrack(
+            id = 1,
+            title = "Lesson 1",
+            filePath = "/path/to/audio.mp3",
+            practiceSegments = "5000, 12000, 2000, 8500"
+        )
+        val list = track.getPracticeSegmentsList()
+        assertEquals(listOf(2000L, 5000L, 8500L, 12000L), list)
+    }
+
+    @Test
+    fun audioTrack_getPracticeSegmentsList_handlesNullAndEmpty() {
+        val track1 = com.example.data.AudioTrack(
+            id = 1,
+            title = "Lesson 1",
+            filePath = "/path/to/audio.mp3",
+            practiceSegments = null
+        )
+        assertTrue(track1.getPracticeSegmentsList().isEmpty())
+
+        val track2 = track1.copy(practiceSegments = "   ")
+        assertTrue(track2.getPracticeSegmentsList().isEmpty())
+    }
+
+    @Test
+    fun silenceDetector_fallbackSegments_generatesEvenSegments() {
+        val segments = com.example.player.SilenceDetector.generateFallbackSegments(15000L)
+        assertEquals(listOf(5000L, 10000L, 15000L), segments)
+    }
+
+    @Test
+    fun silenceDetector_extractBoundariesFromWindows_identifiesSilences() {
+        // Build 10 seconds of simulated windows (100ms each = 100 windows)
+        // Speech: 0-3s (windows 0..29, high RMS)
+        // Silence: 3-4s (windows 30..39, near zero RMS)
+        // Speech: 4-7s (windows 40..69, high RMS)
+        // Silence: 7-8s (windows 70..79, near zero RMS)
+        // Speech: 8-10s (windows 80..99, high RMS)
+        val windows = (0 until 100).map { i ->
+            val timeMs = i * 100L
+            val isSilence = (i in 30..39) || (i in 70..79)
+            val rms = if (isSilence) 50.0 else 2000.0
+            com.example.player.SilenceDetector.AudioWindow(timeMs = timeMs, rms = rms)
+        }
+
+        val boundaries = com.example.player.SilenceDetector.extractBoundariesFromWindows(windows, 10000L)
+        assertTrue("Boundaries should not be empty", boundaries.isNotEmpty())
+        // First silence is around 3500ms
+        assertTrue("Should detect boundary near 3500ms", boundaries.any { it in 3200L..3800L })
+        // Second silence is around 7500ms
+        assertTrue("Should detect boundary near 7500ms", boundaries.any { it in 7200L..7800L })
+        // Ends at or covers the duration
+        assertEquals(10000L, boundaries.last())
+    }
 }

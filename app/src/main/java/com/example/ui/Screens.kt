@@ -3982,6 +3982,12 @@ fun AudioPlayerOverlay(
     val speedState by AudioPlayerManager.playbackSpeed.collectAsStateWithLifecycle()
     val sleepTimerState by AudioPlayerManager.sleepTimeRemaining.collectAsStateWithLifecycle()
 
+    val isPracticeMode by AudioPlayerManager.isPracticeMode.collectAsStateWithLifecycle()
+    val isPracticeAnalyzing by AudioPlayerManager.isPracticeAnalyzing.collectAsStateWithLifecycle()
+    val isPracticePausing by AudioPlayerManager.isPracticePausing.collectAsStateWithLifecycle()
+    val practicePauseRemaining by AudioPlayerManager.practicePauseRemainingSeconds.collectAsStateWithLifecycle()
+    val practiceSegments by AudioPlayerManager.currentPracticeSegments.collectAsStateWithLifecycle()
+
     val subtitlesCuesState by AudioPlayerManager.subtitlesCues.collectAsStateWithLifecycle()
     val activeSubtitleCueState by AudioPlayerManager.activeSubtitleCue.collectAsStateWithLifecycle()
     val isSubtitlesEnabledState by AudioPlayerManager.isSubtitlesEnabled.collectAsStateWithLifecycle()
@@ -5100,6 +5106,7 @@ fun AudioPlayerOverlay(
                         ) {
                             val segmentsColor = MaterialTheme.colorScheme.primary
                             val noteMarkerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                            val practiceDotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
                             Canvas(modifier = Modifier.fillMaxSize()) {
                                 if (numSegments > 0) {
                                     val segmentWidth = size.width / numSegments
@@ -5125,6 +5132,17 @@ fun AudioPlayerOverlay(
                                             color = noteMarkerColor,
                                             topLeft = androidx.compose.ui.geometry.Offset(x = noteX - (markerWidth / 2f), y = 0f),
                                             size = androidx.compose.ui.geometry.Size(width = markerWidth, height = size.height)
+                                        )
+                                    }
+                                }
+                                if (isPracticeMode && practiceSegments.isNotEmpty() && durationState > 0) {
+                                    for (boundary in practiceSegments) {
+                                        val frac = (boundary.toFloat() / durationState.toFloat()).coerceIn(0f, 1f)
+                                        val markX = frac * size.width
+                                        drawCircle(
+                                            color = practiceDotColor,
+                                            radius = 2.5.dp.toPx(),
+                                            center = androidx.compose.ui.geometry.Offset(x = markX, y = size.height / 2f)
                                         )
                                     }
                                 }
@@ -5178,6 +5196,85 @@ fun AudioPlayerOverlay(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(formatDuration(displayPlayPosition), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                         Text(formatDuration(durationState), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    }
+                }
+
+                // Practice Mode Imitation Pause Notification Banner
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = isPracticePausing,
+                    enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandVertically(),
+                    exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically()
+                ) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f)
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(MaterialTheme.colorScheme.primary, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.RecordVoiceOver,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = Loc.getText("practice_your_turn"),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Text(
+                                        text = "${String.format(java.util.Locale.US, "%.1f", practicePauseRemaining)}s",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+
+                            TextButton(
+                                onClick = { AudioPlayerManager.skipPracticePause() },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Text(
+                                    text = Loc.getText("practice_skip_pause"),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Filled.SkipNext,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -5403,6 +5500,46 @@ fun AudioPlayerOverlay(
                                     tint = if (isAutoPlay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
                                     modifier = Modifier.size(24.dp)
                                 )
+                            }
+
+                            // Practice Mode (Listen & Imitate with Silence Detection)
+                            val practiceColor = if (isPracticeMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+                            IconButton(
+                                onClick = {
+                                    val repo = viewModel.repository
+                                    AudioPlayerManager.togglePracticeMode(context, repo)
+                                    if (!isPracticeMode) {
+                                        val existingSegs = track.getPracticeSegmentsList()
+                                        if (existingSegs.isEmpty()) {
+                                            Toast.makeText(context, Loc.getText("practice_mode_analyzing"), Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, Loc.getText("practice_mode_on"), Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        Toast.makeText(context, Loc.getText("practice_mode_off"), Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        if (isPracticeMode) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent
+                                    )
+                            ) {
+                                if (isPracticeAnalyzing) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Filled.RecordVoiceOver,
+                                        contentDescription = Loc.getText("practice_mode"),
+                                        tint = practiceColor,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
                             }
 
                             // 3. Queue Button
