@@ -94,6 +94,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var skipSecondsSetting by mutableStateOf(10) // 5, 10, 15, 30
     var headsetControlsEnabled by mutableStateOf(true)
     var headsetMultiClickAction by mutableStateOf("NEXT_PREV") // "NEXT_PREV" or "SKIP_SECONDS"
+    var segmentSourceSetting by mutableStateOf("SILENCE") // "SILENCE" or "SUBTITLES"
+    var practicePauseMultiplierSetting by mutableStateOf(1.0f) // 0.5 to 2.5
     var customGeminiApiKey by mutableStateOf("")
 
     // Gemini Chatbot State
@@ -376,10 +378,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         headsetMultiClickAction = sharedPref.getString("headset_multiclick_action", "NEXT_PREV") ?: "NEXT_PREV"
         customGeminiApiKey = sharedPref.getString("custom_gemini_api_key", "") ?: ""
         Loc.currentLanguage = sharedPref.getString("language", "en") ?: "en"
+        segmentSourceSetting = sharedPref.getString("segment_source", "SILENCE") ?: "SILENCE"
+        practicePauseMultiplierSetting = sharedPref.getFloat("practice_pause_multiplier", 1.0f)
 
         AudioPlayerManager.init(application, repository)
         AudioPlayerManager.setSettings(thresholdSetting, skipSecondsSetting)
         AudioPlayerManager.setHeadsetSettings(headsetControlsEnabled, headsetMultiClickAction)
+        AudioPlayerManager.setPracticeSettings(segmentSourceSetting, practicePauseMultiplierSetting)
 
         viewModelScope.launch(Dispatchers.IO) {
             repository.syncAndCleanTaskLabels()
@@ -470,6 +475,31 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         headsetControlsEnabled = enabled
         headsetMultiClickAction = action
         AudioPlayerManager.setHeadsetSettings(enabled, action)
+    }
+
+    fun updatePracticeSettings(source: String, multiplier: Float) {
+        segmentSourceSetting = source
+        practicePauseMultiplierSetting = multiplier
+        val sharedPref = getApplication<Application>().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        with(sharedPref.edit()) {
+            putString("segment_source", source)
+            putFloat("practice_pause_multiplier", multiplier)
+            apply()
+        }
+        AudioPlayerManager.setPracticeSettings(source, multiplier)
+    }
+
+    fun resetTrackSegments(track: AudioTrack) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.updateTrackPracticeSegments(track.id, null)
+            val updated = track.copy(practiceSegments = null)
+            repository.dao.updateTrack(updated)
+            withContext(Dispatchers.Main) {
+                if (AudioPlayerManager.currentTrack.value?.id == track.id) {
+                    AudioPlayerManager.clearPracticeSegmentsForCurrentTrack()
+                }
+            }
+        }
     }
 
     private suspend fun checkFilesSanity() {

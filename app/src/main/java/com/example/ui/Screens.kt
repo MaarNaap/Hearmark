@@ -4522,6 +4522,60 @@ fun AudioPlayerOverlay(
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
+
+                    var showPlayerMenu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { showPlayerMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Filled.MoreVert,
+                                contentDescription = "More Options",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showPlayerMenu,
+                            onDismissRequest = { showPlayerMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Filled.RestartAlt,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(Loc.getText("reset_segments"))
+                                    }
+                                },
+                                onClick = {
+                                    showPlayerMenu = false
+                                    viewModel.resetTrackSegments(track)
+                                    Toast.makeText(context, Loc.getText("segments_reset_success"), Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Refresh,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(Loc.getText("reanalyze_segments"))
+                                    }
+                                },
+                                onClick = {
+                                    showPlayerMenu = false
+                                    Toast.makeText(context, Loc.getText("practice_mode_reanalyzing"), Toast.LENGTH_SHORT).show()
+                                    AudioPlayerManager.togglePracticeMode(context, viewModel.repository, forceReanalyze = true)
+                                }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -9163,6 +9217,8 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
     var chosenLang by remember { mutableStateOf(Loc.currentLanguage) }
     var headsetEnabled by remember { mutableStateOf(viewModel.headsetControlsEnabled) }
     var headsetAction by remember { mutableStateOf(viewModel.headsetMultiClickAction) }
+    var segmentSource by remember { mutableStateOf(viewModel.segmentSourceSetting) }
+    var pauseMultiplier by remember { mutableStateOf(viewModel.practicePauseMultiplierSetting) }
 
     val playbackHistoryList by viewModel.playbackHistory.collectAsStateWithLifecycle()
     var showClearDialog by remember { mutableStateOf(false) }
@@ -9210,6 +9266,10 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
 
     LaunchedEffect(headsetEnabled, headsetAction) {
         viewModel.updateHeadsetSettings(headsetEnabled, headsetAction)
+    }
+
+    LaunchedEffect(segmentSource, pauseMultiplier) {
+        viewModel.updatePracticeSettings(segmentSource, pauseMultiplier)
     }
 
     Column(
@@ -9376,6 +9436,121 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
                         }
                     }
                 }
+            }
+        }
+
+        // Practice Mode & Segmentation Card
+        Card(
+            modifier = Modifier.fillMaxWidth().testTag("card_practice_settings"),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.RecordVoiceOver,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = Loc.getText("practice_mode"),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f))
+
+                // Segment source selection
+                Text(
+                    text = Loc.getText("segment_source"),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = Loc.getText("segment_source_desc"),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                listOf(
+                    "SILENCE" to Loc.getText("segment_source_silence"),
+                    "SUBTITLES" to Loc.getText("segment_source_subtitles")
+                ).forEach { (sourceKey, sourceLabel) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { segmentSource = sourceKey }
+                            .padding(vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = segmentSource.equals(sourceKey, ignoreCase = true),
+                            onClick = { segmentSource = sourceKey }
+                        )
+                        Text(
+                            text = sourceLabel,
+                            modifier = Modifier.padding(start = 8.dp),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f))
+
+                // Pause length multiplier setting
+                Text(
+                    text = "${Loc.getText("pause_multiplier_title")}: ${"%.2f".format(pauseMultiplier)}x",
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = Loc.getText("pause_multiplier_desc"),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // Quick chips
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f).forEach { mult ->
+                        val selected = Math.abs(pauseMultiplier - mult) < 0.05f
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .background(
+                                    if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                    RoundedCornerShape(6.dp)
+                                )
+                                .clickable { pauseMultiplier = mult }
+                                .padding(vertical = 5.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "${mult}x",
+                                color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
+
+                Slider(
+                    value = pauseMultiplier,
+                    onValueChange = { pauseMultiplier = (Math.round(it * 20f) / 20f) },
+                    valueRange = 0.5f..2.5f,
+                    steps = 7,
+                    modifier = Modifier.fillMaxWidth().testTag("slider_pause_multiplier")
+                )
             }
         }
 
@@ -11149,6 +11324,25 @@ fun UnifiedTrackDropdownMenu(
             onClick = {
                 onDismissRequest()
                 onViewInfo()
+            }
+        )
+        DropdownMenuItem(
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.RestartAlt,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(Loc.getText("reset_segments"))
+                }
+            },
+            onClick = {
+                onDismissRequest()
+                viewModel.resetTrackSegments(track)
+                Toast.makeText(context, Loc.getText("segments_reset_success"), Toast.LENGTH_SHORT).show()
             }
         )
         if (track.isVirtualScene) {
