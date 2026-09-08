@@ -7513,7 +7513,7 @@ fun CreateTaskScreen(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    var title by remember(editingTask) { mutableStateOf(editingTask?.title ?: "") }
+    var title by remember(editingTask) { mutableStateOf(editingTask?.getBaseTitle() ?: "") }
     var isTitleManuallyEdited by remember(editingTask) { mutableStateOf(editingTask != null) }
     val normalizedPredefinedType = when (predefinedSource?.first) {
         "FOLDER", "FOLDERS" -> "FOLDER"
@@ -7600,7 +7600,7 @@ fun CreateTaskScreen(
     // Smart auto-population of initial title and track selection when database loads
     LaunchedEffect(allFolders, allPlaylists, allTracks, predefinedSource, editingTask, taskCreationPreselectedTrackIds) {
         if (editingTask != null) {
-            title = editingTask.title
+            title = editingTask.getBaseTitle()
             sourceType = editingTask.sourceType
             sourceId = editingTask.sourceId
             targetType = editingTask.targetType
@@ -8749,13 +8749,31 @@ fun CreateTaskScreen(
                         val isAr = Loc.currentLanguage == "ar"
                         
                         // Title
+                        val currentWizardTitle = Task.buildCombinedTitle(
+                            title.trim().ifEmpty {
+                                val autoTitle = when (sourceType) {
+                                    "FOLDER" -> allFolders.find { it.id == sourceId }?.folderName
+                                    "PLAYLIST" -> allPlaylists.find { it.id == sourceId }?.name
+                                    "TRACKS" -> {
+                                        if (selectedManualTrackIds.size == 1) {
+                                            allTracks.find { it.id == selectedManualTrackIds.first() }?.getDisplayTitle()
+                                        } else if (selectedManualTrackIds.size > 1) {
+                                            Loc.getText("group_goal_task_title")
+                                        } else null
+                                    }
+                                    else -> null
+                                }
+                                autoTitle ?: (if (isAr) "مهمة غير مسماة" else "Unnamed Task")
+                            },
+                            taskLabels.joinToString(",")
+                        )
                         Row {
                             Text(
                                 text = "${Loc.getText("wizard_title")}: ", 
                                 fontWeight = FontWeight.Bold, 
                                 color = MaterialTheme.colorScheme.primary
                             )
-                            Text(text = title, fontWeight = FontWeight.Normal)
+                            Text(text = currentWizardTitle, fontWeight = FontWeight.Normal)
                         }
 
                         // Source details
@@ -8889,7 +8907,7 @@ fun CreateTaskScreen(
                 if (editingTask != null && currentStep < 4) {
                     OutlinedButton(
                         onClick = {
-                            val finalTitle = title.trim().ifEmpty {
+                            val rawTitle = title.trim().ifEmpty {
                                 val autoTitle = when (sourceType) {
                                     "FOLDER" -> allFolders.find { it.id == sourceId }?.folderName
                                     "PLAYLIST" -> allPlaylists.find { it.id == sourceId }?.name
@@ -8904,6 +8922,7 @@ fun CreateTaskScreen(
                                 }
                                 autoTitle ?: (if (Loc.currentLanguage == "ar") "مهمة غير مسماة" else "Unnamed Task")
                             }
+                            val finalTitle = Task.buildCombinedTitle(rawTitle, taskLabels.joinToString(","))
                             viewModel.editTask(
                                 taskId = editingTask.id,
                                 title = finalTitle,
@@ -8939,7 +8958,7 @@ fun CreateTaskScreen(
                 } else {
                     Button(
                         onClick = {
-                            val finalTitle = title.trim().ifEmpty {
+                            val rawTitle = title.trim().ifEmpty {
                                 val autoTitle = when (sourceType) {
                                     "FOLDER" -> allFolders.find { it.id == sourceId }?.folderName
                                     "PLAYLIST" -> allPlaylists.find { it.id == sourceId }?.name
@@ -8954,6 +8973,7 @@ fun CreateTaskScreen(
                                 }
                                 autoTitle ?: (if (Loc.currentLanguage == "ar") "مهمة غير مسماة" else "Unnamed Task")
                             }
+                            val finalTitle = Task.buildCombinedTitle(rawTitle, taskLabels.joinToString(","))
                             if (editingTask != null) {
                                 viewModel.editTask(
                                     taskId = editingTask.id,

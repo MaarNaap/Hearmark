@@ -192,26 +192,58 @@ data class Task(
     val customThreshold: Int? = null, // custom threshold from 70 to 100 or null to use global
     val labels: String = "" // comma-separated labels e.g. "Loud,Pronunciation,0.75x"
 ) {
-    fun getLabelsList(): List<String> {
-        if (labels.isBlank()) return emptyList()
-        return labels.split(",")
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .map { label ->
-                label.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.ROOT) else it.toString() }
-            }
-            .sortedWith(String.CASE_INSENSITIVE_ORDER)
-    }
+    fun getLabelsList(): List<String> = formatLabelsList(labels)
 
-    fun getFormattedLabels(): String {
-        val list = getLabelsList()
-        if (list.isEmpty()) return ""
-        return "[" + list.joinToString(". ") + "]"
-    }
+    fun getFormattedLabels(): String = formatLabels(labels)
+
+    fun getBaseTitle(): String = extractBaseTitle(title, labels)
 
     fun getDisplayTitle(): String {
         val formatted = getFormattedLabels()
-        return if (formatted.isEmpty()) title else "$title $formatted"
+        if (formatted.isEmpty() || title.endsWith(formatted)) {
+            return title
+        }
+        return "$title $formatted"
+    }
+
+    companion object {
+        fun formatLabelsList(labels: String): List<String> {
+            if (labels.isBlank()) return emptyList()
+            return labels.split(",")
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .map { label ->
+                    label.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.ROOT) else it.toString() }
+                }
+                .sortedWith(String.CASE_INSENSITIVE_ORDER)
+        }
+
+        fun formatLabels(labels: String): String {
+            val list = formatLabelsList(labels)
+            if (list.isEmpty()) return ""
+            return "[" + list.joinToString(". ") + "]"
+        }
+
+        fun extractBaseTitle(fullTitle: String, labels: String = ""): String {
+            var base = fullTitle.trim()
+            val formatted = formatLabels(labels)
+            if (formatted.isNotEmpty() && base.endsWith(formatted)) {
+                base = base.substring(0, base.length - formatted.length).trim()
+            } else {
+                val lastOpen = base.lastIndexOf('[')
+                val lastClose = base.lastIndexOf(']')
+                if (lastOpen > 0 && lastClose == base.length - 1) {
+                    base = base.substring(0, lastOpen).trim()
+                }
+            }
+            return base
+        }
+
+        fun buildCombinedTitle(givenTitle: String, labels: String): String {
+            val base = extractBaseTitle(givenTitle, labels)
+            val formatted = formatLabels(labels)
+            return if (formatted.isEmpty()) base else if (base.isEmpty()) formatted else "$base $formatted"
+        }
     }
 }
 
@@ -842,8 +874,9 @@ class AppRepository(val dao: AppDao) {
         customThreshold: Int? = null,
         labels: String = ""
     ): Long {
+        val finalTitle = Task.buildCombinedTitle(title, labels)
         val task = Task(
-            title = title,
+            title = finalTitle,
             sourceType = sourceType,
             sourceId = sourceId,
             targetType = targetType,
@@ -881,7 +914,9 @@ class AppRepository(val dao: AppDao) {
     }
 
     suspend fun updateTask(task: Task) {
-        dao.updateTask(task)
+        val finalTitle = Task.buildCombinedTitle(task.title, task.labels)
+        val normalizedTask = if (task.title != finalTitle) task.copy(title = finalTitle) else task
+        dao.updateTask(normalizedTask)
         syncAndCleanTaskLabels()
     }
 
@@ -893,7 +928,9 @@ class AppRepository(val dao: AppDao) {
 
     suspend fun getTaskById(id: Long) = dao.getTaskById(id)
     suspend fun insertTask(task: Task): Long {
-        val id = dao.insertTask(task)
+        val finalTitle = Task.buildCombinedTitle(task.title, task.labels)
+        val normalizedTask = if (task.title != finalTitle) task.copy(title = finalTitle) else task
+        val id = dao.insertTask(normalizedTask)
         syncAndCleanTaskLabels()
         return id
     }
@@ -1110,7 +1147,15 @@ class AppRepository(val dao: AppDao) {
 
     suspend fun syncAndCleanTaskLabels() {
         val allTasks = dao.getAllTasksDirect()
-        val activeLabels = allTasks.flatMap { it.getLabelsList() }
+        for (task in allTasks) {
+            val combined = Task.buildCombinedTitle(task.title, task.labels)
+            if (task.title != combined) {
+                dao.updateTask(task.copy(title = combined))
+            }
+        }
+
+        val refreshedTasks = dao.getAllTasksDirect()
+        val activeLabels = refreshedTasks.flatMap { it.getLabelsList() }
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .toSet()

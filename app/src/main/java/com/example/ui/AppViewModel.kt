@@ -698,8 +698,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         labels: String = ""
     ) {
         viewModelScope.launch(Dispatchers.IO) {
+            val finalTitle = Task.buildCombinedTitle(title, labels)
             val taskId = repository.addTask(
-                title = title,
+                title = finalTitle,
                 sourceType = sourceType,
                 sourceId = sourceId,
                 targetType = targetType,
@@ -724,7 +725,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             com.example.receiver.AlarmReceiver.scheduleAlarm(
                 getApplication(),
                 taskId,
-                createdTask?.getDisplayTitle() ?: title,
+                createdTask?.getDisplayTitle() ?: finalTitle,
                 scheduledDays,
                 reminderTime
             )
@@ -748,8 +749,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val previousTask = repository.getTaskById(taskId) ?: return@launch
+            val finalTitle = Task.buildCombinedTitle(title, labels)
             val updatedTask = previousTask.copy(
-                title = title,
+                title = finalTitle,
                 targetType = targetType,
                 targetValue = targetValue,
                 scheduledDays = scheduledDays,
