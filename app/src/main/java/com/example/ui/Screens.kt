@@ -5106,7 +5106,6 @@ fun AudioPlayerOverlay(
                         ) {
                             val segmentsColor = MaterialTheme.colorScheme.primary
                             val noteMarkerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-                            val practiceDotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
                             Canvas(modifier = Modifier.fillMaxSize()) {
                                 if (numSegments > 0) {
                                     val segmentWidth = size.width / numSegments
@@ -5132,17 +5131,6 @@ fun AudioPlayerOverlay(
                                             color = noteMarkerColor,
                                             topLeft = androidx.compose.ui.geometry.Offset(x = noteX - (markerWidth / 2f), y = 0f),
                                             size = androidx.compose.ui.geometry.Size(width = markerWidth, height = size.height)
-                                        )
-                                    }
-                                }
-                                if (isPracticeMode && practiceSegments.isNotEmpty() && durationState > 0) {
-                                    for (boundary in practiceSegments) {
-                                        val frac = (boundary.toFloat() / durationState.toFloat()).coerceIn(0f, 1f)
-                                        val markX = frac * size.width
-                                        drawCircle(
-                                            color = practiceDotColor,
-                                            radius = 2.5.dp.toPx(),
-                                            center = androidx.compose.ui.geometry.Offset(x = markX, y = size.height / 2f)
                                         )
                                     }
                                 }
@@ -5504,27 +5492,35 @@ fun AudioPlayerOverlay(
 
                             // Practice Mode (Listen & Imitate with Silence Detection)
                             val practiceColor = if (isPracticeMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
-                            IconButton(
-                                onClick = {
-                                    val repo = viewModel.repository
-                                    AudioPlayerManager.togglePracticeMode(context, repo)
-                                    if (!isPracticeMode) {
-                                        val existingSegs = track.getPracticeSegmentsList()
-                                        if (existingSegs.isEmpty()) {
-                                            Toast.makeText(context, Loc.getText("practice_mode_analyzing"), Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            Toast.makeText(context, Loc.getText("practice_mode_on"), Toast.LENGTH_SHORT).show()
-                                        }
-                                    } else {
-                                        Toast.makeText(context, Loc.getText("practice_mode_off"), Toast.LENGTH_SHORT).show()
-                                    }
-                                },
+                            Box(
                                 modifier = Modifier
                                     .size(40.dp)
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(
                                         if (isPracticeMode) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent
                                     )
+                                    .combinedClickable(
+                                        onClick = {
+                                            val repo = viewModel.repository
+                                            val willAnalyze = !isPracticeMode && AudioPlayerManager.needsReanalysis(track, context)
+                                            AudioPlayerManager.togglePracticeMode(context, repo)
+                                            if (!isPracticeMode) {
+                                                if (willAnalyze) {
+                                                    Toast.makeText(context, Loc.getText("practice_mode_analyzing"), Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(context, Loc.getText("practice_mode_on"), Toast.LENGTH_SHORT).show()
+                                                }
+                                            } else {
+                                                Toast.makeText(context, Loc.getText("practice_mode_off"), Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        onLongClick = {
+                                            val repo = viewModel.repository
+                                            Toast.makeText(context, Loc.getText("practice_mode_reanalyzing"), Toast.LENGTH_SHORT).show()
+                                            AudioPlayerManager.togglePracticeMode(context, repo, forceReanalyze = true)
+                                        }
+                                    ),
+                                contentAlignment = Alignment.Center
                             ) {
                                 if (isPracticeAnalyzing) {
                                     CircularProgressIndicator(

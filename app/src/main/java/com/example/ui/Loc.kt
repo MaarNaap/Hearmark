@@ -92,6 +92,7 @@ object Loc {
         "practice_your_turn" to mapOf("en" to "Your Turn to Speak", "ar" to "دورك في الترديد والمحاكاة"),
         "practice_skip_pause" to mapOf("en" to "Skip Pause", "ar" to "تخطي الوقف"),
         "practice_segments_count" to mapOf("en" to "%d practice segments", "ar" to "%d مقطع للترديد"),
+        "practice_mode_reanalyzing" to mapOf("en" to "Re-analyzing audio for speech boundaries...", "ar" to "إعادة تحليل الصوت لمقاطع التدريب..."),
         "speed" to mapOf("en" to "Speed", "ar" to "سرعة التشغيل"),
         "ends_at" to mapOf("en" to "End of file", "ar" to "نهاية الملف"),
         "timer_cancelled" to mapOf("en" to "Cancelled", "ar" to "تم الإلغاء"),

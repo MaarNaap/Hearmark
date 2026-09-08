@@ -853,7 +853,13 @@ object AudioPlayerManager {
             val practiceSegs = track.getPracticeSegmentsList()
             _currentPracticeSegments.value = practiceSegs
             if (_isPracticeMode.value) {
-                resetPracticeSegmentTracking(track.lastPosition)
+                val ctx = appContext
+                val repo = repository
+                if (ctx != null && repo != null && needsReanalysis(track, ctx)) {
+                    togglePracticeMode(ctx, repo, forceReanalyze = true)
+                } else {
+                    resetPracticeSegmentTracking(track.lastPosition)
+                }
             }
             mediaPlayer?.start()
             val effectiveDuration = if (track.isVirtualScene) {
@@ -2086,7 +2092,41 @@ object AudioPlayerManager {
 
     // --- PRACTICE MODE (Silence Detection & Imitation Pauses) ---
 
-    fun togglePracticeMode(context: Context, repository: AppRepository, forceReanalyze: Boolean = false) {
+    fun needsReanalysis(track: AudioTrack, context: Context? = null): Boolean {
+        val existing = track.getPracticeSegmentsList()
+        if (existing.isEmpty()) return true
+
+        val effectiveContext = context ?: appContext
+        val effectiveDuration = if (track.duration > 0) {
+            track.duration
+        } else if (_duration.value > 0) {
+            _duration.value
+        } else {
+            val mpDur = try { mediaPlayer?.duration?.toLong() ?: 0L } catch (e: Exception) { 0L }
+            if (mpDur > 0) mpDur else (effectiveContext?.let { SilenceDetector.getAudioDuration(it, track.filePath) } ?: 0L)
+        }
+
+        if (effectiveDuration > 15000L) {
+            // Check for premature cutoff gap (> 12 seconds).
+            // Normal speech segments do not exceed 8.5 seconds.
+            // Any gap > 12s indicates the file was previously stopped prematurely and jumped to the end.
+            val hasPrematureCutoffGap = existing.zipWithNext().any { (a, b) -> (b - a) > 12000L }
+            if (hasPrematureCutoffGap) return true
+
+            // First segment shouldn't be > 12s without a boundary:
+            if (existing.first() > 12000L) return true
+
+            // Last boundary must reach near the end of the file:
+            if (existing.last() < (effectiveDuration - 4000L)) return true
+
+            // If file is > 25s but has fewer than 3 segments:
+            if (effectiveDuration > 25000L && existing.size < 3) return true
+        }
+
+        return false
+    }
+
+    fun togglePracticeMode(context: Context? = null, repository: AppRepository? = null, forceReanalyze: Boolean = false) {
         if (_isPracticeMode.value && !forceReanalyze) {
             _isPracticeMode.value = false
             practicePauseJob?.cancel()
@@ -2097,25 +2137,34 @@ object AudioPlayerManager {
                 resume()
             }
         } else {
+            val targetContext = context ?: appContext ?: return
+            val targetRepo = repository ?: this.repository ?: return
             val track = currentTrackValue ?: return
-            val existing = track.getPracticeSegmentsList()
-            val effectiveDuration = if (track.duration > 0) track.duration else _duration.value
-            val isTruncated = effectiveDuration > 20000L && existing.isNotEmpty() && existing.last() < (effectiveDuration * 0.85f)
+            val shouldReanalyze = forceReanalyze || needsReanalysis(track, targetContext)
 
-            if (existing.isNotEmpty() && !forceReanalyze && !isTruncated) {
-                _currentPracticeSegments.value = existing
+            if (!shouldReanalyze) {
+                _currentPracticeSegments.value = track.getPracticeSegmentsList()
                 _isPracticeMode.value = true
                 resetPracticeSegmentTracking(_currentPosition.value)
                 if (!_isPlaying.value) {
                     resume()
                 }
             } else {
+                val effectiveDuration = if (track.duration > 0) {
+                    track.duration
+                } else if (_duration.value > 0) {
+                    _duration.value
+                } else {
+                    val mpDur = try { mediaPlayer?.duration?.toLong() ?: 0L } catch (e: Exception) { 0L }
+                    if (mpDur > 0) mpDur else SilenceDetector.getAudioDuration(targetContext, track.filePath)
+                }
+
                 _isPracticeAnalyzing.value = true
                 coroutineScope.launch(Dispatchers.IO) {
                     try {
-                        val boundaries = SilenceDetector.detectBoundaries(context, track.filePath, effectiveDuration)
+                        val boundaries = SilenceDetector.detectBoundaries(targetContext, track.filePath, effectiveDuration)
                         val segmentsStr = boundaries.joinToString(",")
-                        repository.updateTrackPracticeSegments(track.id, segmentsStr)
+                        targetRepo.updateTrackPracticeSegments(track.id, segmentsStr)
                         updateTrackState { it.copy(practiceSegments = segmentsStr) }
                         withContext(Dispatchers.Main) {
                             _currentPracticeSegments.value = boundaries
@@ -2166,8 +2215,8 @@ object AudioPlayerManager {
     }
 
     private fun triggerPracticePause(segmentLengthMs: Long) {
-        // Pause period length fits the played part length
-        val pauseDurationMs = (segmentLengthMs * 1.1f).toLong().coerceIn(2000L, 12000L)
+        // Pause period length fits the played part length with 0.9x multiplier
+        val pauseDurationMs = (segmentLengthMs * 0.9f).toLong().coerceIn(1500L, 12000L)
         _isPracticePausing.value = true
         val totalSec = pauseDurationMs / 1000f
         _practicePauseTotalSeconds.value = totalSec

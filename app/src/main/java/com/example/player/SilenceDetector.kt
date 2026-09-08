@@ -50,6 +50,28 @@ object SilenceDetector {
         return list.distinct().sorted()
     }
 
+    fun getAudioDuration(context: Context, filePath: String): Long {
+        val mmr = android.media.MediaMetadataRetriever()
+        return try {
+            if (filePath.startsWith("content://")) {
+                mmr.setDataSource(context, Uri.parse(filePath))
+            } else {
+                mmr.setDataSource(filePath)
+            }
+            val durStr = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+            durStr?.toLongOrNull() ?: 0L
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to retrieve duration for $filePath: ${e.message}")
+            0L
+        } finally {
+            try {
+                mmr.release()
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+    }
+
     private fun analyzeAudioPcmSilence(
         context: Context,
         filePath: String,
