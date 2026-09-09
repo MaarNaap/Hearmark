@@ -96,6 +96,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var headsetMultiClickAction by mutableStateOf("NEXT_PREV") // "NEXT_PREV" or "SKIP_SECONDS"
     var segmentSourceSetting by mutableStateOf("SILENCE") // "SILENCE" or "SUBTITLES"
     var practicePauseMultiplierSetting by mutableStateOf(1.0f) // 0.5 to 2.5
+    var silenceSensitivitySetting by mutableStateOf("MEDIUM") // "HIGH", "MEDIUM", "LOW"
+    var silenceMinDurationSetting by mutableStateOf(500L) // 350L, 500L, 750L, 1000L
+    var silencePaddingSetting by mutableStateOf(200L) // 100L, 200L, 300L, 400L
     var customGeminiApiKey by mutableStateOf("")
 
     // Gemini Chatbot State
@@ -380,11 +383,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         Loc.currentLanguage = sharedPref.getString("language", "en") ?: "en"
         segmentSourceSetting = sharedPref.getString("segment_source", "SILENCE") ?: "SILENCE"
         practicePauseMultiplierSetting = sharedPref.getFloat("practice_pause_multiplier", 1.0f)
+        silenceSensitivitySetting = sharedPref.getString("silence_sensitivity", "MEDIUM") ?: "MEDIUM"
+        silenceMinDurationSetting = sharedPref.getLong("silence_min_duration", 500L)
+        silencePaddingSetting = sharedPref.getLong("silence_padding", 200L)
 
         AudioPlayerManager.init(application, repository)
         AudioPlayerManager.setSettings(thresholdSetting, skipSecondsSetting)
         AudioPlayerManager.setHeadsetSettings(headsetControlsEnabled, headsetMultiClickAction)
         AudioPlayerManager.setPracticeSettings(segmentSourceSetting, practicePauseMultiplierSetting)
+        AudioPlayerManager.setSilenceSettings(silenceSensitivitySetting, silenceMinDurationSetting, silencePaddingSetting)
 
         viewModelScope.launch(Dispatchers.IO) {
             repository.syncAndCleanTaskLabels()
@@ -487,6 +494,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             apply()
         }
         AudioPlayerManager.setPracticeSettings(source, multiplier)
+    }
+
+    fun updateSilenceSettings(sensitivity: String, minDurationMs: Long, paddingMs: Long) {
+        silenceSensitivitySetting = sensitivity
+        silenceMinDurationSetting = minDurationMs
+        silencePaddingSetting = paddingMs
+        val sharedPref = getApplication<Application>().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        with(sharedPref.edit()) {
+            putString("silence_sensitivity", sensitivity)
+            putLong("silence_min_duration", minDurationMs)
+            putLong("silence_padding", paddingMs)
+            apply()
+        }
+        AudioPlayerManager.setSilenceSettings(sensitivity, minDurationMs, paddingMs)
+    }
+
+    fun reanalyzeCurrentTrackPracticeSegments(context: Context) {
+        AudioPlayerManager.reanalyzePracticeSegments(context, repository, silent = false)
     }
 
     fun resetTrackSegments(track: AudioTrack) {

@@ -15,21 +15,25 @@ import kotlin.math.sqrt
 object SilenceDetector {
     private const val TAG = "SilenceDetector"
 
-    private const val WINDOW_MS = 100L // 100ms analysis window
-    private const val MIN_SILENCE_DURATION_MS = 300L // At least 300ms of silence for a natural speech pause
-    private const val MIN_SEGMENT_DURATION_MS = 2500L // At least 2.5s for a meaningful speech segment
-    private const val MAX_SEGMENT_DURATION_MS = 8500L // At most 8.5s before forcing a cut at the quietest point
-    private const val FALLBACK_SEGMENT_DURATION_MS = 5000L // 5s segments if decoding fails
+    private const val WINDOW_MS = 50L // 50ms analysis window for high temporal precision
+    private const val DEFAULT_MIN_SILENCE_MS = 500L // 500ms default speech pause
+    private const val DEFAULT_TAIL_PADDING_MS = 200L // 200ms post-speech buffer prevents clipping consonants
+    private const val MIN_SEGMENT_DURATION_MS = 2000L // At least 2.0s for a speech segment
+    private const val MAX_SEGMENT_DURATION_MS = 18000L // Up to 18s natural sentence before looking for pause
+    private const val FALLBACK_SEGMENT_DURATION_MS = 6000L // 6s segments if decoding fails
 
     suspend fun detectBoundaries(
         context: Context,
         filePath: String,
-        totalDurationMs: Long
+        totalDurationMs: Long,
+        sensitivity: String = "MEDIUM",
+        minSilenceMs: Long = DEFAULT_MIN_SILENCE_MS,
+        tailPaddingMs: Long = DEFAULT_TAIL_PADDING_MS
     ): List<Long> = withContext(Dispatchers.Default) {
         try {
-            val boundaries = analyzeAudioPcmSilence(context, filePath, totalDurationMs)
+            val boundaries = analyzeAudioPcmSilence(context, filePath, totalDurationMs, sensitivity, minSilenceMs, tailPaddingMs)
             if (boundaries.isNotEmpty()) {
-                Log.d(TAG, "Detected ${boundaries.size} silence boundaries across entire file for $filePath")
+                Log.d(TAG, "Detected ${boundaries.size} silence boundaries (sensitivity=$sensitivity, minPause=${minSilenceMs}ms, padding=${tailPaddingMs}ms) for $filePath")
                 return@withContext boundaries
             }
         } catch (e: Exception) {
@@ -75,7 +79,10 @@ object SilenceDetector {
     private fun analyzeAudioPcmSilence(
         context: Context,
         filePath: String,
-        totalDurationMs: Long
+        totalDurationMs: Long,
+        sensitivity: String,
+        minSilenceMs: Long,
+        tailPaddingMs: Long
     ): List<Long> {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
@@ -135,8 +142,8 @@ object SilenceDetector {
             var sawInputEOS = false
             var sawOutputEOS = false
 
-            // Samples needed per 100ms window (stepping by channelCount)
-            val samplesPerWindow = ((sampleRate.toLong() * WINDOW_MS) / 1000L).toInt().coerceAtLeast(100)
+            // Samples needed per 50ms window (stepping by channelCount)
+            val samplesPerWindow = ((sampleRate.toLong() * WINDOW_MS) / 1000L).toInt().coerceAtLeast(50)
             var currentWindowSumSquares = 0.0
             var currentWindowSampleCount = 0
             var currentWindowStartMs = 0L
@@ -223,7 +230,7 @@ object SilenceDetector {
                 windows.add(AudioWindow(timeMs = currentWindowStartMs, rms = rms))
             }
 
-            return extractBoundariesFromWindows(windows, resolvedDurationMs)
+            return extractBoundariesFromWindows(windows, resolvedDurationMs, sensitivity, minSilenceMs, tailPaddingMs)
         } finally {
             try {
                 codec?.stop()
@@ -241,21 +248,47 @@ object SilenceDetector {
 
     fun extractBoundariesFromWindows(
         windows: List<AudioWindow>,
-        totalDurationMs: Long
+        totalDurationMs: Long,
+        sensitivity: String = "MEDIUM",
+        minSilenceMs: Long = DEFAULT_MIN_SILENCE_MS,
+        tailPaddingMs: Long = DEFAULT_TAIL_PADDING_MS
     ): List<Long> {
         if (windows.isEmpty()) return generateFallbackSegments(totalDurationMs)
 
-        val peakRms = windows.maxOfOrNull { it.rms } ?: 1.0
         val effectiveDuration = if (totalDurationMs > 0) totalDurationMs else (windows.last().timeMs + WINDOW_MS)
+        val sortedRms = windows.map { it.rms }.sorted()
+        val peakRms = sortedRms.lastOrNull() ?: 1.0
 
         if (peakRms < 10.0) {
             // Audio is nearly silent throughout
             return generateFallbackSegments(effectiveDuration)
         }
 
-        // Adaptive silence threshold: 7% of peak RMS or baseline 250
-        val silenceThreshold = maxOf(250.0, peakRms * 0.07)
-        val minSilenceWindows = (MIN_SILENCE_DURATION_MS / WINDOW_MS).toInt().coerceAtLeast(2)
+        // Adaptive noise floor: estimated using the 15th percentile of RMS
+        val noiseFloor = if (sortedRms.isNotEmpty()) {
+            val idx = (sortedRms.size * 0.15).toInt().coerceIn(0, sortedRms.size - 1)
+            sortedRms[idx]
+        } else 0.0
+
+        // 90th percentile to avoid single loud clicks/spikes
+        val p90Rms = if (sortedRms.isNotEmpty()) {
+            val idx = (sortedRms.size * 0.90).toInt().coerceIn(0, sortedRms.size - 1)
+            sortedRms[idx]
+        } else peakRms
+
+        val dynamicRange = (p90Rms - noiseFloor).coerceAtLeast(10.0)
+
+        // Threshold factor based on sensitivity:
+        // "HIGH": lower threshold to catch quiet trailing word endings and soft speech
+        // "MEDIUM": balanced default
+        // "LOW": higher threshold to cut through noisy rooms
+        val factor = when (sensitivity.uppercase()) {
+            "HIGH" -> 0.025
+            "LOW" -> 0.075
+            else -> 0.040
+        }
+        val silenceThreshold = maxOf(noiseFloor * 1.35, noiseFloor + dynamicRange * factor).coerceAtLeast(35.0)
+        val minSilenceWindows = (minSilenceMs / WINDOW_MS).toInt().coerceAtLeast(2)
 
         // Find contiguous silence spans
         data class SilenceSpan(val startMs: Long, val endMs: Long)
@@ -298,23 +331,37 @@ object SilenceDetector {
         var lastBoundary = 0L
 
         for (span in silenceSpans) {
-            val candidateCut = (span.startMs + span.endMs) / 2L
+            val spanLength = span.endMs - span.startMs
+
+            // Safe cut location:
+            // Ensure tailPaddingMs after speech ends so trailing phonemes ('s', 't', 'k', breaths) are NEVER clipped.
+            // Also leave at least 60ms head buffer before next speech starts.
+            val safeStart = (span.startMs + tailPaddingMs).coerceAtMost(span.startMs + (spanLength * 2 / 3))
+            val safeEnd = (span.endMs - 60L).coerceAtLeast(safeStart)
+
+            // Pick the quietest audio window inside the safe gap
+            val bestCut = windows.filter { it.timeMs in safeStart..safeEnd }.minByOrNull { it.rms }?.timeMs
+                ?: ((safeStart + safeEnd) / 2L)
+
+            val candidateCut = bestCut.coerceIn(span.startMs + 40L, span.endMs - 30L)
             var segmentLength = candidateCut - lastBoundary
 
             if (segmentLength >= MIN_SEGMENT_DURATION_MS) {
-                // If segment exceeds MAX_SEGMENT_DURATION_MS, split at quietest intermediate points or natural intervals
+                // If continuous speech exceeds MAX_SEGMENT_DURATION_MS (e.g. 18s continuous talking without pause),
+                // split gently at the quietest dip in the middle
                 while (segmentLength > MAX_SEGMENT_DURATION_MS) {
-                    val subStart = lastBoundary + 2500L
-                    val subEnd = minOf(lastBoundary + MAX_SEGMENT_DURATION_MS, candidateCut - 2000L)
-                    val intermediate = if (subEnd > subStart) {
-                        windows.filter { it.timeMs in subStart..subEnd }.minByOrNull { it.rms }?.timeMs
+                    val searchStart = lastBoundary + 3500L
+                    val searchEnd = candidateCut - 3000L
+                    val intermediate = if (searchEnd > searchStart) {
+                        windows.filter { it.timeMs in searchStart..searchEnd }.minByOrNull { it.rms }?.timeMs
                     } else null
 
-                    val cutPoint = intermediate ?: (lastBoundary + 5000L)
+                    val cutPoint = intermediate ?: (lastBoundary + 8000L)
                     boundaries.add(cutPoint)
                     lastBoundary = cutPoint
                     segmentLength = candidateCut - lastBoundary
                 }
+
                 boundaries.add(candidateCut)
                 lastBoundary = candidateCut
             }
@@ -323,12 +370,12 @@ object SilenceDetector {
         // Fill remaining tail of the audio file to effectiveDuration
         var tailLength = effectiveDuration - lastBoundary
         while (tailLength > MAX_SEGMENT_DURATION_MS) {
-            val cutPoint = lastBoundary + 5000L
+            val cutPoint = lastBoundary + 8000L
             boundaries.add(cutPoint)
             lastBoundary = cutPoint
             tailLength = effectiveDuration - lastBoundary
         }
-        if (effectiveDuration > lastBoundary) {
+        if (effectiveDuration > lastBoundary + 800L) {
             boundaries.add(effectiveDuration)
         }
 

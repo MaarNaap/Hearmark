@@ -9219,6 +9219,9 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
     var headsetAction by remember { mutableStateOf(viewModel.headsetMultiClickAction) }
     var segmentSource by remember { mutableStateOf(viewModel.segmentSourceSetting) }
     var pauseMultiplier by remember { mutableStateOf(viewModel.practicePauseMultiplierSetting) }
+    var silenceSensitivity by remember { mutableStateOf(viewModel.silenceSensitivitySetting) }
+    var silenceMinDuration by remember { mutableStateOf(viewModel.silenceMinDurationSetting) }
+    var silencePadding by remember { mutableStateOf(viewModel.silencePaddingSetting) }
 
     val playbackHistoryList by viewModel.playbackHistory.collectAsStateWithLifecycle()
     var showClearDialog by remember { mutableStateOf(false) }
@@ -9270,6 +9273,10 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
 
     LaunchedEffect(segmentSource, pauseMultiplier) {
         viewModel.updatePracticeSettings(segmentSource, pauseMultiplier)
+    }
+
+    LaunchedEffect(silenceSensitivity, silenceMinDuration, silencePadding) {
+        viewModel.updateSilenceSettings(silenceSensitivity, silenceMinDuration, silencePadding)
     }
 
     Column(
@@ -9583,6 +9590,173 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
                             modifier = Modifier.size(20.dp)
                         )
                     }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f))
+
+                // Silence Analysis Tuning Section
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Tune,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = Loc.getText("silence_analysis_tuning"),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Text(
+                    text = Loc.getText("silence_analysis_tuning_desc"),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // 1. Word Ending Safety Buffer (Padding)
+                Text(
+                    text = Loc.getText("silence_padding"),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = Loc.getText("silence_padding_desc"),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(
+                        100L to "100ms",
+                        200L to "200ms ★",
+                        300L to "300ms",
+                        400L to "400ms"
+                    ).forEach { (paddingMs, label) ->
+                        val isSelected = silencePadding == paddingMs
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { silencePadding = paddingMs },
+                            label = {
+                                Text(
+                                    text = label,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    maxLines = 1
+                                )
+                            },
+                            modifier = Modifier.weight(1f).testTag("chip_silence_padding_${paddingMs}")
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                // 2. Minimum Pause Duration
+                Text(
+                    text = Loc.getText("silence_min_duration"),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = Loc.getText("silence_min_duration_desc"),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(
+                        350L to "350ms",
+                        500L to "500ms ★",
+                        750L to "750ms",
+                        1000L to "1.0s"
+                    ).forEach { (minMs, label) ->
+                        val isSelected = silenceMinDuration == minMs
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { silenceMinDuration = minMs },
+                            label = {
+                                Text(
+                                    text = label,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    maxLines = 1
+                                )
+                            },
+                            modifier = Modifier.weight(1f).testTag("chip_silence_duration_${minMs}")
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                // 3. Detection Sensitivity
+                Text(
+                    text = Loc.getText("silence_sensitivity"),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = Loc.getText("silence_sensitivity_desc"),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                listOf(
+                    "HIGH" to Loc.getText("silence_sensitivity_high"),
+                    "MEDIUM" to Loc.getText("silence_sensitivity_medium") + " ★",
+                    "LOW" to Loc.getText("silence_sensitivity_low")
+                ).forEach { (sensKey, sensLabel) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { silenceSensitivity = sensKey }
+                            .padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = silenceSensitivity.equals(sensKey, ignoreCase = true),
+                            onClick = { silenceSensitivity = sensKey }
+                        )
+                        Text(
+                            text = sensLabel,
+                            modifier = Modifier.padding(start = 8.dp),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                // 4. Re-analyze Current Track Button
+                Spacer(modifier = Modifier.height(4.dp))
+                Button(
+                    onClick = {
+                        Toast.makeText(context, Loc.getText("reanalyzing_with_new_settings"), Toast.LENGTH_SHORT).show()
+                        viewModel.reanalyzeCurrentTrackPracticeSegments(context)
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("btn_reanalyze_current_track"),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(Loc.getText("reanalyze_current_track"), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

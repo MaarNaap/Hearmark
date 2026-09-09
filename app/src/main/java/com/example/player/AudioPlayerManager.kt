@@ -633,12 +633,40 @@ object AudioPlayerManager {
     var practicePauseMultiplier: Float = 1.0f
         private set
 
+    // Silence detection tuning
+    var silenceSensitivity: String = "MEDIUM"
+        private set
+    var silenceMinDurationMs: Long = 500L
+        private set
+    var silencePaddingMs: Long = 200L
+        private set
+
     fun setPracticeSettings(source: String, multiplier: Float) {
         val oldSource = segmentSource
         segmentSource = if (source.equals("SUBTITLES", ignoreCase = true)) "SUBTITLES" else "SILENCE"
         practicePauseMultiplier = multiplier.coerceIn(0.25f, 4.0f)
 
         if (!oldSource.equals(segmentSource, ignoreCase = true)) {
+            val track = currentTrackValue
+            val repo = repository
+            val ctx = appContext
+            if (track != null && repo != null && ctx != null) {
+                if (_isPracticeMode.value || !track.practiceSegments.isNullOrBlank()) {
+                    coroutineScope.launch(Dispatchers.IO) {
+                        reanalyzePracticeSegmentsInternal(track, ctx, repo, silent = true)
+                    }
+                }
+            }
+        }
+    }
+
+    fun setSilenceSettings(sensitivity: String, minDurationMs: Long, paddingMs: Long) {
+        val changed = (silenceSensitivity != sensitivity) || (silenceMinDurationMs != minDurationMs) || (silencePaddingMs != paddingMs)
+        silenceSensitivity = sensitivity
+        silenceMinDurationMs = minDurationMs
+        silencePaddingMs = paddingMs
+
+        if (changed && segmentSource == "SILENCE") {
             val track = currentTrackValue
             val repo = repository
             val ctx = appContext
@@ -2324,10 +2352,24 @@ object AudioPlayerManager {
                             Toast.makeText(context, Loc.getText("no_subtitles_for_segments"), Toast.LENGTH_LONG).show()
                         }
                     }
-                    boundaries = SilenceDetector.detectBoundaries(context, track.filePath, effectiveDuration)
+                    boundaries = SilenceDetector.detectBoundaries(
+                        context = context,
+                        filePath = track.filePath,
+                        totalDurationMs = effectiveDuration,
+                        sensitivity = silenceSensitivity,
+                        minSilenceMs = silenceMinDurationMs,
+                        tailPaddingMs = silencePaddingMs
+                    )
                 }
             } else {
-                boundaries = SilenceDetector.detectBoundaries(context, track.filePath, effectiveDuration)
+                boundaries = SilenceDetector.detectBoundaries(
+                    context = context,
+                    filePath = track.filePath,
+                    totalDurationMs = effectiveDuration,
+                    sensitivity = silenceSensitivity,
+                    minSilenceMs = silenceMinDurationMs,
+                    tailPaddingMs = silencePaddingMs
+                )
                 if (!silent) {
                     withContext(Dispatchers.Main) {
                         val msg = String.format(java.util.Locale.US, Loc.getText("segments_created_from_silence_count"), boundaries.size)
@@ -2439,7 +2481,7 @@ object AudioPlayerManager {
         if (segments.isEmpty() || practiceNextBoundaryIndex >= segments.size) return
 
         val boundary = segments[practiceNextBoundaryIndex]
-        if (currentPosMs >= boundary - 120L && currentPosMs <= boundary + 1200L) {
+        if (currentPosMs >= boundary && currentPosMs <= boundary + 1500L) {
             val segmentLengthMs = if (segmentSource == "SUBTITLES") {
                 val cues = _subtitlesCues.value
                 val matchingCue = cues.find { cue ->
