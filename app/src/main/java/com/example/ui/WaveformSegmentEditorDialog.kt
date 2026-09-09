@@ -44,6 +44,8 @@ import com.example.player.SilenceDetector
 import com.example.player.WaveformPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -83,10 +85,11 @@ fun WaveformSegmentEditorDialog(
     var selectedCutIndex by remember { mutableStateOf<Int?>(null) }
     var followPlayhead by remember { mutableStateOf(true) }
 
-    // Zoom level states: 0f = Fit to screen, 1f = Default 1x (matching previous 32x), up to 32x for micro-second cut precision
-    val zoomLevels = remember { listOf(0f, 1f, 2f, 4f, 8f, 16f, 32f) }
-    var zoomIndex by remember { mutableIntStateOf(1) } // Default 1x (spacious waveform view)
+    // Zoom level states: 1.0x (Fit entire audio on screen), 2.0x, 4.0x, 8.0x, 16.0x, 32.0x, 64.0x
+    val zoomLevels = remember { listOf(1.0f, 2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f) }
+    var zoomIndex by remember { mutableIntStateOf(0) } // Default 0: 1x (Fit entire waveform)
     val currentZoom = zoomLevels[zoomIndex]
+    var pendingFocusRatio by remember { mutableStateOf<Float?>(null) }
 
     // Waveform data
     var waveformData by remember { mutableStateOf<List<WaveformPoint>>(emptyList()) }
@@ -120,17 +123,7 @@ fun WaveformSegmentEditorDialog(
             (focusTimeMs.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f)
         } else 0f
         zoomIndex = bounded
-        coroutineScope.launch {
-            delay(50)
-            try {
-                val maxScroll = horizontalScrollState.maxValue
-                if (maxScroll > 0) {
-                    val approxVisiblePx = with(density) { 360.dp.toPx() }
-                    val target = ((focusRatio * (maxScroll + approxVisiblePx)) - (approxVisiblePx / 2f)).toInt().coerceIn(0, maxScroll)
-                    horizontalScrollState.scrollTo(target)
-                }
-            } catch (_: Exception) {}
-        }
+        pendingFocusRatio = focusRatio
     }
 
     // Auto-scroll to playhead when enabled and playing
@@ -325,11 +318,11 @@ fun WaveformSegmentEditorDialog(
                             shape = RoundedCornerShape(6.dp),
                             color = MaterialTheme.colorScheme.primaryContainer,
                             modifier = Modifier.clickable { 
-                                if (zoomIndex == 0) changeZoom(1) else changeZoom(0) 
+                                if (zoomIndex == 0) changeZoom(2) else changeZoom(0) 
                             }
                         ) {
                             Text(
-                                text = if (zoomIndex == 0) Loc.getText("zoom_fit") else "${zoomLevels[zoomIndex].toInt()}x",
+                                text = if (zoomIndex == 0) "1x (${Loc.getText("zoom_fit")})" else "${zoomLevels[zoomIndex].toInt()}x",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -384,8 +377,8 @@ fun WaveformSegmentEditorDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Waveform Display Container with expanded high-precision bounds (up to 65,000 dp)
-                val maxSafeCanvasWidthDp = 65000.dp
+                // Safe canvas upper bound to keep within Android display list limits
+                val maxSafeCanvasWidthDp = 24000.dp
 
                 BoxWithConstraints(
                     modifier = Modifier
@@ -409,17 +402,29 @@ fun WaveformSegmentEditorDialog(
                             }
                         }
                     } else {
-                        val effectiveCanvasWidth = remember(containerWidthDp, currentZoom, effectiveDuration) {
-                            if (currentZoom <= 0f) {
+                        val effectiveCanvasWidth = remember(containerWidthDp, currentZoom) {
+                            if (currentZoom <= 1.0f) {
                                 containerWidthDp
                             } else {
-                                // Default 1x provides the expansive view (~110dp/sec) that was 32x previously
-                                val base1x = maxOf(
-                                    containerWidthDp * 32f,
-                                    ((effectiveDuration / 1000f) * 110f).dp
-                                )
-                                (base1x * currentZoom).coerceIn(containerWidthDp, maxSafeCanvasWidthDp)
+                                (containerWidthDp * currentZoom).coerceIn(containerWidthDp, maxSafeCanvasWidthDp)
                             }
+                        }
+
+                        // Smoothly scroll to keep focal point (cut or playhead) centered whenever zoom changes
+                        LaunchedEffect(zoomIndex, effectiveCanvasWidth) {
+                            val ratio = pendingFocusRatio ?: return@LaunchedEffect
+                            snapshotFlow { horizontalScrollState.maxValue }
+                                .filter { it > 0 || zoomIndex == 0 }
+                                .first()
+                            val maxScroll = horizontalScrollState.maxValue
+                            if (maxScroll > 0) {
+                                val visiblePx = with(density) { containerWidthDp.toPx() }
+                                val target = ((ratio * (maxScroll + visiblePx)) - (visiblePx / 2f)).toInt().coerceIn(0, maxScroll)
+                                horizontalScrollState.scrollTo(target)
+                            } else {
+                                horizontalScrollState.scrollTo(0)
+                            }
+                            pendingFocusRatio = null
                         }
 
                         // Auto-gain safeguard so speech waveforms are always big, clear, and prominent
@@ -523,9 +528,13 @@ fun WaveformSegmentEditorDialog(
                                     pxPerSec >= 1500f -> Pair(100L, 20L)    // 100ms major, 20ms minor ticks
                                     pxPerSec >= 600f  -> Pair(250L, 50L)    // 250ms major, 50ms minor ticks
                                     pxPerSec >= 250f  -> Pair(500L, 100L)   // 500ms major, 100ms minor ticks
-                                    pxPerSec >= 100f  -> Pair(1000L, 250L)  // 1s major, 250ms minor ticks
+                                    pxPerSec >= 100f  -> Pair(1000L, 200L)  // 1s major, 200ms minor ticks
                                     pxPerSec >= 40f   -> Pair(2000L, 500L)  // 2s major, 500ms minor ticks
-                                    else              -> Pair(5000L, 1000L) // 5s major, 1s minor ticks
+                                    pxPerSec >= 15f   -> Pair(5000L, 1000L) // 5s major, 1s minor ticks
+                                    pxPerSec >= 6f    -> Pair(15000L, 5000L)// 15s major, 5s minor ticks
+                                    pxPerSec >= 2f    -> Pair(30000L, 10000L)// 30s major, 10s minor ticks
+                                    pxPerSec >= 0.8f  -> Pair(60000L, 15000L)// 1m major, 15s minor ticks
+                                    else              -> Pair(120000L, 30000L)// 2m major, 30s minor ticks
                                 }
 
                                 val minMs = ((minVisibleX / canvasW) * effectiveDuration).toLong().coerceAtLeast(0L)
