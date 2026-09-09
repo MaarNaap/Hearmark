@@ -515,8 +515,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         AudioPlayerManager.reanalyzePracticeSegments(context, repository, silent = false)
     }
 
-    fun saveManualPracticeSegments(track: AudioTrack, boundaries: List<Long>, context: Context) {
-        AudioPlayerManager.saveManualPracticeSegments(context, track, boundaries)
+    fun saveManualPracticeSegments(track: AudioTrack, boundaries: List<Long>, context: Context, autoEnable: Boolean = true) {
+        AudioPlayerManager.saveManualPracticeSegments(context, track, boundaries, autoEnable)
+    }
+
+    fun startPracticeWithSource(track: AudioTrack, source: String, multiplier: Float, context: Context) {
+        updatePracticeSettings(source, multiplier)
+        AudioPlayerManager.applyPracticeSettingsAndStart(track, source, multiplier, context, repository)
     }
 
     fun resetTrackSegments(track: AudioTrack) {

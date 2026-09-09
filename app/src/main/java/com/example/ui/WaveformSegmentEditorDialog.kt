@@ -266,7 +266,7 @@ fun WaveformSegmentEditorDialog(
 
                         Button(
                             onClick = {
-                                viewModel.saveManualPracticeSegments(track, cuts.toList(), context)
+                                viewModel.saveManualPracticeSegments(track, cuts.toList(), context, autoEnable = true)
                                 viewModel.updatePracticeSettings("MANUAL", viewModel.practicePauseMultiplierSetting)
                                 onDismiss()
                             },

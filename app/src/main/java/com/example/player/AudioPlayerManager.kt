@@ -1186,11 +1186,7 @@ object AudioPlayerManager {
                     val cur = try { mp.currentPosition } catch (e: Exception) { _currentPosition.value.toInt() }
                     val dur = try { if (mp.duration > 0) mp.duration else (track?.duration?.toInt() ?: 0) } catch (e: Exception) { (track?.duration?.toInt() ?: 0) }
                     val target = (cur + (skipTimeSeconds * 1000)).coerceAtMost(if (dur > 0) dur else Int.MAX_VALUE)
-                    performSeek(mp, target.toLong())
-                    _currentPosition.value = target.toLong()
-                    lastTrackedPositionMs = target.toLong()
-                    updateMediaSessionPlaybackState()
-                    saveCurrentPositionProgress()
+                    seekTo(target.toLong(), isPhysicalTimestamp = false)
                 }
             }
         } catch (e: Exception) {
@@ -1209,11 +1205,7 @@ object AudioPlayerManager {
                 } else {
                     val cur = try { mp.currentPosition } catch (e: Exception) { _currentPosition.value.toInt() }
                     val target = (cur - (skipTimeSeconds * 1000)).coerceAtLeast(0)
-                    performSeek(mp, target.toLong())
-                    _currentPosition.value = target.toLong()
-                    lastTrackedPositionMs = target.toLong()
-                    updateMediaSessionPlaybackState()
-                    saveCurrentPositionProgress()
+                    seekTo(target.toLong(), isPhysicalTimestamp = false)
                 }
             }
         } catch (e: Exception) {
@@ -2202,21 +2194,15 @@ object AudioPlayerManager {
     }
 
     fun needsReanalysis(track: AudioTrack, context: Context? = null): Boolean {
-        if (segmentSource == "MANUAL") {
-            if (track.practiceSegments?.startsWith("MAN:") == true) return false
-            if (!track.practiceSegments.isNullOrBlank()) return false
-            return true
-        }
-
         val existing = track.getPracticeSegmentsList()
         if (existing.isEmpty()) return true
 
         val storedSource = track.getPracticeSegmentsSource()
-        if (storedSource == "MANUAL" && segmentSource != "MANUAL") {
+        if (storedSource == "MANUAL") {
             return false
         }
         // If stored source is known and differs from active source:
-        if (storedSource != null && storedSource != segmentSource) {
+        if (storedSource != null && segmentSource != "MANUAL" && storedSource != segmentSource) {
             return true
         }
 
@@ -2362,11 +2348,39 @@ object AudioPlayerManager {
                         return
                     }
                 }
-                val existing = track.getPracticeSegmentsList()
-                boundaries = if (existing.isNotEmpty()) {
-                    existing
+                // When MANUAL is selected but no manual cuts exist for this track,
+                // fallback gracefully to Subtitles if available, otherwise Silence detection.
+                // We MUST NEVER save SilenceDetector results as "MAN:".
+                if (hasAvailableSubtitles(track)) {
+                    val subBoundaries = extractSubtitleBoundaries(track, effectiveDuration)
+                    if (subBoundaries.isNotEmpty()) {
+                        boundaries = subBoundaries
+                        usedPrefix = "SUB:"
+                        if (!silent) {
+                            withContext(Dispatchers.Main) {
+                                val msg = String.format(java.util.Locale.US, Loc.getText("segments_created_from_subtitles_count"), subBoundaries.size)
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } else {
+                        boundaries = SilenceDetector.detectBoundaries(
+                            context = context,
+                            filePath = track.filePath,
+                            totalDurationMs = effectiveDuration,
+                            sensitivity = silenceSensitivity,
+                            minSilenceMs = silenceMinDurationMs,
+                            tailPaddingMs = silencePaddingMs
+                        )
+                        usedPrefix = "SIL:"
+                        if (!silent) {
+                            withContext(Dispatchers.Main) {
+                                val msg = String.format(java.util.Locale.US, Loc.getText("segments_created_from_silence_count"), boundaries.size)
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
                 } else {
-                    SilenceDetector.detectBoundaries(
+                    boundaries = SilenceDetector.detectBoundaries(
                         context = context,
                         filePath = track.filePath,
                         totalDurationMs = effectiveDuration,
@@ -2374,12 +2388,12 @@ object AudioPlayerManager {
                         minSilenceMs = silenceMinDurationMs,
                         tailPaddingMs = silencePaddingMs
                     )
-                }
-                usedPrefix = "MAN:"
-                if (!silent) {
-                    withContext(Dispatchers.Main) {
-                        val msg = String.format(java.util.Locale.US, Loc.getText("manual_segments_count"), boundaries.size)
-                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    usedPrefix = "SIL:"
+                    if (!silent) {
+                        withContext(Dispatchers.Main) {
+                            val msg = String.format(java.util.Locale.US, Loc.getText("segments_created_from_silence_count"), boundaries.size)
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             } else if (isSubtitleSource) {
@@ -2457,9 +2471,97 @@ object AudioPlayerManager {
         }
     }
 
-    fun saveManualPracticeSegments(context: Context, track: AudioTrack, boundaries: List<Long>) {
+    data class PracticeTrackSourcesInfo(
+        val hasManualCuts: Boolean,
+        val manualCutsCount: Int,
+        val hasSubtitles: Boolean,
+        val subtitlesCount: Int,
+        val activeSource: String,
+        val activeSegmentsCount: Int
+    )
+
+    fun getActivePracticeSourceForTrack(track: AudioTrack): String {
+        val stored = track.getPracticeSegmentsSource()
+        if (stored != null) return stored
+        val hasManual = track.practiceSegments?.startsWith("MAN:") == true
+        val hasSub = hasAvailableSubtitles(track)
+        return when (segmentSource) {
+            "MANUAL" -> if (hasManual) "MANUAL" else if (hasSub) "SUBTITLES" else "SILENCE"
+            "SUBTITLES" -> if (hasSub) "SUBTITLES" else "SILENCE"
+            else -> "SILENCE"
+        }
+    }
+
+    fun getPracticeTrackSourcesInfo(track: AudioTrack): PracticeTrackSourcesInfo {
+        val manualCuts = if (track.practiceSegments?.startsWith("MAN:") == true) {
+            track.getPracticeSegmentsList()
+        } else emptyList()
+
+        val cues = getOrParseCuesForTrack(track)
+        val activeSource = getActivePracticeSourceForTrack(track)
+        val count = if (_isPracticeMode.value && _currentPracticeSegments.value.isNotEmpty()) {
+            _currentPracticeSegments.value.size
+        } else {
+            track.getPracticeSegmentsList().size
+        }
+        return PracticeTrackSourcesInfo(
+            hasManualCuts = manualCuts.isNotEmpty(),
+            manualCutsCount = manualCuts.size,
+            hasSubtitles = cues.isNotEmpty(),
+            subtitlesCount = cues.size,
+            activeSource = activeSource,
+            activeSegmentsCount = count
+        )
+    }
+
+    fun applyPracticeSettingsAndStart(
+        track: AudioTrack,
+        source: String,
+        multiplier: Float,
+        context: Context,
+        repository: AppRepository
+    ) {
+        val normalizedSource = when (source.uppercase()) {
+            "MANUAL" -> "MANUAL"
+            "SUBTITLES" -> "SUBTITLES"
+            else -> "SILENCE"
+        }
+        segmentSource = normalizedSource
+        practicePauseMultiplier = multiplier.coerceIn(0.25f, 4.0f)
+
+        // If manual and cuts exist, directly apply without reanalysis
+        if (normalizedSource == "MANUAL" && track.practiceSegments?.startsWith("MAN:") == true) {
+            val list = track.getPracticeSegmentsList()
+            if (list.isNotEmpty()) {
+                _currentPracticeSegments.value = list
+                _isPracticeMode.value = true
+                resetPracticeSegmentTracking(_currentPosition.value)
+                if (!_isPlaying.value) {
+                    resume()
+                }
+                Toast.makeText(
+                    context,
+                    "${Loc.getText("practice_source_manual_short")} (${list.size} ${Loc.getText("cuts_label")})",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return
+            }
+        }
+
+        coroutineScope.launch(Dispatchers.IO) {
+            reanalyzePracticeSegmentsInternal(track, context, repository, silent = false) { count ->
+                _isPracticeMode.value = true
+                if (!_isPlaying.value) {
+                    resume()
+                }
+            }
+        }
+    }
+
+    fun saveManualPracticeSegments(context: Context, track: AudioTrack, boundaries: List<Long>, autoEnable: Boolean = true) {
         val sorted = boundaries.filter { it > 0 }.distinct().sorted()
         val segmentsStr = "MAN:" + sorted.joinToString(",")
+        segmentSource = "MANUAL"
         val repo = repository
         coroutineScope.launch(Dispatchers.IO) {
             repo?.updateTrackPracticeSegments(track.id, segmentsStr)
@@ -2467,9 +2569,16 @@ object AudioPlayerManager {
             withContext(Dispatchers.Main) {
                 _currentPracticeSegments.value = sorted
                 resetPracticeSegmentTracking(_currentPosition.value)
+                if (autoEnable) {
+                    _isPracticeMode.value = true
+                    if (!_isPlaying.value) {
+                        resume()
+                    }
+                }
                 Toast.makeText(
                     context,
-                    String.format(java.util.Locale.US, Loc.getText("manual_cuts_saved"), sorted.size),
+                    if (autoEnable) Loc.getText("manual_cuts_applied_and_active")
+                    else String.format(java.util.Locale.US, Loc.getText("manual_cuts_saved"), sorted.size),
                     Toast.LENGTH_SHORT
                 ).show()
             }
@@ -2537,15 +2646,27 @@ object AudioPlayerManager {
 
     fun onSeekInPracticeMode(targetMs: Long) {
         if (!_isPracticeMode.value) return
+        val wasPausing = _isPracticePausing.value
         practicePauseJob?.cancel()
         _isPracticePausing.value = false
         _practicePauseRemainingSeconds.value = 0f
         resetPracticeSegmentTracking(targetMs)
+        if (wasPausing) {
+            resume()
+        }
     }
 
     private fun checkPracticeSegmentBoundary(currentPosMs: Long) {
         val segments = _currentPracticeSegments.value
-        if (segments.isEmpty() || practiceNextBoundaryIndex >= segments.size) return
+        if (segments.isEmpty()) return
+
+        // Auto re-sync when position jumped backwards (rewind) or jumped forward past next boundary window
+        val currentExpectedBoundary = if (practiceNextBoundaryIndex in segments.indices) segments[practiceNextBoundaryIndex] else -1L
+        if (practiceNextBoundaryIndex >= segments.size || currentPosMs < (practiceLastSegmentStartMs - 500L) || (currentExpectedBoundary != -1L && currentPosMs > currentExpectedBoundary + 1500L)) {
+            resetPracticeSegmentTracking(currentPosMs)
+        }
+
+        if (practiceNextBoundaryIndex >= segments.size) return
 
         val boundary = segments[practiceNextBoundaryIndex]
         if (currentPosMs >= boundary && currentPosMs <= boundary + 1500L) {
@@ -2570,8 +2691,6 @@ object AudioPlayerManager {
             practiceLastSegmentStartMs = boundary
             practiceNextBoundaryIndex++
             triggerPracticePause(segmentLengthMs)
-        } else if (currentPosMs > boundary + 1200L) {
-            resetPracticeSegmentTracking(currentPosMs)
         }
     }
 

@@ -4002,6 +4002,7 @@ fun AudioPlayerOverlay(
     var isEditingExistingSubtitles by remember { mutableStateOf(false) }
     var subtitlePasteText by remember { mutableStateOf("") }
     var showWaveformEditorDialog by remember { mutableStateOf(false) }
+    var showPracticeSetupSheet by remember { mutableStateOf(false) }
 
     val isVideoTrackState by AudioPlayerManager.isVideoTrack.collectAsStateWithLifecycle()
     val isTrackVideo = remember(track.filePath, isVideoTrackState) {
@@ -4554,6 +4555,24 @@ fun AudioPlayerOverlay(
                                     showPlayerMenu = false
                                     viewModel.resetTrackSegments(track)
                                     Toast.makeText(context, Loc.getText("segments_reset_success"), Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Tune,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(Loc.getText("practice_setup_title"))
+                                    }
+                                },
+                                onClick = {
+                                    showPlayerMenu = false
+                                    showPracticeSetupSheet = true
                                 }
                             )
                             DropdownMenuItem(
@@ -5443,6 +5462,76 @@ fun AudioPlayerOverlay(
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        // Practice Mode Status Pill (Only shown when Practice Mode is ACTIVE)
+                        val practiceSegmentsList by AudioPlayerManager.currentPracticeSegments.collectAsStateWithLifecycle()
+                        val currentPlayingTrack by AudioPlayerManager.currentTrack.collectAsStateWithLifecycle()
+                        val activeTrack = currentPlayingTrack ?: track
+                        val activePracticeSource = AudioPlayerManager.getActivePracticeSourceForTrack(activeTrack)
+
+                        if (isPracticeMode) {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { showPracticeSetupSheet = true }
+                                    .testTag("pill_active_practice_status")
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = when (activePracticeSource) {
+                                                "MANUAL" -> Icons.Filled.GraphicEq
+                                                "SUBTITLES" -> Icons.Filled.Subtitles
+                                                else -> Icons.Filled.RecordVoiceOver
+                                            },
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = "${when (activePracticeSource) {
+                                                "MANUAL" -> Loc.getText("practice_source_manual_short")
+                                                "SUBTITLES" -> Loc.getText("practice_source_subtitles_short")
+                                                else -> Loc.getText("practice_source_silence_short")
+                                            }}: ${practiceSegmentsList.size} ${Loc.getText("cuts_label")} • ${String.format(java.util.Locale.US, "%.2f", AudioPlayerManager.practicePauseMultiplier)}x",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        Text(
+                                            text = Loc.getText("tap_to_change_source"),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Icon(
+                                            imageVector = Icons.Filled.ChevronRight,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceAround,
@@ -5574,21 +5663,33 @@ fun AudioPlayerOverlay(
                                     )
                                     .combinedClickable(
                                         onClick = {
-                                            val repo = viewModel.repository
-                                            val willAnalyze = !isPracticeMode && AudioPlayerManager.needsReanalysis(track, context)
-                                            AudioPlayerManager.togglePracticeMode(context, repo)
-                                            if (!isPracticeMode) {
-                                                if (willAnalyze) {
-                                                    Toast.makeText(context, Loc.getText("practice_mode_analyzing"), Toast.LENGTH_SHORT).show()
-                                                } else {
-                                                    Toast.makeText(context, Loc.getText("practice_mode_on"), Toast.LENGTH_SHORT).show()
-                                                }
-                                            } else {
+                                            if (isPracticeMode) {
+                                                AudioPlayerManager.togglePracticeMode(context, viewModel.repository)
                                                 Toast.makeText(context, Loc.getText("practice_mode_off"), Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                if (track.practiceSegments.isNullOrBlank()) {
+                                                    // Present clear setup sheet so user can choose source and pause multiplier
+                                                    showPracticeSetupSheet = true
+                                                } else {
+                                                    val repo = viewModel.repository
+                                                    val willAnalyze = AudioPlayerManager.needsReanalysis(track, context)
+                                                    AudioPlayerManager.togglePracticeMode(context, repo)
+                                                    if (willAnalyze) {
+                                                        Toast.makeText(context, Loc.getText("practice_mode_analyzing"), Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        val src = track.getPracticeSegmentsSource() ?: AudioPlayerManager.segmentSource
+                                                        val srcName = when (src) {
+                                                            "MANUAL" -> Loc.getText("practice_source_manual_short")
+                                                            "SUBTITLES" -> Loc.getText("practice_source_subtitles_short")
+                                                            else -> Loc.getText("practice_source_silence_short")
+                                                        }
+                                                        Toast.makeText(context, "${Loc.getText("practice_mode_on")}: $srcName", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
                                             }
                                         },
                                         onLongClick = {
-                                            showWaveformEditorDialog = true
+                                            showPracticeSetupSheet = true
                                         }
                                     ),
                                 contentAlignment = Alignment.Center
@@ -5914,6 +6015,18 @@ fun AudioPlayerOverlay(
                     track = track,
                     viewModel = viewModel,
                     onDismiss = { showWaveformEditorDialog = false }
+                )
+            }
+
+            if (showPracticeSetupSheet) {
+                PracticeModeSetupSheet(
+                    track = track,
+                    viewModel = viewModel,
+                    onDismiss = { showPracticeSetupSheet = false },
+                    onOpenWaveformEditor = {
+                        showPracticeSetupSheet = false
+                        showWaveformEditorDialog = true
+                    }
                 )
             }
 
