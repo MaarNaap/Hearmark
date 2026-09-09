@@ -634,8 +634,22 @@ object AudioPlayerManager {
         private set
 
     fun setPracticeSettings(source: String, multiplier: Float) {
+        val oldSource = segmentSource
         segmentSource = if (source.equals("SUBTITLES", ignoreCase = true)) "SUBTITLES" else "SILENCE"
         practicePauseMultiplier = multiplier.coerceIn(0.25f, 4.0f)
+
+        if (!oldSource.equals(segmentSource, ignoreCase = true)) {
+            val track = currentTrackValue
+            val repo = repository
+            val ctx = appContext
+            if (track != null && repo != null && ctx != null) {
+                if (_isPracticeMode.value || !track.practiceSegments.isNullOrBlank()) {
+                    coroutineScope.launch(Dispatchers.IO) {
+                        reanalyzePracticeSegmentsInternal(track, ctx, repo, silent = true)
+                    }
+                }
+            }
+        }
     }
 
     fun getCompletionThreshold() = completionThreshold
@@ -2055,6 +2069,13 @@ object AudioPlayerManager {
             repository?.updateTrack(updated)
             updateTrackState { updated }
             loadSubtitlesForTrack(updated)
+            if (segmentSource == "SUBTITLES" || _isPracticeMode.value) {
+                val repo = repository
+                val ctx = appContext
+                if (repo != null && ctx != null) {
+                    reanalyzePracticeSegmentsInternal(updated, ctx, repo, silent = false)
+                }
+            }
         }
     }
 
@@ -2065,6 +2086,13 @@ object AudioPlayerManager {
             repository?.updateTrack(updated)
             updateTrackState { updated }
             loadSubtitlesForTrack(updated)
+            if (segmentSource == "SUBTITLES" || _isPracticeMode.value) {
+                val repo = repository
+                val ctx = appContext
+                if (repo != null && ctx != null) {
+                    reanalyzePracticeSegmentsInternal(updated, ctx, repo, silent = false)
+                }
+            }
         }
     }
 
@@ -2106,12 +2134,63 @@ object AudioPlayerManager {
 
     // --- PRACTICE MODE (Silence Detection & Imitation Pauses) ---
 
+    fun hasAvailableSubtitles(track: AudioTrack): Boolean {
+        if (!track.subtitleContent.isNullOrBlank()) return true
+        if (!track.subtitlePath.isNullOrBlank()) {
+            val f = File(track.subtitlePath)
+            if (f.exists() && f.length() > 0) return true
+        }
+        val autoFile = SubtitleParser.findMatchingSubtitleFile(track.filePath)
+        if (autoFile != null && autoFile.length() > 0) return true
+        if (_subtitlesCues.value.isNotEmpty() && currentTrackValue?.id == track.id) return true
+        return false
+    }
+
+    fun getOrParseCuesForTrack(track: AudioTrack): List<SubtitleCue> {
+        if (!track.subtitleContent.isNullOrBlank()) {
+            val parsed = SubtitleParser.parseContent(track.subtitleContent, track.subtitleOffsetMs)
+            if (parsed.isNotEmpty()) return parsed
+        }
+        if (!track.subtitlePath.isNullOrBlank()) {
+            val file = File(track.subtitlePath)
+            if (file.exists() && file.canRead()) {
+                val parsed = SubtitleParser.parseFile(file, track.subtitleOffsetMs)
+                if (parsed.isNotEmpty()) return parsed
+            }
+        }
+        val autoFile = SubtitleParser.findMatchingSubtitleFile(track.filePath)
+        if (autoFile != null && autoFile.canRead()) {
+            val parsed = SubtitleParser.parseFile(autoFile, track.subtitleOffsetMs)
+            if (parsed.isNotEmpty()) return parsed
+        }
+        if (currentTrackValue?.id == track.id && _subtitlesCues.value.isNotEmpty()) {
+            return _subtitlesCues.value
+        }
+        return emptyList()
+    }
+
     fun needsReanalysis(track: AudioTrack, context: Context? = null): Boolean {
         val existing = track.getPracticeSegmentsList()
         if (existing.isEmpty()) return true
 
+        val storedSource = track.getPracticeSegmentsSource()
+        // If stored source is known and differs from active source:
+        if (storedSource != null && storedSource != segmentSource) {
+            return true
+        }
+
+        // If legacy stored segments (no prefix):
+        if (storedSource == null) {
+            if (segmentSource == "SUBTITLES" && hasAvailableSubtitles(track)) {
+                return true
+            }
+        }
+
         if (segmentSource == "SUBTITLES") {
-            // For subtitle segments, boundaries are parsed from cues; no silence heuristic checks needed
+            val cues = getOrParseCuesForTrack(track)
+            if (cues.isNotEmpty() && Math.abs(cues.size - existing.size) > 1) {
+                return true
+            }
             return false
         }
 
@@ -2126,19 +2205,10 @@ object AudioPlayerManager {
         }
 
         if (effectiveDuration > 15000L) {
-            // Check for premature cutoff gap (> 12 seconds).
-            // Normal speech segments do not exceed 8.5 seconds.
-            // Any gap > 12s indicates the file was previously stopped prematurely and jumped to the end.
             val hasPrematureCutoffGap = existing.zipWithNext().any { (a, b) -> (b - a) > 12000L }
             if (hasPrematureCutoffGap) return true
-
-            // First segment shouldn't be > 12s without a boundary:
             if (existing.first() > 12000L) return true
-
-            // Last boundary must reach near the end of the file:
             if (existing.last() < (effectiveDuration - 4000L)) return true
-
-            // If file is > 25s but has fewer than 3 segments:
             if (effectiveDuration > 25000L && existing.size < 3) return true
         }
 
@@ -2149,56 +2219,152 @@ object AudioPlayerManager {
         track: AudioTrack,
         effectiveDuration: Long
     ): List<Long> {
-        val existingCues = _subtitlesCues.value
-        val rawCues = if (existingCues.isNotEmpty()) {
-            existingCues
-        } else {
-            when {
-                !track.subtitleContent.isNullOrBlank() -> {
-                    SubtitleParser.parseContent(track.subtitleContent, track.subtitleOffsetMs)
-                }
-                !track.subtitlePath.isNullOrBlank() -> {
-                    val file = File(track.subtitlePath)
-                    SubtitleParser.parseFile(file, track.subtitleOffsetMs)
-                }
-                else -> {
-                    val autoFile = SubtitleParser.findMatchingSubtitleFile(track.filePath)
-                    if (autoFile != null) {
-                        SubtitleParser.parseFile(autoFile, track.subtitleOffsetMs)
-                    } else {
-                        emptyList()
-                    }
-                }
+        val rawCues = getOrParseCuesForTrack(track)
+        if (rawCues.isEmpty()) return emptyList()
+
+        if (_subtitlesCues.value.isEmpty() && currentTrackValue?.id == track.id) {
+            withContext(Dispatchers.Main) {
+                _subtitlesCues.value = rawCues
             }
         }
 
-        if (rawCues.isEmpty()) return emptyList()
+        val rawBoundaries: List<Long>
+        if (track.isVirtualScene) {
+            val sceneStart = track.startOffsetMs
+            val sceneEnd = track.endOffsetMs ?: (track.startOffsetMs + track.duration)
+            val sceneDuration = track.duration.coerceAtLeast(1000L)
+            val timedCues = rawCues.filter { it.isTimed && it.startMs >= 0L }
+            val sceneCues = timedCues.filter { it.endMs > sceneStart && it.startMs < sceneEnd }
 
-        val timedCues = rawCues.filter { it.isTimed && it.startMs >= 0L }.sortedBy { it.startMs }
-        val rawBoundaries = if (timedCues.isNotEmpty()) {
-            timedCues.map { cue ->
-                val end = if (cue.endMs > cue.startMs) cue.endMs else (cue.startMs + 3000L)
-                if (track.isVirtualScene) {
-                    (end - track.startOffsetMs).coerceIn(0L, track.duration)
-                } else {
-                    end.coerceIn(0L, if (effectiveDuration > 0) effectiveDuration else end)
+            rawBoundaries = if (sceneCues.isNotEmpty()) {
+                sceneCues.map { cue ->
+                    val cueEnd = if (cue.endMs > cue.startMs) cue.endMs else (cue.startMs + 3000L)
+                    (cueEnd - sceneStart).coerceIn(400L, sceneDuration)
                 }
+            } else {
+                val lines = rawCues.take(minOf(rawCues.size, 10))
+                val lineDur = sceneDuration / lines.size.coerceAtLeast(1)
+                lines.indices.map { (it + 1) * lineDur }
             }
-        } else if (effectiveDuration > 0L) {
-            val lineDuration = effectiveDuration / rawCues.size
-            rawCues.indices.map { (it + 1) * lineDuration }
         } else {
-            emptyList()
+            val timedCues = rawCues.filter { it.isTimed && it.startMs >= 0L }.sortedBy { it.startMs }
+            rawBoundaries = if (timedCues.isNotEmpty()) {
+                timedCues.map { cue ->
+                    val cueEnd = if (cue.endMs > cue.startMs) cue.endMs else (cue.startMs + 3000L)
+                    if (effectiveDuration > 0L) {
+                        cueEnd.coerceIn(400L, effectiveDuration)
+                    } else {
+                        cueEnd.coerceAtLeast(400L)
+                    }
+                }
+            } else if (effectiveDuration > 0L) {
+                val nonBlank = rawCues.filter { it.text.isNotBlank() }
+                if (nonBlank.isNotEmpty()) {
+                    val lineDur = effectiveDuration / nonBlank.size
+                    nonBlank.indices.map { (it + 1) * lineDur }
+                } else {
+                    emptyList()
+                }
+            } else {
+                emptyList()
+            }
         }
 
         val boundaries = mutableListOf<Long>()
-        val sorted = rawBoundaries.filter { it > 0L }.distinct().sorted()
+        val maxLimit = if (effectiveDuration > 0L) (effectiveDuration - 350L) else Long.MAX_VALUE
+        val sorted = rawBoundaries
+            .filter { it > 300L && it <= maxLimit }
+            .distinct()
+            .sorted()
+
         for (b in sorted) {
-            if (boundaries.isEmpty() || b - boundaries.last() >= 600L) {
+            if (boundaries.isEmpty() || b - boundaries.last() >= 500L) {
                 boundaries.add(b)
             }
         }
         return boundaries
+    }
+
+    suspend fun reanalyzePracticeSegmentsInternal(
+        track: AudioTrack,
+        context: Context,
+        targetRepo: AppRepository,
+        silent: Boolean = false,
+        onComplete: ((Int) -> Unit)? = null
+    ) {
+        _isPracticeAnalyzing.value = true
+        try {
+            val effectiveDuration = if (track.duration > 0) {
+                track.duration
+            } else if (_duration.value > 0) {
+                _duration.value
+            } else {
+                val mpDur = try { mediaPlayer?.duration?.toLong() ?: 0L } catch (e: Exception) { 0L }
+                if (mpDur > 0) mpDur else SilenceDetector.getAudioDuration(context, track.filePath)
+            }
+
+            val boundaries: List<Long>
+            val isSubtitleSource = (segmentSource == "SUBTITLES")
+            var usedSubtitle = false
+
+            if (isSubtitleSource) {
+                val subBoundaries = extractSubtitleBoundaries(track, effectiveDuration)
+                if (subBoundaries.isNotEmpty()) {
+                    boundaries = subBoundaries
+                    usedSubtitle = true
+                    if (!silent) {
+                        withContext(Dispatchers.Main) {
+                            val msg = String.format(java.util.Locale.US, Loc.getText("segments_created_from_subtitles_count"), subBoundaries.size)
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } else {
+                    if (!silent) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, Loc.getText("no_subtitles_for_segments"), Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    boundaries = SilenceDetector.detectBoundaries(context, track.filePath, effectiveDuration)
+                }
+            } else {
+                boundaries = SilenceDetector.detectBoundaries(context, track.filePath, effectiveDuration)
+                if (!silent) {
+                    withContext(Dispatchers.Main) {
+                        val msg = String.format(java.util.Locale.US, Loc.getText("segments_created_from_silence_count"), boundaries.size)
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+
+            val prefix = if (usedSubtitle) "SUB:" else "SIL:"
+            val segmentsStr = prefix + boundaries.joinToString(",")
+            targetRepo.updateTrackPracticeSegments(track.id, segmentsStr)
+            updateTrackState { it.copy(practiceSegments = segmentsStr) }
+
+            withContext(Dispatchers.Main) {
+                _currentPracticeSegments.value = boundaries
+                _isPracticeAnalyzing.value = false
+                resetPracticeSegmentTracking(_currentPosition.value)
+                onComplete?.invoke(boundaries.size)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Practice segmentation error: ${e.message}")
+            withContext(Dispatchers.Main) {
+                _isPracticeAnalyzing.value = false
+            }
+        }
+    }
+
+    fun reanalyzePracticeSegments(
+        context: Context,
+        repository: AppRepository,
+        silent: Boolean = false,
+        onComplete: ((Int) -> Unit)? = null
+    ) {
+        val track = currentTrackValue ?: return
+        coroutineScope.launch(Dispatchers.IO) {
+            reanalyzePracticeSegmentsInternal(track, context, repository, silent, onComplete)
+        }
     }
 
     fun clearPracticeSegmentsForCurrentTrack() {
@@ -2208,8 +2374,12 @@ object AudioPlayerManager {
         _currentPracticeSegments.value = emptyList()
         practiceNextBoundaryIndex = 0
         practiceLastSegmentStartMs = 0L
-        coroutineScope.launch {
-            updateTrackState { it.copy(practiceSegments = null) }
+        val track = currentTrackValue
+        if (track != null) {
+            coroutineScope.launch(Dispatchers.IO) {
+                repository?.updateTrackPracticeSegments(track.id, null)
+                updateTrackState { it.copy(practiceSegments = null) }
+            }
         }
     }
 
@@ -2237,52 +2407,11 @@ object AudioPlayerManager {
                     resume()
                 }
             } else {
-                val effectiveDuration = if (track.duration > 0) {
-                    track.duration
-                } else if (_duration.value > 0) {
-                    _duration.value
-                } else {
-                    val mpDur = try { mediaPlayer?.duration?.toLong() ?: 0L } catch (e: Exception) { 0L }
-                    if (mpDur > 0) mpDur else SilenceDetector.getAudioDuration(targetContext, track.filePath)
-                }
-
-                _isPracticeAnalyzing.value = true
                 coroutineScope.launch(Dispatchers.IO) {
-                    try {
-                        val boundaries: List<Long>
-                        if (segmentSource == "SUBTITLES") {
-                            val subBoundaries = extractSubtitleBoundaries(track, effectiveDuration)
-                            if (subBoundaries.isNotEmpty()) {
-                                boundaries = subBoundaries
-                                withContext(Dispatchers.Main) {
-                                    Toast.makeText(targetContext, Loc.getText("segments_created_from_subtitles"), Toast.LENGTH_SHORT).show()
-                                }
-                            } else {
-                                withContext(Dispatchers.Main) {
-                                    Toast.makeText(targetContext, Loc.getText("no_subtitles_for_segments"), Toast.LENGTH_LONG).show()
-                                }
-                                boundaries = SilenceDetector.detectBoundaries(targetContext, track.filePath, effectiveDuration)
-                            }
-                        } else {
-                            boundaries = SilenceDetector.detectBoundaries(targetContext, track.filePath, effectiveDuration)
-                        }
-
-                        val segmentsStr = boundaries.joinToString(",")
-                        targetRepo.updateTrackPracticeSegments(track.id, segmentsStr)
-                        updateTrackState { it.copy(practiceSegments = segmentsStr) }
-                        withContext(Dispatchers.Main) {
-                            _currentPracticeSegments.value = boundaries
-                            _isPracticeAnalyzing.value = false
-                            _isPracticeMode.value = true
-                            resetPracticeSegmentTracking(_currentPosition.value)
-                            if (!_isPlaying.value) {
-                                resume()
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Practice segmentation error: ${e.message}")
-                        withContext(Dispatchers.Main) {
-                            _isPracticeAnalyzing.value = false
+                    reanalyzePracticeSegmentsInternal(track, targetContext, targetRepo, silent = false) {
+                        _isPracticeMode.value = true
+                        if (!_isPlaying.value) {
+                            resume()
                         }
                     }
                 }
@@ -2310,32 +2439,34 @@ object AudioPlayerManager {
         if (segments.isEmpty() || practiceNextBoundaryIndex >= segments.size) return
 
         val boundary = segments[practiceNextBoundaryIndex]
-        if (currentPosMs >= boundary - 120L) {
+        if (currentPosMs >= boundary - 120L && currentPosMs <= boundary + 1200L) {
             val segmentLengthMs = if (segmentSource == "SUBTITLES") {
-                val matchingCue = _subtitlesCues.value.find { cue ->
+                val cues = _subtitlesCues.value
+                val matchingCue = cues.find { cue ->
                     val cueEnd = if (currentTrackValue?.isVirtualScene == true) {
                         cue.endMs - (currentTrackValue?.startOffsetMs ?: 0L)
                     } else {
                         cue.endMs
                     }
-                    Math.abs(cueEnd - boundary) <= 400L
+                    Math.abs(cueEnd - boundary) <= 500L
                 }
                 if (matchingCue != null && matchingCue.endMs > matchingCue.startMs) {
-                    (matchingCue.endMs - matchingCue.startMs).coerceIn(1500L, 20000L)
+                    (matchingCue.endMs - matchingCue.startMs).coerceIn(1200L, 25000L)
                 } else {
-                    (boundary - practiceLastSegmentStartMs).coerceIn(1500L, 20000L)
+                    (boundary - practiceLastSegmentStartMs).coerceIn(1200L, 25000L)
                 }
             } else {
-                (boundary - practiceLastSegmentStartMs).coerceAtLeast(1500L)
+                (boundary - practiceLastSegmentStartMs).coerceAtLeast(1200L)
             }
             practiceLastSegmentStartMs = boundary
             practiceNextBoundaryIndex++
             triggerPracticePause(segmentLengthMs)
+        } else if (currentPosMs > boundary + 1200L) {
+            resetPracticeSegmentTracking(currentPosMs)
         }
     }
 
     private fun triggerPracticePause(segmentLengthMs: Long) {
-        // Pause period length fits the played part length with multiplier
         val multiplier = practicePauseMultiplier.coerceIn(0.25f, 4.0f)
         val pauseDurationMs = (segmentLengthMs * multiplier).toLong().coerceIn(1000L, 30000L)
         _isPracticePausing.value = true

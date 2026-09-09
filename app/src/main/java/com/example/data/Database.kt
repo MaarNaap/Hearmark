@@ -42,9 +42,23 @@ data class AudioTrack(
     val sceneNumber: Int? = null,
     val practiceSegments: String? = null
 ) {
+    fun getPracticeSegmentsSource(): String? {
+        if (practiceSegments.isNullOrBlank()) return null
+        return when {
+            practiceSegments.startsWith("SUB:") -> "SUBTITLES"
+            practiceSegments.startsWith("SIL:") -> "SILENCE"
+            else -> null
+        }
+    }
+
     fun getPracticeSegmentsList(): List<Long> {
         if (practiceSegments.isNullOrBlank()) return emptyList()
-        return practiceSegments.split(",")
+        val raw = if (practiceSegments.contains(":")) {
+            practiceSegments.substringAfter(":")
+        } else {
+            practiceSegments
+        }
+        return raw.split(",")
             .mapNotNull { it.trim().toLongOrNull() }
             .filter { it > 0 }
             .distinct()

@@ -104,6 +104,8 @@ object Loc {
         "segments_reset_success" to mapOf("en" to "Segment boundaries cleared", "ar" to "تم مسح حدود المقاطع للملف بنجاح"),
         "no_subtitles_for_segments" to mapOf("en" to "No subtitles found for this track. Falling back to silence analysis.", "ar" to "لم يتم العثور على ملف ترجمة لهذا المقطع. جاري التحليل بالصمت."),
         "segments_created_from_subtitles" to mapOf("en" to "Created practice segments from subtitles", "ar" to "تم إنشاء مقاطع الترديد من ملف الترجمة"),
+        "segments_created_from_subtitles_count" to mapOf("en" to "Created %d segments from subtitles", "ar" to "تم إنشاء %d مقطع من ملف الترجمة"),
+        "segments_created_from_silence_count" to mapOf("en" to "Created %d segments from silence analysis", "ar" to "تم إنشاء %d مقطع من تحليل الصمت"),
         "reanalyze_segments" to mapOf("en" to "Re-analyze Segments", "ar" to "إعادة تحليل المقاطع"),
         "speed" to mapOf("en" to "Speed", "ar" to "سرعة التشغيل"),
         "ends_at" to mapOf("en" to "End of file", "ar" to "نهاية الملف"),

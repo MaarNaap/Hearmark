@@ -17,7 +17,10 @@ object SubtitleParser {
     fun parseContent(content: String, offsetMs: Long = 0L): List<SubtitleCue> {
         if (content.isBlank()) return emptyList()
 
-        val trimmed = content.trim()
+        val clean = content.removePrefix("\uFEFF").replace("\u0000", "")
+        val trimmed = clean.trim()
+        if (trimmed.isEmpty()) return emptyList()
+
         val cues = when {
             trimmed.contains("-->") -> {
                 val parsed = parseSrtOrVtt(trimmed)
@@ -50,9 +53,14 @@ object SubtitleParser {
     fun parseFile(file: File, offsetMs: Long = 0L): List<SubtitleCue> {
         if (!file.exists() || !file.canRead()) return emptyList()
         return try {
-            parseContent(file.readText(), offsetMs)
+            val content = file.readText(Charsets.UTF_8)
+            parseContent(content, offsetMs)
         } catch (e: Exception) {
-            emptyList()
+            try {
+                parseContent(file.readText(), offsetMs)
+            } catch (ex: Exception) {
+                emptyList()
+            }
         }
     }
 
@@ -65,7 +73,8 @@ object SubtitleParser {
     private fun parseSrtOrVtt(text: String): List<SubtitleCue> {
         val list = mutableListOf<SubtitleCue>()
         val timePattern = Pattern.compile("(?:(\\d{1,2}):)?(\\d{1,2}):(\\d{2})(?:[,.](\\d{1,3}))?\\s*-->\\s*(?:(\\d{1,2}):)?(\\d{1,2}):(\\d{2})(?:[,.](\\d{1,3}))?")
-        val blocks = text.replace("\r\n", "\n").split(Regex("\n\\s*\n"))
+        val normalized = text.replace("\r\n", "\n")
+        val blocks = normalized.split(Regex("\n\\s*\n"))
 
         var index = 1
         for (block in blocks) {
@@ -106,11 +115,60 @@ object SubtitleParser {
             } else {
                 // Untimed text block inside SRT file
                 val blockText = lines.joinToString("\n").replace(Regex("<[^>]*>"), "").trim()
-                if (blockText.isNotBlank()) {
+                if (blockText.isNotBlank() && !blockText.equals("WEBVTT", ignoreCase = true)) {
                     list.add(SubtitleCue(id = index++, startMs = -1L, endMs = -1L, text = blockText, isTimed = false))
                 }
             }
         }
+
+        // Fallback: If no timed cues found via double-newline block splitting, scan line-by-line
+        if (list.none { it.isTimed }) {
+            val lines = normalized.lines().map { it.trim() }
+            var currentStart = -1L
+            var currentEnd = -1L
+            val currentText = mutableListOf<String>()
+
+            for (line in lines) {
+                val m = timePattern.matcher(line)
+                if (m.find()) {
+                    if (currentStart >= 0L && currentText.isNotEmpty()) {
+                        list.add(SubtitleCue(
+                            id = index++,
+                            startMs = currentStart,
+                            endMs = currentEnd.coerceAtLeast(currentStart + 1000L),
+                            text = currentText.joinToString("\n").trim()
+                        ))
+                        currentText.clear()
+                    }
+                    currentStart = parseFlexibleTimestampToMs(
+                        hStr = m.group(1),
+                        mStr = m.group(2) ?: "0",
+                        sStr = m.group(3) ?: "0",
+                        msStr = m.group(4)
+                    )
+                    currentEnd = parseFlexibleTimestampToMs(
+                        hStr = m.group(5),
+                        mStr = m.group(6) ?: "0",
+                        sStr = m.group(7) ?: "0",
+                        msStr = m.group(8)
+                    )
+                } else if (currentStart >= 0L) {
+                    if (line.isNotEmpty() && !line.matches(Regex("^\\d+$"))) {
+                        currentText.add(line.replace(Regex("<[^>]*>"), ""))
+                    }
+                }
+            }
+
+            if (currentStart >= 0L && currentText.isNotEmpty()) {
+                list.add(SubtitleCue(
+                    id = index++,
+                    startMs = currentStart,
+                    endMs = currentEnd.coerceAtLeast(currentStart + 1000L),
+                    text = currentText.joinToString("\n").trim()
+                ))
+            }
+        }
+
         return list
     }
 
@@ -236,7 +294,7 @@ object SubtitleParser {
         val baseName = audioFile.nameWithoutExtension
         val cleanBase = baseName.replace("_", " ").replace("-", " ").trim()
 
-        val extensions = setOf("srt", "vtt", "lrc")
+        val extensions = setOf("srt", "vtt", "lrc", "txt")
 
         // 1. Direct extension or common language tag match
         val commonLangs = listOf("", ".en", ".eng", ".ar", ".es", ".fr", ".de", ".it", ".ja", ".zh", ".ko", ".pt", ".ru", "_en", "-en", "_ar", "-ar")

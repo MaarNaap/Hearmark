@@ -9505,7 +9505,7 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
 
                 // Pause length multiplier setting
                 Text(
-                    text = "${Loc.getText("pause_multiplier_title")}: ${"%.2f".format(pauseMultiplier)}x",
+                    text = Loc.getText("pause_multiplier_title"),
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface
@@ -9516,41 +9516,74 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                // Quick chips
+                // Stepper: Minus button, center chip holding value, Plus button
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f).forEach { mult ->
-                        val selected = Math.abs(pauseMultiplier - mult) < 0.05f
+                    FilledTonalIconButton(
+                        onClick = {
+                            val next = (Math.round((pauseMultiplier - 0.25f) * 4f) / 4f).coerceIn(0.25f, 4.0f)
+                            pauseMultiplier = next
+                        },
+                        enabled = pauseMultiplier > 0.25f,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .testTag("btn_pause_multiplier_decrease")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Remove,
+                            contentDescription = "Decrease multiplier",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        tonalElevation = 2.dp,
+                        modifier = Modifier
+                            .clickable { pauseMultiplier = 1.0f }
+                            .testTag("chip_pause_multiplier_value")
+                    ) {
                         Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .background(
-                                    if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                    RoundedCornerShape(6.dp)
-                                )
-                                .clickable { pauseMultiplier = mult }
-                                .padding(vertical = 5.dp),
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "${mult}x",
-                                color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                text = String.format(java.util.Locale.US, "%.2f", pauseMultiplier) + "x",
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 10.sp
+                                fontSize = 16.sp
                             )
                         }
                     }
-                }
 
-                Slider(
-                    value = pauseMultiplier,
-                    onValueChange = { pauseMultiplier = (Math.round(it * 20f) / 20f) },
-                    valueRange = 0.5f..2.5f,
-                    steps = 7,
-                    modifier = Modifier.fillMaxWidth().testTag("slider_pause_multiplier")
-                )
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    FilledTonalIconButton(
+                        onClick = {
+                            val next = (Math.round((pauseMultiplier + 0.25f) * 4f) / 4f).coerceIn(0.25f, 4.0f)
+                            pauseMultiplier = next
+                        },
+                        enabled = pauseMultiplier < 4.0f,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .testTag("btn_pause_multiplier_increase")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = "Increase multiplier",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
             }
         }
 
