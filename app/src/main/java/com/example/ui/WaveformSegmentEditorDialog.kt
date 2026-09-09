@@ -1,5 +1,7 @@
 package com.example.ui
 
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
@@ -22,6 +24,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -80,9 +83,9 @@ fun WaveformSegmentEditorDialog(
     var selectedCutIndex by remember { mutableStateOf<Int?>(null) }
     var followPlayhead by remember { mutableStateOf(true) }
 
-    // Zoom level states (1.0x to 32.0x)
-    val zoomLevels = remember { listOf(1.0f, 2.0f, 4.0f, 8.0f, 16.0f, 32.0f) }
-    var zoomIndex by remember { mutableIntStateOf(1) } // Default 2.0x
+    // Zoom level states: 0f = Fit to screen, 1f = Default 1x (matching previous 32x), up to 32x for micro-second cut precision
+    val zoomLevels = remember { listOf(0f, 1f, 2f, 4f, 8f, 16f, 32f) }
+    var zoomIndex by remember { mutableIntStateOf(1) } // Default 1x (spacious waveform view)
     val currentZoom = zoomLevels[zoomIndex]
 
     // Waveform data
@@ -112,8 +115,9 @@ fun WaveformSegmentEditorDialog(
     fun changeZoom(newIndex: Int) {
         val bounded = newIndex.coerceIn(0, zoomLevels.lastIndex)
         if (bounded == zoomIndex) return
-        val playheadRatio = if (effectiveDuration > 0) {
-            (currentPosition.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f)
+        val focusTimeMs = selectedCutIndex?.let { if (it in cuts.indices) cuts[it] else null } ?: currentPosition
+        val focusRatio = if (effectiveDuration > 0) {
+            (focusTimeMs.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f)
         } else 0f
         zoomIndex = bounded
         coroutineScope.launch {
@@ -121,7 +125,8 @@ fun WaveformSegmentEditorDialog(
             try {
                 val maxScroll = horizontalScrollState.maxValue
                 if (maxScroll > 0) {
-                    val target = (playheadRatio * maxScroll).toInt().coerceIn(0, maxScroll)
+                    val approxVisiblePx = with(density) { 360.dp.toPx() }
+                    val target = ((focusRatio * (maxScroll + approxVisiblePx)) - (approxVisiblePx / 2f)).toInt().coerceIn(0, maxScroll)
                     horizontalScrollState.scrollTo(target)
                 }
             } catch (_: Exception) {}
@@ -134,8 +139,9 @@ fun WaveformSegmentEditorDialog(
             try {
                 val maxScroll = horizontalScrollState.maxValue
                 if (maxScroll > 0) {
+                    val approxVisiblePx = with(density) { 360.dp.toPx() }
                     val playheadRatio = (currentPosition.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f)
-                    val targetScrollX = (playheadRatio * maxScroll).toInt().coerceIn(0, maxScroll)
+                    val targetScrollX = ((playheadRatio * (maxScroll + approxVisiblePx)) - (approxVisiblePx / 2f)).toInt().coerceIn(0, maxScroll)
                     if (kotlin.math.abs(horizontalScrollState.value - targetScrollX) > 24) {
                         horizontalScrollState.animateScrollTo(targetScrollX)
                     }
@@ -318,7 +324,9 @@ fun WaveformSegmentEditorDialog(
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.clickable { changeZoom(0) }
+                            modifier = Modifier.clickable { 
+                                if (zoomIndex == 0) changeZoom(1) else changeZoom(0) 
+                            }
                         ) {
                             Text(
                                 text = if (zoomIndex == 0) Loc.getText("zoom_fit") else "${zoomLevels[zoomIndex].toInt()}x",
@@ -376,8 +384,8 @@ fun WaveformSegmentEditorDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Waveform Display Container with safe canvas bounds
-                val maxSafeCanvasWidthDp = 5000.dp
+                // Waveform Display Container with expanded high-precision bounds (up to 65,000 dp)
+                val maxSafeCanvasWidthDp = 65000.dp
 
                 BoxWithConstraints(
                     modifier = Modifier
@@ -401,11 +409,16 @@ fun WaveformSegmentEditorDialog(
                             }
                         }
                     } else {
-                        val effectiveCanvasWidth = remember(containerWidthDp, currentZoom) {
-                            if (currentZoom <= 1.0f) {
+                        val effectiveCanvasWidth = remember(containerWidthDp, currentZoom, effectiveDuration) {
+                            if (currentZoom <= 0f) {
                                 containerWidthDp
                             } else {
-                                (containerWidthDp * currentZoom).coerceIn(containerWidthDp, maxSafeCanvasWidthDp)
+                                // Default 1x provides the expansive view (~110dp/sec) that was 32x previously
+                                val base1x = maxOf(
+                                    containerWidthDp * 32f,
+                                    ((effectiveDuration / 1000f) * 110f).dp
+                                )
+                                (base1x * currentZoom).coerceIn(containerWidthDp, maxSafeCanvasWidthDp)
                             }
                         }
 
@@ -418,6 +431,15 @@ fun WaveformSegmentEditorDialog(
                                 (0.92f / observedMaxAmp).coerceAtMost(12.0f)
                             } else {
                                 1.0f
+                            }
+                        }
+
+                        val rulerTextPaint = remember(density) {
+                            Paint().apply {
+                                color = android.graphics.Color.argb(160, 150, 150, 160)
+                                textSize = with(density) { 9.dp.toPx() }
+                                isAntiAlias = true
+                                typeface = Typeface.MONOSPACE
                             }
                         }
 
@@ -495,25 +517,57 @@ fun WaveformSegmentEditorDialog(
                                 val minVisibleX = (scrollX - 80f).coerceAtLeast(0f)
                                 val maxVisibleX = scrollX + visibleWPx + 80f
 
-                                // 1. Time Ruler Grid
-                                val secStep = when {
-                                    currentZoom >= 8f -> 1
-                                    currentZoom >= 4f -> 2
-                                    currentZoom >= 2f -> 5
-                                    else -> 10
+                                // 1. Time Ruler Grid & Exact Timestamps
+                                val pxPerSec = if (effectiveDuration > 0) canvasW / (effectiveDuration / 1000f) else 100f
+                                val (majorStepMs, minorStepMs) = when {
+                                    pxPerSec >= 1500f -> Pair(100L, 20L)    // 100ms major, 20ms minor ticks
+                                    pxPerSec >= 600f  -> Pair(250L, 50L)    // 250ms major, 50ms minor ticks
+                                    pxPerSec >= 250f  -> Pair(500L, 100L)   // 500ms major, 100ms minor ticks
+                                    pxPerSec >= 100f  -> Pair(1000L, 250L)  // 1s major, 250ms minor ticks
+                                    pxPerSec >= 40f   -> Pair(2000L, 500L)  // 2s major, 500ms minor ticks
+                                    else              -> Pair(5000L, 1000L) // 5s major, 1s minor ticks
                                 }
-                                var s = 0
-                                while (s * 1000L <= effectiveDuration) {
-                                    val x = (s * 1000f / effectiveDuration.toFloat()) * canvasW
-                                    if (x in minVisibleX..maxVisibleX) {
+
+                                val minMs = ((minVisibleX / canvasW) * effectiveDuration).toLong().coerceAtLeast(0L)
+                                val maxMs = (((maxVisibleX / canvasW) * effectiveDuration).toLong() + majorStepMs).coerceAtMost(effectiveDuration)
+
+                                val firstMinor = (minMs / minorStepMs) * minorStepMs
+                                var t = firstMinor
+                                while (t <= maxMs) {
+                                    val x = (t.toFloat() / effectiveDuration.toFloat()) * canvasW
+                                    val isMajor = (t % majorStepMs == 0L)
+                                    if (isMajor) {
+                                        // Full vertical guide line
                                         drawLine(
                                             color = gridColor,
                                             start = Offset(x, 0f),
                                             end = Offset(x, canvasH),
                                             strokeWidth = 1.dp.toPx()
                                         )
+                                        val minutes = t / 60000L
+                                        val seconds = (t % 60000L) / 1000L
+                                        val timeLabel = if (majorStepMs < 1000L) {
+                                            val millis = (t % 1000L) / 100L
+                                            "$minutes:${if (seconds < 10) "0$seconds" else "$seconds"}.$millis"
+                                        } else {
+                                            "$minutes:${if (seconds < 10) "0$seconds" else "$seconds"}"
+                                        }
+                                        drawContext.canvas.nativeCanvas.drawText(
+                                            timeLabel,
+                                            x + 3.dp.toPx(),
+                                            rulerH - 5.dp.toPx(),
+                                            rulerTextPaint
+                                        )
+                                    } else {
+                                        // Minor tick in ruler header
+                                        drawLine(
+                                            color = gridColor.copy(alpha = 0.5f),
+                                            start = Offset(x, rulerH - 5.dp.toPx()),
+                                            end = Offset(x, rulerH),
+                                            strokeWidth = 1.dp.toPx()
+                                        )
                                     }
-                                    s += secStep
+                                    t += minorStepMs
                                 }
 
                                 // 2. Segment background bands
@@ -580,9 +634,19 @@ fun WaveformSegmentEditorDialog(
                                         val endIdx = (barTimeEnd / 50L).toInt().coerceIn(startIdx, waveformData.size - 1)
 
                                         var peakAmp = 0f
-                                        for (k in startIdx..endIdx) {
-                                            val a = waveformData[k].amplitude
-                                            if (a > peakAmp) peakAmp = a
+                                        if (startIdx == endIdx) {
+                                            // Smooth high-zoom linear interpolation between 50ms samples
+                                            val midTime = (barTimeStart + barTimeEnd) / 2f
+                                            val frac = ((midTime - startIdx * 50f) / 50f).coerceIn(0f, 1f)
+                                            val a1 = waveformData[startIdx].amplitude
+                                            val a2 = if (startIdx < waveformData.size - 1) waveformData[startIdx + 1].amplitude else a1
+                                            peakAmp = a1 * (1f - frac) + a2 * frac
+                                        } else {
+                                            // Peak aggregation across 50ms points
+                                            for (k in startIdx..endIdx) {
+                                                val a = waveformData[k].amplitude
+                                                if (a > peakAmp) peakAmp = a
+                                            }
                                         }
 
                                         val boosted = (peakAmp * waveformGain).coerceIn(0f, 1f)
@@ -770,21 +834,41 @@ fun WaveformSegmentEditorDialog(
                                         Text(Loc.getText("play_segment_preview"), fontSize = 10.sp)
                                     }
 
-                                    // Nudge backward
+                                    // Nudge backward 50ms
                                     FilledTonalButton(
                                         onClick = { nudgeSelectedCut(-50L) },
                                         shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                        contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp),
                                         modifier = Modifier.height(28.dp).testTag("btn_nudge_backward")
                                     ) {
                                         Text("-50ms", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                     }
 
-                                    // Nudge forward
+                                    // Micro-nudge backward 10ms
+                                    FilledTonalButton(
+                                        onClick = { nudgeSelectedCut(-10L) },
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(28.dp).testTag("btn_nudge_back_10ms")
+                                    ) {
+                                        Text("-10ms", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    // Micro-nudge forward 10ms
+                                    FilledTonalButton(
+                                        onClick = { nudgeSelectedCut(10L) },
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(28.dp).testTag("btn_nudge_fwd_10ms")
+                                    ) {
+                                        Text("+10ms", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    // Nudge forward 50ms
                                     FilledTonalButton(
                                         onClick = { nudgeSelectedCut(50L) },
                                         shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                        contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp),
                                         modifier = Modifier.height(28.dp).testTag("btn_nudge_forward")
                                     ) {
                                         Text("+50ms", fontSize = 10.sp, fontWeight = FontWeight.Bold)
