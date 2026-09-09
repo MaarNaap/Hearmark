@@ -5,8 +5,11 @@ import android.graphics.Typeface
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -85,11 +88,37 @@ fun WaveformSegmentEditorDialog(
     var selectedCutIndex by remember { mutableStateOf<Int?>(null) }
     var followPlayhead by remember { mutableStateOf(true) }
 
-    // Zoom level states: 1.0x (Fit entire audio on screen), 2.0x, 4.0x, 8.0x, 16.0x, 32.0x, 64.0x
-    val zoomLevels = remember { listOf(1.0f, 2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f) }
+    // Zoom level states: 1.0x (Fit entire audio on screen), 2.0x, 4.0x, 8.0x, 16.0x, 32.0x, 64.0x, 128.0x (Ultra-wide)
+    val zoomLevels = remember { listOf(1.0f, 2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f, 128.0f) }
     var zoomIndex by remember { mutableIntStateOf(0) } // Default 0: 1x (Fit entire waveform)
     val currentZoom = zoomLevels[zoomIndex]
     var pendingFocusRatio by remember { mutableStateOf<Float?>(null) }
+
+    fun changeZoom(newIndex: Int, explicitFocusRatio: Float? = null) {
+        val bounded = newIndex.coerceIn(0, zoomLevels.lastIndex)
+        if (bounded == zoomIndex && explicitFocusRatio == null) return
+        val focusRatio = explicitFocusRatio ?: run {
+            val focusTimeMs = selectedCutIndex?.let { if (it in cuts.indices) cuts[it] else null } ?: currentPosition
+            if (effectiveDuration > 0) {
+                (focusTimeMs.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f)
+            } else 0f
+        }
+        zoomIndex = bounded
+        pendingFocusRatio = focusRatio
+    }
+
+    // Pinch-to-zoom state on waveform
+    var accumulatedPinchZoom by remember { mutableFloatStateOf(1f) }
+    val transformState = rememberTransformableState { zoomChange, _, _ ->
+        accumulatedPinchZoom *= zoomChange
+        if (accumulatedPinchZoom > 1.25f && zoomIndex < zoomLevels.lastIndex) {
+            changeZoom(zoomIndex + 1)
+            accumulatedPinchZoom = 1f
+        } else if (accumulatedPinchZoom < 0.78f && zoomIndex > 0) {
+            changeZoom(zoomIndex - 1)
+            accumulatedPinchZoom = 1f
+        }
+    }
 
     // Waveform data
     var waveformData by remember { mutableStateOf<List<WaveformPoint>>(emptyList()) }
@@ -114,17 +143,6 @@ fun WaveformSegmentEditorDialog(
 
     // Scroll state for zoomed waveform
     val horizontalScrollState = rememberScrollState()
-
-    fun changeZoom(newIndex: Int) {
-        val bounded = newIndex.coerceIn(0, zoomLevels.lastIndex)
-        if (bounded == zoomIndex) return
-        val focusTimeMs = selectedCutIndex?.let { if (it in cuts.indices) cuts[it] else null } ?: currentPosition
-        val focusRatio = if (effectiveDuration > 0) {
-            (focusTimeMs.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f)
-        } else 0f
-        zoomIndex = bounded
-        pendingFocusRatio = focusRatio
-    }
 
     // Auto-scroll to playhead when enabled and playing
     LaunchedEffect(currentPosition, isPlaying, followPlayhead, currentZoom) {
@@ -285,105 +303,169 @@ fun WaveformSegmentEditorDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Toolbar: Zoom controls & Playhead Following
-                Row(
+                // Toolbar: Zoom controls, Presets & Playhead Following
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
                         .padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Zoom Controls
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(
-                            text = Loc.getText("waveform_zoom") + ":",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        FilledTonalIconButton(
-                            onClick = { if (zoomIndex > 0) changeZoom(zoomIndex - 1) },
-                            enabled = zoomIndex > 0,
-                            modifier = Modifier.size(32.dp).testTag("btn_zoom_out")
-                        ) {
-                            Icon(Icons.Filled.Remove, contentDescription = Loc.getText("zoom_out"), modifier = Modifier.size(16.dp))
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.clickable { 
-                                if (zoomIndex == 0) changeZoom(2) else changeZoom(0) 
-                            }
+                        // Zoom Stepper Controls
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
-                                text = if (zoomIndex == 0) "1x (${Loc.getText("zoom_fit")})" else "${zoomLevels[zoomIndex].toInt()}x",
+                                text = Loc.getText("waveform_zoom") + ":",
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+
+                            FilledTonalIconButton(
+                                onClick = { if (zoomIndex > 0) changeZoom(zoomIndex - 1) },
+                                enabled = zoomIndex > 0,
+                                modifier = Modifier.size(30.dp).testTag("btn_zoom_out")
+                            ) {
+                                Icon(Icons.Filled.Remove, contentDescription = Loc.getText("zoom_out"), modifier = Modifier.size(15.dp))
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.clickable { 
+                                    if (zoomIndex == 0) changeZoom(4) else changeZoom(0) 
+                                }
+                            ) {
+                                val zoomLabel = when (zoomIndex) {
+                                    0 -> "1x (${Loc.getText("zoom_fit")})"
+                                    zoomLevels.lastIndex -> "128x (${Loc.getText("zoom_ultra")})"
+                                    zoomLevels.lastIndex - 1 -> "64x (${Loc.getText("zoom_wide")})"
+                                    else -> "${zoomLevels[zoomIndex].toInt()}x"
+                                }
+                                Text(
+                                    text = zoomLabel,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+
+                            FilledTonalIconButton(
+                                onClick = { if (zoomIndex < zoomLevels.lastIndex) changeZoom(zoomIndex + 1) },
+                                enabled = zoomIndex < zoomLevels.lastIndex,
+                                modifier = Modifier.size(30.dp).testTag("btn_zoom_in")
+                            ) {
+                                Icon(Icons.Filled.Add, contentDescription = Loc.getText("zoom_in"), modifier = Modifier.size(15.dp))
+                            }
                         }
 
-                        FilledTonalIconButton(
-                            onClick = { if (zoomIndex < zoomLevels.lastIndex) changeZoom(zoomIndex + 1) },
-                            enabled = zoomIndex < zoomLevels.lastIndex,
-                            modifier = Modifier.size(32.dp).testTag("btn_zoom_in")
+                        // Right side: Cut Count & Follow playhead chip
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Icon(Icons.Filled.Add, contentDescription = Loc.getText("zoom_in"), modifier = Modifier.size(16.dp))
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+                            ) {
+                                Text(
+                                    text = "${cuts.size} ${Loc.getText("cuts_label")}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+
+                            FilterChip(
+                                selected = followPlayhead,
+                                onClick = { followPlayhead = !followPlayhead },
+                                label = { 
+                                    Text(
+                                        text = Loc.getText("follow_playhead"), 
+                                        fontSize = 11.sp,
+                                        fontWeight = if (followPlayhead) FontWeight.Bold else FontWeight.Normal
+                                    ) 
+                                },
+                                leadingIcon = if (followPlayhead) {
+                                    { Icon(Icons.Filled.MyLocation, contentDescription = Loc.getText("follow_playhead_desc"), modifier = Modifier.size(12.dp)) }
+                                } else null,
+                                modifier = Modifier.height(30.dp)
+                            )
                         }
                     }
 
-                    // Cut Count & Follow playhead chip
+                    // Quick Zoom Presets row & Gesture hint
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text(
-                                text = "${cuts.size} ${Loc.getText("cuts_label")}",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            val presets = listOf(
+                                0 to Loc.getText("zoom_fit"),
+                                2 to "4x",
+                                4 to "16x",
+                                6 to "64x",
+                                7 to "128x"
                             )
+                            presets.forEach { (idx, label) ->
+                                val isSelected = (zoomIndex == idx)
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                                    modifier = Modifier.clickable { changeZoom(idx) }
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                                    )
+                                }
+                            }
                         }
 
-                        FilterChip(
-                            selected = followPlayhead,
-                            onClick = { followPlayhead = !followPlayhead },
-                            label = { 
-                                Text(
-                                    text = Loc.getText("follow_playhead"), 
-                                    fontSize = 11.sp,
-                                    fontWeight = if (followPlayhead) FontWeight.Bold else FontWeight.Normal
-                                ) 
-                            },
-                            leadingIcon = if (followPlayhead) {
-                                { Icon(Icons.Filled.MyLocation, contentDescription = Loc.getText("follow_playhead_desc"), modifier = Modifier.size(12.dp)) }
-                            } else null,
-                            modifier = Modifier.height(30.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.TouchApp,
+                                contentDescription = null,
+                                modifier = Modifier.size(12.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                            Text(
+                                text = Loc.getText("pinch_to_zoom_hint"),
+                                fontSize = 9.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                            )
+                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Safe canvas upper bound to keep within Android display list limits
-                val maxSafeCanvasWidthDp = 24000.dp
+                val maxSafeCanvasWidthDp = 36000.dp
 
                 BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(205.dp)
+                        .height(235.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
                         .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
@@ -441,10 +523,19 @@ fun WaveformSegmentEditorDialog(
 
                         val rulerTextPaint = remember(density) {
                             Paint().apply {
-                                color = android.graphics.Color.argb(160, 150, 150, 160)
+                                color = android.graphics.Color.argb(165, 140, 145, 155)
                                 textSize = with(density) { 9.dp.toPx() }
                                 isAntiAlias = true
                                 typeface = Typeface.MONOSPACE
+                            }
+                        }
+
+                        val segmentBadgePaint = remember(density) {
+                            Paint().apply {
+                                color = android.graphics.Color.argb(220, 30, 40, 60)
+                                textSize = with(density) { 8.5.dp.toPx() }
+                                isAntiAlias = true
+                                typeface = Typeface.DEFAULT_BOLD
                             }
                         }
 
@@ -452,25 +543,28 @@ fun WaveformSegmentEditorDialog(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .horizontalScroll(horizontalScrollState)
+                                .transformable(state = transformState)
                         ) {
                             val primaryColor = MaterialTheme.colorScheme.primary
                             val playheadColor = Color(0xFFE53935)
                             val cutColor = MaterialTheme.colorScheme.tertiary
                             val selectedCutColor = MaterialTheme.colorScheme.primary
                             val gridColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f)
+                            val silentBarColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.22f)
+                            val unplayedBarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.72f)
 
                             Canvas(
                                 modifier = Modifier
                                     .width(effectiveCanvasWidth)
                                     .fillMaxHeight()
-                                    .pointerInput(effectiveDuration, currentZoom) {
+                                    .pointerInput(effectiveDuration) {
                                         detectTapGestures { offset ->
                                             val clickedRatio = (offset.x / size.width).coerceIn(0f, 1f)
                                             val clickedMs = (clickedRatio * effectiveDuration).toLong()
                                             AudioPlayerManager.seekTo(clickedMs, isPhysicalTimestamp = false)
 
                                             // Check if tapped near an existing cut
-                                            val hitThresholdPx = 28.dp.toPx()
+                                            val hitThresholdPx = 32.dp.toPx()
                                             val hitIndex = cuts.indexOfFirst { cutMs ->
                                                 val cutX = (cutMs.toFloat() / effectiveDuration.toFloat()) * size.width
                                                 kotlin.math.abs(cutX - offset.x) <= hitThresholdPx
@@ -478,42 +572,38 @@ fun WaveformSegmentEditorDialog(
                                             selectedCutIndex = if (hitIndex >= 0) hitIndex else null
                                         }
                                     }
-                                    .pointerInput(effectiveDuration, currentZoom) {
-                                        detectDragGestures(
-                                            onDragStart = { offset ->
-                                                val hitThresholdPx = 32.dp.toPx()
-                                                val hitIndex = cuts.indexOfFirst { cutMs ->
-                                                    val cutX = (cutMs.toFloat() / effectiveDuration.toFloat()) * size.width
-                                                    kotlin.math.abs(cutX - offset.x) <= hitThresholdPx
-                                                }
-                                                if (hitIndex >= 0) {
-                                                    selectedCutIndex = hitIndex
-                                                }
-                                            },
-                                            onDrag = { change, _ ->
-                                                change.consume()
-                                                val idx = selectedCutIndex
-                                                if (idx != null && idx in cuts.indices) {
+                                    .pointerInput(effectiveDuration, cuts.size) {
+                                        awaitEachGesture {
+                                            val down = awaitFirstDown(requireUnconsumed = false)
+                                            val hitThresholdPx = 32.dp.toPx()
+                                            val hitIndex = cuts.indexOfFirst { cutMs ->
+                                                val cutX = (cutMs.toFloat() / effectiveDuration.toFloat()) * size.width
+                                                kotlin.math.abs(cutX - down.position.x) <= hitThresholdPx
+                                            }
+                                            if (hitIndex >= 0) {
+                                                selectedCutIndex = hitIndex
+                                                down.consume()
+                                                val pointerId = down.id
+                                                while (true) {
+                                                    val event = awaitPointerEvent()
+                                                    val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                                                    if (change.isConsumed || !change.pressed) break
+                                                    change.consume()
                                                     val newRatio = (change.position.x / size.width).coerceIn(0f, 1f)
                                                     val newMs = (newRatio * effectiveDuration).toLong()
-                                                    val prev = if (idx > 0) cuts[idx - 1] + 150L else 200L
-                                                    val next = if (idx < cuts.lastIndex) cuts[idx + 1] - 150L else effectiveDuration - 200L
-                                                    cuts[idx] = newMs.coerceIn(prev, next)
-                                                } else {
-                                                    // Dragging playhead
-                                                    val ratio = (change.position.x / size.width).coerceIn(0f, 1f)
-                                                    val targetMs = (ratio * effectiveDuration).toLong()
-                                                    AudioPlayerManager.seekTo(targetMs, isPhysicalTimestamp = false)
+                                                    val prev = if (hitIndex > 0) cuts[hitIndex - 1] + 100L else 100L
+                                                    val next = if (hitIndex < cuts.lastIndex) cuts[hitIndex + 1] - 100L else effectiveDuration - 100L
+                                                    cuts[hitIndex] = newMs.coerceIn(prev, next)
                                                 }
                                             }
-                                        )
+                                        }
                                     }
                             ) {
                                 val canvasW = size.width
                                 val canvasH = size.height
-                                val rulerH = 22.dp.toPx()
-                                val waveTop = rulerH + 4.dp.toPx()
-                                val waveH = canvasH - waveTop - 4.dp.toPx()
+                                val rulerH = 24.dp.toPx()
+                                val waveTop = rulerH + 6.dp.toPx()
+                                val waveH = canvasH - waveTop - 6.dp.toPx()
                                 val centerY = waveTop + (waveH / 2f)
 
                                 // Visible viewport culling window
@@ -525,11 +615,12 @@ fun WaveformSegmentEditorDialog(
                                 // 1. Time Ruler Grid & Exact Timestamps
                                 val pxPerSec = if (effectiveDuration > 0) canvasW / (effectiveDuration / 1000f) else 100f
                                 val (majorStepMs, minorStepMs) = when {
-                                    pxPerSec >= 1500f -> Pair(100L, 20L)    // 100ms major, 20ms minor ticks
-                                    pxPerSec >= 600f  -> Pair(250L, 50L)    // 250ms major, 50ms minor ticks
-                                    pxPerSec >= 250f  -> Pair(500L, 100L)   // 500ms major, 100ms minor ticks
-                                    pxPerSec >= 100f  -> Pair(1000L, 200L)  // 1s major, 200ms minor ticks
-                                    pxPerSec >= 40f   -> Pair(2000L, 500L)  // 2s major, 500ms minor ticks
+                                    pxPerSec >= 3000f -> Pair(50L, 10L)     // 50ms major, 10ms minor ticks (Ultra-wide zoom)
+                                    pxPerSec >= 1200f -> Pair(100L, 25L)    // 100ms major, 25ms minor ticks
+                                    pxPerSec >= 500f  -> Pair(250L, 50L)    // 250ms major, 50ms minor ticks
+                                    pxPerSec >= 200f  -> Pair(500L, 100L)   // 500ms major, 100ms minor ticks
+                                    pxPerSec >= 80f   -> Pair(1000L, 200L)  // 1s major, 200ms minor ticks
+                                    pxPerSec >= 35f   -> Pair(2000L, 500L)  // 2s major, 500ms minor ticks
                                     pxPerSec >= 15f   -> Pair(5000L, 1000L) // 5s major, 1s minor ticks
                                     pxPerSec >= 6f    -> Pair(15000L, 5000L)// 15s major, 5s minor ticks
                                     pxPerSec >= 2f    -> Pair(30000L, 10000L)// 30s major, 10s minor ticks
@@ -555,11 +646,18 @@ fun WaveformSegmentEditorDialog(
                                         )
                                         val minutes = t / 60000L
                                         val seconds = (t % 60000L) / 1000L
-                                        val timeLabel = if (majorStepMs < 1000L) {
-                                            val millis = (t % 1000L) / 100L
-                                            "$minutes:${if (seconds < 10) "0$seconds" else "$seconds"}.$millis"
-                                        } else {
-                                            "$minutes:${if (seconds < 10) "0$seconds" else "$seconds"}"
+                                        val timeLabel = when {
+                                            majorStepMs < 500L -> {
+                                                val millis = t % 1000L
+                                                String.format(java.util.Locale.US, "%d:%02d.%03d", minutes, seconds, millis)
+                                            }
+                                            majorStepMs < 1000L -> {
+                                                val millis = (t % 1000L) / 100L
+                                                "$minutes:${if (seconds < 10) "0$seconds" else "$seconds"}.$millis"
+                                            }
+                                            else -> {
+                                                "$minutes:${if (seconds < 10) "0$seconds" else "$seconds"}"
+                                            }
                                         }
                                         drawContext.canvas.nativeCanvas.drawText(
                                             timeLabel,
@@ -579,15 +677,16 @@ fun WaveformSegmentEditorDialog(
                                     t += minorStepMs
                                 }
 
-                                // 2. Segment background bands
+                                // 2. Segment background bands and labels
                                 var prevCutX = 0f
+                                var prevCutTimeMs = 0L
                                 cuts.forEachIndexed { i, cutMs ->
                                     val cutX = (cutMs.toFloat() / effectiveDuration.toFloat()) * canvasW
                                     if (cutX >= minVisibleX && prevCutX <= maxVisibleX) {
                                         val bandColor = if (i % 2 == 0) {
-                                            primaryColor.copy(alpha = 0.06f)
+                                            primaryColor.copy(alpha = 0.05f)
                                         } else {
-                                            Color(0xFF81C784).copy(alpha = 0.07f)
+                                            Color(0xFF4CAF50).copy(alpha = 0.06f)
                                         }
                                         val drawStart = prevCutX.coerceAtLeast(minVisibleX)
                                         val drawEnd = cutX.coerceAtMost(maxVisibleX)
@@ -598,8 +697,22 @@ fun WaveformSegmentEditorDialog(
                                                 size = Size(drawEnd - drawStart, waveH)
                                             )
                                         }
+
+                                        // Draw segment label if band is wide enough (> 48dp)
+                                        val segWidthPx = cutX - prevCutX
+                                        if (segWidthPx >= 48.dp.toPx() && (prevCutX + 4.dp.toPx()) in minVisibleX..maxVisibleX) {
+                                            val durationSec = (cutMs - prevCutTimeMs) / 1000f
+                                            val label = "S${i + 1} (${String.format(java.util.Locale.US, "%.1fs", durationSec)})"
+                                            drawContext.canvas.nativeCanvas.drawText(
+                                                label,
+                                                prevCutX + 6.dp.toPx(),
+                                                waveTop + 14.dp.toPx(),
+                                                segmentBadgePaint
+                                            )
+                                        }
                                     }
                                     prevCutX = cutX
+                                    prevCutTimeMs = cutMs
                                 }
                                 if (prevCutX < canvasW && canvasW >= minVisibleX && prevCutX <= maxVisibleX) {
                                     val drawStart = prevCutX.coerceAtLeast(minVisibleX)
@@ -611,19 +724,30 @@ fun WaveformSegmentEditorDialog(
                                             size = Size(drawEnd - drawStart, waveH)
                                         )
                                     }
+                                    val segWidthPx = canvasW - prevCutX
+                                    if (segWidthPx >= 48.dp.toPx() && (prevCutX + 4.dp.toPx()) in minVisibleX..maxVisibleX) {
+                                        val durationSec = (effectiveDuration - prevCutTimeMs) / 1000f
+                                        val label = "S${cuts.size + 1} (${String.format(java.util.Locale.US, "%.1fs", durationSec)})"
+                                        drawContext.canvas.nativeCanvas.drawText(
+                                            label,
+                                            prevCutX + 6.dp.toPx(),
+                                            waveTop + 14.dp.toPx(),
+                                            segmentBadgePaint
+                                        )
+                                    }
                                 }
 
                                 // 3. Subtle Center Baseline & High-Definition Waveform Bars
                                 drawLine(
-                                    color = primaryColor.copy(alpha = 0.20f),
+                                    color = primaryColor.copy(alpha = 0.18f),
                                     start = Offset(minVisibleX, centerY),
                                     end = Offset(maxVisibleX, centerY),
                                     strokeWidth = 1.dp.toPx()
                                 )
 
                                 if (waveformData.isNotEmpty()) {
-                                    val barWidthPx = 3.0.dp.toPx()
-                                    val barSpacingPx = 1.5.dp.toPx()
+                                    val barWidthPx = 3.2.dp.toPx()
+                                    val barSpacingPx = 1.8.dp.toPx()
                                     val barPitchPx = barWidthPx + barSpacingPx
 
                                     val totalBars = (canvasW / barPitchPx).toInt().coerceAtLeast(1)
@@ -659,14 +783,21 @@ fun WaveformSegmentEditorDialog(
                                         }
 
                                         val boosted = (peakAmp * waveformGain).coerceIn(0f, 1f)
-                                        val visualAmp = Math.pow(boosted.toDouble(), 0.65).toFloat().coerceIn(0.05f, 1.0f)
-                                        val barH = (visualAmp * (waveH / 2f) * 0.95f).coerceAtLeast(2.5.dp.toPx())
+                                        // Clear separation between speech presence and silence gap
+                                        val isSilentGap = boosted <= 0.08f
+                                        val visualAmp = if (isSilentGap) {
+                                            0.02f
+                                        } else {
+                                            val speechNorm = ((boosted - 0.08f) / 0.92f).coerceIn(0f, 1f)
+                                            (0.12f + 0.88f * Math.pow(speechNorm.toDouble(), 0.50).toFloat()).coerceIn(0.08f, 1.0f)
+                                        }
+                                        val barH = if (isSilentGap) 1.5.dp.toPx() else (visualAmp * (waveH / 2f) * 0.96f).coerceAtLeast(2.8.dp.toPx())
 
                                         val isPlayed = (barX <= curPlayheadX)
-                                        val barColor = if (isPlayed) {
-                                            primaryColor
-                                        } else {
-                                            primaryColor.copy(alpha = 0.65f)
+                                        val barColor = when {
+                                            isSilentGap -> silentBarColor
+                                            isPlayed -> primaryColor
+                                            else -> unplayedBarColor
                                         }
 
                                         drawLine(
@@ -686,25 +817,41 @@ fun WaveformSegmentEditorDialog(
                                         val isSelected = (selectedCutIndex == i)
                                         val flagColor = if (isSelected) selectedCutColor else cutColor
 
-                                        // Vertical dashed line
+                                        // Vertical line
                                         drawLine(
                                             color = flagColor,
-                                            start = Offset(cutX, waveTop),
+                                            start = Offset(cutX, rulerH),
                                             end = Offset(cutX, canvasH),
-                                            strokeWidth = if (isSelected) 2.5.dp.toPx() else 1.5.dp.toPx(),
-                                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
+                                            strokeWidth = if (isSelected) 2.6.dp.toPx() else 1.6.dp.toPx(),
+                                            pathEffect = if (isSelected) null else PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
                                         )
 
-                                        // Pin/Flag at top
+                                        // Pin handle at ruler
+                                        val pinY = rulerH / 2f
                                         drawCircle(
                                             color = flagColor,
-                                            radius = if (isSelected) 7.dp.toPx() else 5.dp.toPx(),
-                                            center = Offset(cutX, rulerH / 2f)
+                                            radius = if (isSelected) 8.dp.toPx() else 5.5.dp.toPx(),
+                                            center = Offset(cutX, pinY)
+                                        )
+
+                                        // Cut index number inside pin
+                                        val cutNumPaint = Paint().apply {
+                                            color = android.graphics.Color.WHITE
+                                            textSize = with(density) { 8.dp.toPx() }
+                                            typeface = Typeface.DEFAULT_BOLD
+                                            textAlign = Paint.Align.CENTER
+                                            isAntiAlias = true
+                                        }
+                                        drawContext.canvas.nativeCanvas.drawText(
+                                            "${i + 1}",
+                                            cutX,
+                                            pinY + with(density) { 3.dp.toPx() },
+                                            cutNumPaint
                                         )
                                     }
                                 }
 
-                                // 5. Playhead Line
+                                // 5. Playhead Line & Marker
                                 val playheadRatio = (currentPosition.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f)
                                 val playheadX = playheadRatio * canvasW
                                 if (playheadX in minVisibleX..maxVisibleX) {
@@ -712,11 +859,11 @@ fun WaveformSegmentEditorDialog(
                                         color = playheadColor,
                                         start = Offset(playheadX, 0f),
                                         end = Offset(playheadX, canvasH),
-                                        strokeWidth = 2.dp.toPx()
+                                        strokeWidth = 2.2.dp.toPx()
                                     )
                                     drawCircle(
                                         color = playheadColor,
-                                        radius = 6.dp.toPx(),
+                                        radius = 6.5.dp.toPx(),
                                         center = Offset(playheadX, rulerH / 2f)
                                     )
                                 }
@@ -1021,6 +1168,10 @@ fun WaveformSegmentEditorDialog(
                                     .clickable {
                                         selectedCutIndex = idx
                                         AudioPlayerManager.seekTo(startMs, isPhysicalTimestamp = false)
+                                        if (effectiveDuration > 0) {
+                                            val midMs = (startMs + cutMs) / 2f
+                                            pendingFocusRatio = (midMs / effectiveDuration.toFloat()).coerceIn(0f, 1f)
+                                        }
                                     }
                             ) {
                                 Row(
