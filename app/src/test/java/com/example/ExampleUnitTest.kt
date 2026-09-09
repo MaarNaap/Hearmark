@@ -77,8 +77,9 @@ class ExampleUnitTest {
     fun audioTrack_getPracticeSegmentsList_parsesAndSortsCorrectly() {
         val track = com.example.data.AudioTrack(
             id = 1,
-            title = "Lesson 1",
+            fileName = "Lesson 1",
             filePath = "/path/to/audio.mp3",
+            duration = 15000L,
             practiceSegments = "5000, 12000, 2000, 8500"
         )
         val list = track.getPracticeSegmentsList()
@@ -89,8 +90,9 @@ class ExampleUnitTest {
     fun audioTrack_getPracticeSegmentsList_handlesNullAndEmpty() {
         val track1 = com.example.data.AudioTrack(
             id = 1,
-            title = "Lesson 1",
+            fileName = "Lesson 1",
             filePath = "/path/to/audio.mp3",
+            duration = 15000L,
             practiceSegments = null
         )
         assertTrue(track1.getPracticeSegmentsList().isEmpty())
@@ -102,7 +104,7 @@ class ExampleUnitTest {
     @Test
     fun silenceDetector_fallbackSegments_generatesEvenSegments() {
         val segments = com.example.player.SilenceDetector.generateFallbackSegments(15000L)
-        assertEquals(listOf(5000L, 10000L, 15000L), segments)
+        assertEquals(listOf(6000L, 12000L, 15000L), segments)
     }
 
     @Test

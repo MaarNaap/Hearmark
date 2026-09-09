@@ -1,15 +1,21 @@
 package com.example
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import com.example.player.AudioPlayerManager
 import com.example.ui.AppNavigationContainer
@@ -19,6 +25,10 @@ import com.example.ui.theme.MyApplicationTheme
 class MainActivity : ComponentActivity() {
   private lateinit var viewModel: AppViewModel
 
+  private val notificationPermissionLauncher = registerForActivityResult(
+    ActivityResultContracts.RequestPermission()
+  ) { /* Permission result handled */ }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -27,12 +37,20 @@ class MainActivity : ComponentActivity() {
     
     handleIntent(intent)
     
-    if (android.os.Build.VERSION.SDK_INT >= 33) {
-      requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
-    }
-    
     enableEdgeToEdge()
     setContent {
+      LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+          if (ContextCompat.checkSelfPermission(
+              this@MainActivity,
+              Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+          ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+          }
+        }
+      }
+
       val isDarkTheme = when (viewModel.selectedTheme) {
         "light" -> false
         "dark" -> true

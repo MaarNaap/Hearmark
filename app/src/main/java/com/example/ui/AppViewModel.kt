@@ -421,12 +421,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // Periodic system folder scanner to verify files are present
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
+            delay(3000) // Delay first run so initial app startup and first frame draw complete smoothly
             while (true) {
                 checkFilesSanity()
                 // Sync dynamic task dependencies in background
                 syncAllDynamicTasks()
-                delay(12000)
+                delay(15000)
             }
         }
 
@@ -450,8 +451,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun syncAllDynamicTasks() {
-        val activeList = repository.dao.getActiveTasksFlow().firstOrNull() ?: return
+    private suspend fun syncAllDynamicTasks() = withContext(Dispatchers.IO) {
+        val activeList = repository.dao.getActiveTasksFlow().firstOrNull() ?: return@withContext
         for (task in activeList) {
             if (task.sourceType == "FOLDER" || task.sourceType == "PLAYLIST") {
                 repository.syncDynamicTaskTracks(task.id)
@@ -527,7 +528,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun checkFilesSanity() {
+    private suspend fun checkFilesSanity() = withContext(Dispatchers.IO) {
         // Fix any existing folder hierarchy links and clean folder names
         val allFolders = repository.getAllFoldersDirect()
         for (folder in allFolders) {
@@ -564,7 +565,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        val currentTracks = repository.dao.getAllTracksFlow().firstOrNull() ?: return
+        val currentTracks = repository.dao.getAllTracksFlow().firstOrNull() ?: return@withContext
         val allHistory = repository.dao.getPlaybackHistoryFlow().firstOrNull() ?: emptyList()
         val historyGrouped = allHistory.groupBy { it.trackId }
         

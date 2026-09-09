@@ -2532,7 +2532,7 @@ object AudioPlayerManager {
             while (System.currentTimeMillis() < endTime && _isPracticeMode.value && _isPracticePausing.value) {
                 val remaining = (endTime - System.currentTimeMillis()).coerceAtLeast(0L)
                 _practicePauseRemainingSeconds.value = remaining / 1000f
-                delay(50L)
+                delay(100L)
             }
             if (_isPracticeMode.value && _isPracticePausing.value) {
                 resumeFromPracticePause()
