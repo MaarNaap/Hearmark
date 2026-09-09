@@ -515,6 +515,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         AudioPlayerManager.reanalyzePracticeSegments(context, repository, silent = false)
     }
 
+    fun saveManualPracticeSegments(track: AudioTrack, boundaries: List<Long>, context: Context) {
+        AudioPlayerManager.saveManualPracticeSegments(context, track, boundaries)
+    }
+
     fun resetTrackSegments(track: AudioTrack) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.updateTrackPracticeSegments(track.id, null)

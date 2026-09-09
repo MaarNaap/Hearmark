@@ -87,6 +87,19 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun audioTrack_getPracticeSegmentsSource_identifiesManualSource() {
+        val track = com.example.data.AudioTrack(
+            id = 1,
+            fileName = "Manual Lesson",
+            filePath = "/path/to/audio.mp3",
+            duration = 15000L,
+            practiceSegments = "MAN:2500,6000,11000"
+        )
+        assertEquals("MANUAL", track.getPracticeSegmentsSource())
+        assertEquals(listOf(2500L, 6000L, 11000L), track.getPracticeSegmentsList())
+    }
+
+    @Test
     fun audioTrack_getPracticeSegmentsList_handlesNullAndEmpty() {
         val track1 = com.example.data.AudioTrack(
             id = 1,

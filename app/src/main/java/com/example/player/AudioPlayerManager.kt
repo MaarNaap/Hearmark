@@ -643,7 +643,11 @@ object AudioPlayerManager {
 
     fun setPracticeSettings(source: String, multiplier: Float) {
         val oldSource = segmentSource
-        segmentSource = if (source.equals("SUBTITLES", ignoreCase = true)) "SUBTITLES" else "SILENCE"
+        segmentSource = when (source.uppercase()) {
+            "SUBTITLES" -> "SUBTITLES"
+            "MANUAL" -> "MANUAL"
+            else -> "SILENCE"
+        }
         practicePauseMultiplier = multiplier.coerceIn(0.25f, 4.0f)
 
         if (!oldSource.equals(segmentSource, ignoreCase = true)) {
@@ -2198,10 +2202,19 @@ object AudioPlayerManager {
     }
 
     fun needsReanalysis(track: AudioTrack, context: Context? = null): Boolean {
+        if (segmentSource == "MANUAL") {
+            if (track.practiceSegments?.startsWith("MAN:") == true) return false
+            if (!track.practiceSegments.isNullOrBlank()) return false
+            return true
+        }
+
         val existing = track.getPracticeSegmentsList()
         if (existing.isEmpty()) return true
 
         val storedSource = track.getPracticeSegmentsSource()
+        if (storedSource == "MANUAL" && segmentSource != "MANUAL") {
+            return false
+        }
         // If stored source is known and differs from active source:
         if (storedSource != null && storedSource != segmentSource) {
             return true
@@ -2333,13 +2346,47 @@ object AudioPlayerManager {
 
             val boundaries: List<Long>
             val isSubtitleSource = (segmentSource == "SUBTITLES")
-            var usedSubtitle = false
+            val isManualSource = (segmentSource == "MANUAL")
+            var usedPrefix = "SIL:"
 
-            if (isSubtitleSource) {
+            if (isManualSource) {
+                if (track.practiceSegments?.startsWith("MAN:") == true) {
+                    val existing = track.getPracticeSegmentsList()
+                    if (existing.isNotEmpty()) {
+                        withContext(Dispatchers.Main) {
+                            _currentPracticeSegments.value = existing
+                            _isPracticeAnalyzing.value = false
+                            resetPracticeSegmentTracking(_currentPosition.value)
+                            onComplete?.invoke(existing.size)
+                        }
+                        return
+                    }
+                }
+                val existing = track.getPracticeSegmentsList()
+                boundaries = if (existing.isNotEmpty()) {
+                    existing
+                } else {
+                    SilenceDetector.detectBoundaries(
+                        context = context,
+                        filePath = track.filePath,
+                        totalDurationMs = effectiveDuration,
+                        sensitivity = silenceSensitivity,
+                        minSilenceMs = silenceMinDurationMs,
+                        tailPaddingMs = silencePaddingMs
+                    )
+                }
+                usedPrefix = "MAN:"
+                if (!silent) {
+                    withContext(Dispatchers.Main) {
+                        val msg = String.format(java.util.Locale.US, Loc.getText("manual_segments_count"), boundaries.size)
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } else if (isSubtitleSource) {
                 val subBoundaries = extractSubtitleBoundaries(track, effectiveDuration)
                 if (subBoundaries.isNotEmpty()) {
                     boundaries = subBoundaries
-                    usedSubtitle = true
+                    usedPrefix = "SUB:"
                     if (!silent) {
                         withContext(Dispatchers.Main) {
                             val msg = String.format(java.util.Locale.US, Loc.getText("segments_created_from_subtitles_count"), subBoundaries.size)
@@ -2360,6 +2407,7 @@ object AudioPlayerManager {
                         minSilenceMs = silenceMinDurationMs,
                         tailPaddingMs = silencePaddingMs
                     )
+                    usedPrefix = "SIL:"
                 }
             } else {
                 boundaries = SilenceDetector.detectBoundaries(
@@ -2370,6 +2418,7 @@ object AudioPlayerManager {
                     minSilenceMs = silenceMinDurationMs,
                     tailPaddingMs = silencePaddingMs
                 )
+                usedPrefix = "SIL:"
                 if (!silent) {
                     withContext(Dispatchers.Main) {
                         val msg = String.format(java.util.Locale.US, Loc.getText("segments_created_from_silence_count"), boundaries.size)
@@ -2378,8 +2427,7 @@ object AudioPlayerManager {
                 }
             }
 
-            val prefix = if (usedSubtitle) "SUB:" else "SIL:"
-            val segmentsStr = prefix + boundaries.joinToString(",")
+            val segmentsStr = usedPrefix + boundaries.joinToString(",")
             targetRepo.updateTrackPracticeSegments(track.id, segmentsStr)
             updateTrackState { it.copy(practiceSegments = segmentsStr) }
 
@@ -2406,6 +2454,25 @@ object AudioPlayerManager {
         val track = currentTrackValue ?: return
         coroutineScope.launch(Dispatchers.IO) {
             reanalyzePracticeSegmentsInternal(track, context, repository, silent, onComplete)
+        }
+    }
+
+    fun saveManualPracticeSegments(context: Context, track: AudioTrack, boundaries: List<Long>) {
+        val sorted = boundaries.filter { it > 0 }.distinct().sorted()
+        val segmentsStr = "MAN:" + sorted.joinToString(",")
+        val repo = repository
+        coroutineScope.launch(Dispatchers.IO) {
+            repo?.updateTrackPracticeSegments(track.id, segmentsStr)
+            updateTrackState { it.copy(practiceSegments = segmentsStr) }
+            withContext(Dispatchers.Main) {
+                _currentPracticeSegments.value = sorted
+                resetPracticeSegmentTracking(_currentPosition.value)
+                Toast.makeText(
+                    context,
+                    String.format(java.util.Locale.US, Loc.getText("manual_cuts_saved"), sorted.size),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
     }
 

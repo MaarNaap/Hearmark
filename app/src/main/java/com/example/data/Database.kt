@@ -47,6 +47,7 @@ data class AudioTrack(
         return when {
             practiceSegments.startsWith("SUB:") -> "SUBTITLES"
             practiceSegments.startsWith("SIL:") -> "SILENCE"
+            practiceSegments.startsWith("MAN:") -> "MANUAL"
             else -> null
         }
     }

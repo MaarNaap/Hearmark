@@ -12,6 +12,11 @@ import java.io.File
 import java.nio.ByteOrder
 import kotlin.math.sqrt
 
+data class WaveformPoint(
+    val timeMs: Long,
+    val amplitude: Float // 0.0f .. 1.0f normalized amplitude
+)
+
 object SilenceDetector {
     private const val TAG = "SilenceDetector"
 
@@ -21,6 +26,35 @@ object SilenceDetector {
     private const val MIN_SEGMENT_DURATION_MS = 2000L // At least 2.0s for a speech segment
     private const val MAX_SEGMENT_DURATION_MS = 18000L // Up to 18s natural sentence before looking for pause
     private const val FALLBACK_SEGMENT_DURATION_MS = 6000L // 6s segments if decoding fails
+
+    private val waveformCache = java.util.concurrent.ConcurrentHashMap<String, List<WaveformPoint>>()
+
+    fun getCachedWaveform(filePath: String): List<WaveformPoint>? = waveformCache[filePath]
+
+    suspend fun extractWaveform(
+        context: Context,
+        filePath: String,
+        totalDurationMs: Long
+    ): List<WaveformPoint> = withContext(Dispatchers.Default) {
+        waveformCache[filePath]?.let { return@withContext it }
+        try {
+            analyzeAudioPcmSilence(context, filePath, totalDurationMs, "MEDIUM", DEFAULT_MIN_SILENCE_MS, DEFAULT_TAIL_PADDING_MS)
+            waveformCache[filePath]?.let { return@withContext it }
+        } catch (e: Exception) {
+            Log.w(TAG, "Waveform extraction failed: ${e.message}")
+        }
+        // Fallback waveform if decoding fails
+        val dur = if (totalDurationMs > 0) totalDurationMs else 30000L
+        val fallback = mutableListOf<WaveformPoint>()
+        var t = 0L
+        while (t < dur) {
+            val amp = (0.15f + 0.65f * kotlin.math.abs(kotlin.math.sin(t.toDouble() / 320.0).toFloat()))
+            fallback.add(WaveformPoint(t, amp))
+            t += WINDOW_MS
+        }
+        waveformCache[filePath] = fallback
+        fallback
+    }
 
     suspend fun detectBoundaries(
         context: Context,
@@ -228,6 +262,17 @@ object SilenceDetector {
             if (currentWindowSampleCount > 0) {
                 val rms = sqrt(currentWindowSumSquares / currentWindowSampleCount)
                 windows.add(AudioWindow(timeMs = currentWindowStartMs, rms = rms))
+            }
+
+            if (windows.isNotEmpty()) {
+                val maxRms = windows.maxOfOrNull { it.rms }?.coerceAtLeast(1.0) ?: 1.0
+                val points = windows.map { w ->
+                    WaveformPoint(
+                        timeMs = w.timeMs,
+                        amplitude = (w.rms / maxRms).toFloat().coerceIn(0.02f, 1.0f)
+                    )
+                }
+                waveformCache[filePath] = points
             }
 
             return extractBoundariesFromWindows(windows, resolvedDurationMs, sensitivity, minSilenceMs, tailPaddingMs)

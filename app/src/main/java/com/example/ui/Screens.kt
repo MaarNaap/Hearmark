@@ -4001,6 +4001,7 @@ fun AudioPlayerOverlay(
     var showDeleteSubtitleConfirmDialog by remember { mutableStateOf(false) }
     var isEditingExistingSubtitles by remember { mutableStateOf(false) }
     var subtitlePasteText by remember { mutableStateOf("") }
+    var showWaveformEditorDialog by remember { mutableStateOf(false) }
 
     val isVideoTrackState by AudioPlayerManager.isVideoTrack.collectAsStateWithLifecycle()
     val isTrackVideo = remember(track.filePath, isVideoTrackState) {
@@ -4572,6 +4573,24 @@ fun AudioPlayerOverlay(
                                     showPlayerMenu = false
                                     Toast.makeText(context, Loc.getText("practice_mode_reanalyzing"), Toast.LENGTH_SHORT).show()
                                     AudioPlayerManager.togglePracticeMode(context, viewModel.repository, forceReanalyze = true)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Filled.GraphicEq,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(Loc.getText("open_waveform_editor"))
+                                    }
+                                },
+                                onClick = {
+                                    showPlayerMenu = false
+                                    showWaveformEditorDialog = true
                                 }
                             )
                         }
@@ -5569,9 +5588,7 @@ fun AudioPlayerOverlay(
                                             }
                                         },
                                         onLongClick = {
-                                            val repo = viewModel.repository
-                                            Toast.makeText(context, Loc.getText("practice_mode_reanalyzing"), Toast.LENGTH_SHORT).show()
-                                            AudioPlayerManager.togglePracticeMode(context, repo, forceReanalyze = true)
+                                            showWaveformEditorDialog = true
                                         }
                                     ),
                                 contentAlignment = Alignment.Center
@@ -5890,6 +5907,14 @@ fun AudioPlayerOverlay(
                         }
                     }
                 }
+            }
+
+            if (showWaveformEditorDialog) {
+                WaveformSegmentEditorDialog(
+                    track = track,
+                    viewModel = viewModel,
+                    onDismiss = { showWaveformEditorDialog = false }
+                )
             }
 
             if (showSubtitlePasteDialog) {
@@ -9222,6 +9247,8 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
     var silenceSensitivity by remember { mutableStateOf(viewModel.silenceSensitivitySetting) }
     var silenceMinDuration by remember { mutableStateOf(viewModel.silenceMinDurationSetting) }
     var silencePadding by remember { mutableStateOf(viewModel.silencePaddingSetting) }
+    var showWaveformDialogInSettings by remember { mutableStateOf(false) }
+    val currentPlayingTrack by AudioPlayerManager.currentTrack.collectAsStateWithLifecycle()
 
     val playbackHistoryList by viewModel.playbackHistory.collectAsStateWithLifecycle()
     var showClearDialog by remember { mutableStateOf(false) }
@@ -9487,7 +9514,8 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
 
                 listOf(
                     "SILENCE" to Loc.getText("segment_source_silence"),
-                    "SUBTITLES" to Loc.getText("segment_source_subtitles")
+                    "SUBTITLES" to Loc.getText("segment_source_subtitles"),
+                    "MANUAL" to Loc.getText("segment_source_manual")
                 ).forEach { (sourceKey, sourceLabel) ->
                     Row(
                         modifier = Modifier
@@ -9504,6 +9532,31 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
                             text = sourceLabel,
                             modifier = Modifier.padding(start = 8.dp),
                             fontSize = 12.sp
+                        )
+                    }
+                }
+
+                if (segmentSource.equals("MANUAL", ignoreCase = true)) {
+                    val trackForWaveform = currentPlayingTrack
+                    if (trackForWaveform != null) {
+                        OutlinedButton(
+                            onClick = { showWaveformDialogInSettings = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp)
+                                .testTag("btn_open_waveform_editor_settings"),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Filled.GraphicEq, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(Loc.getText("open_waveform_editor"), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    } else {
+                        Text(
+                            text = Loc.getText("manual_segments_desc"),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp, start = 4.dp)
                         )
                     }
                 }
@@ -10093,6 +10146,16 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
             )
         }
 
+        if (showWaveformDialogInSettings) {
+            val trackForWaveform = currentPlayingTrack
+            if (trackForWaveform != null) {
+                WaveformSegmentEditorDialog(
+                    track = trackForWaveform,
+                    viewModel = viewModel,
+                    onDismiss = { showWaveformDialogInSettings = false }
+                )
+            }
+        }
     }
 }
 
