@@ -31,6 +31,14 @@ object SilenceDetector {
 
     fun getCachedWaveform(filePath: String): List<WaveformPoint>? = waveformCache[filePath]
 
+    fun clearWaveformCacheFor(filePath: String) {
+        waveformCache.remove(filePath)
+    }
+
+    fun clearWaveformCache() {
+        waveformCache.clear()
+    }
+
     suspend fun extractWaveform(
         context: Context,
         filePath: String,
@@ -265,11 +273,30 @@ object SilenceDetector {
             }
 
             if (windows.isNotEmpty()) {
-                val maxRms = windows.maxOfOrNull { it.rms }?.coerceAtLeast(1.0) ?: 1.0
+                val nonZeroRms = windows.map { it.rms }.filter { it > 1.0 }.sorted()
+                // Use 92nd-95th percentile to disregard isolated plosive clicks/pops
+                val p95Index = if (nonZeroRms.isNotEmpty()) {
+                    (nonZeroRms.size * 0.95).toInt().coerceIn(0, nonZeroRms.size - 1)
+                } else 0
+                val speechPeakRms = if (nonZeroRms.isNotEmpty()) nonZeroRms[p95Index] else 100.0
+                val refRms = (speechPeakRms * 1.15).coerceAtLeast(10.0)
+
+                // 15th percentile for noise floor
+                val p15Index = if (nonZeroRms.isNotEmpty()) {
+                    (nonZeroRms.size * 0.15).toInt().coerceIn(0, nonZeroRms.size - 1)
+                } else 0
+                val noiseFloor = if (nonZeroRms.isNotEmpty()) nonZeroRms[p15Index] else 0.0
+
                 val points = windows.map { w ->
+                    val amp = if (w.rms <= noiseFloor * 1.15) {
+                        0.05f
+                    } else {
+                        val norm = ((w.rms - noiseFloor) / (refRms - noiseFloor).coerceAtLeast(5.0)).coerceIn(0.0, 1.5)
+                        (0.08f + 0.90f * Math.pow(norm, 0.55).toFloat()).coerceIn(0.05f, 1.0f)
+                    }
                     WaveformPoint(
                         timeMs = w.timeMs,
-                        amplitude = (w.rms / maxRms).toFloat().coerceIn(0.02f, 1.0f)
+                        amplitude = amp
                     )
                 }
                 waveformCache[filePath] = points

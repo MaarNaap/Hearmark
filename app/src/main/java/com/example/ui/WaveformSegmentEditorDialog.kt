@@ -21,6 +21,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -79,8 +80,8 @@ fun WaveformSegmentEditorDialog(
     var selectedCutIndex by remember { mutableStateOf<Int?>(null) }
     var followPlayhead by remember { mutableStateOf(true) }
 
-    // Zoom level states (1.0x to 16.0x)
-    val zoomLevels = remember { listOf(1.0f, 2.0f, 4.0f, 8.0f, 16.0f) }
+    // Zoom level states (1.0x to 32.0x)
+    val zoomLevels = remember { listOf(1.0f, 2.0f, 4.0f, 8.0f, 16.0f, 32.0f) }
     var zoomIndex by remember { mutableIntStateOf(1) } // Default 2.0x
     val currentZoom = zoomLevels[zoomIndex]
 
@@ -91,11 +92,13 @@ fun WaveformSegmentEditorDialog(
     LaunchedEffect(track.filePath) {
         isLoadingWaveform = true
         val cached = SilenceDetector.getCachedWaveform(track.filePath)
-        if (cached != null && cached.isNotEmpty()) {
+        // If cached data exists and has rich amplitude (> 0.30f peak), use it; otherwise re-extract
+        if (cached != null && cached.isNotEmpty() && cached.any { it.amplitude >= 0.30f }) {
             waveformData = cached
             isLoadingWaveform = false
         } else {
             withContext(Dispatchers.IO) {
+                SilenceDetector.clearWaveformCacheFor(track.filePath)
                 val extracted = SilenceDetector.extractWaveform(context, track.filePath, effectiveDuration)
                 waveformData = extracted
             }
@@ -373,13 +376,13 @@ fun WaveformSegmentEditorDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Waveform Display Container with strict safe canvas bounds
-                val maxSafeCanvasWidthDp = 3800.dp
+                // Waveform Display Container with safe canvas bounds
+                val maxSafeCanvasWidthDp = 5000.dp
 
                 BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(170.dp)
+                        .height(205.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
                         .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
@@ -403,6 +406,18 @@ fun WaveformSegmentEditorDialog(
                                 containerWidthDp
                             } else {
                                 (containerWidthDp * currentZoom).coerceIn(containerWidthDp, maxSafeCanvasWidthDp)
+                            }
+                        }
+
+                        // Auto-gain safeguard so speech waveforms are always big, clear, and prominent
+                        val observedMaxAmp = remember(waveformData) {
+                            waveformData.maxOfOrNull { it.amplitude } ?: 1.0f
+                        }
+                        val waveformGain = remember(observedMaxAmp) {
+                            if (observedMaxAmp < 0.40f && observedMaxAmp > 0.001f) {
+                                (0.92f / observedMaxAmp).coerceAtMost(12.0f)
+                            } else {
+                                1.0f
                             }
                         }
 
@@ -535,23 +550,59 @@ fun WaveformSegmentEditorDialog(
                                     }
                                 }
 
-                                // 3. Waveform bars
-                                if (waveformData.isNotEmpty()) {
-                                    val barWidth = (canvasW / waveformData.size.toFloat()).coerceIn(1.5f, 8f)
-                                    val step = (waveformData.size / (canvasW / barWidth).toInt()).coerceIn(1, 20)
+                                // 3. Subtle Center Baseline & High-Definition Waveform Bars
+                                drawLine(
+                                    color = primaryColor.copy(alpha = 0.20f),
+                                    start = Offset(minVisibleX, centerY),
+                                    end = Offset(maxVisibleX, centerY),
+                                    strokeWidth = 1.dp.toPx()
+                                )
 
-                                    for (i in waveformData.indices step step) {
-                                        val point = waveformData[i]
-                                        val x = (point.timeMs.toFloat() / effectiveDuration.toFloat()) * canvasW
-                                        if (x in minVisibleX..maxVisibleX) {
-                                            val barH = (point.amplitude * (waveH / 2f) * 0.95f).coerceAtLeast(2f)
-                                            drawLine(
-                                                color = primaryColor.copy(alpha = 0.75f),
-                                                start = Offset(x, centerY - barH),
-                                                end = Offset(x, centerY + barH),
-                                                strokeWidth = barWidth.coerceAtMost(3.dp.toPx())
-                                            )
+                                if (waveformData.isNotEmpty()) {
+                                    val barWidthPx = 3.0.dp.toPx()
+                                    val barSpacingPx = 1.5.dp.toPx()
+                                    val barPitchPx = barWidthPx + barSpacingPx
+
+                                    val totalBars = (canvasW / barPitchPx).toInt().coerceAtLeast(1)
+                                    val msPerBar = effectiveDuration.toFloat() / totalBars.toFloat()
+
+                                    val firstVisibleBar = ((minVisibleX / barPitchPx).toInt() - 1).coerceAtLeast(0)
+                                    val lastVisibleBar = ((maxVisibleX / barPitchPx).toInt() + 1).coerceAtMost(totalBars - 1)
+
+                                    val curPlayheadX = (currentPosition.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f) * canvasW
+
+                                    for (b in firstVisibleBar..lastVisibleBar) {
+                                        val barX = b * barPitchPx + (barWidthPx / 2f)
+                                        val barTimeStart = (b * msPerBar).toLong()
+                                        val barTimeEnd = ((b + 1) * msPerBar).toLong()
+
+                                        val startIdx = (barTimeStart / 50L).toInt().coerceIn(0, waveformData.size - 1)
+                                        val endIdx = (barTimeEnd / 50L).toInt().coerceIn(startIdx, waveformData.size - 1)
+
+                                        var peakAmp = 0f
+                                        for (k in startIdx..endIdx) {
+                                            val a = waveformData[k].amplitude
+                                            if (a > peakAmp) peakAmp = a
                                         }
+
+                                        val boosted = (peakAmp * waveformGain).coerceIn(0f, 1f)
+                                        val visualAmp = Math.pow(boosted.toDouble(), 0.65).toFloat().coerceIn(0.05f, 1.0f)
+                                        val barH = (visualAmp * (waveH / 2f) * 0.95f).coerceAtLeast(2.5.dp.toPx())
+
+                                        val isPlayed = (barX <= curPlayheadX)
+                                        val barColor = if (isPlayed) {
+                                            primaryColor
+                                        } else {
+                                            primaryColor.copy(alpha = 0.65f)
+                                        }
+
+                                        drawLine(
+                                            color = barColor,
+                                            start = Offset(barX, centerY - barH),
+                                            end = Offset(barX, centerY + barH),
+                                            strokeWidth = barWidthPx,
+                                            cap = StrokeCap.Round
+                                        )
                                     }
                                 }
 
