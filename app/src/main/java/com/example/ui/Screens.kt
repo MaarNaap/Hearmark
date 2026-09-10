@@ -4650,70 +4650,98 @@ fun AudioPlayerOverlay(
                             maxLength = 32
                         )
 
-                        // Play count & Registered Note Indicator
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Headphones,
-                                contentDescription = null,
-                                modifier = Modifier.size(13.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "${track.playCount}",
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                                fontWeight = FontWeight.Medium
-                            )
-
-                            val activeNotesForTime = remember(trackNotes, subtitlesCuesState, playPositionState) {
-                                if (subtitlesCuesState.isNotEmpty()) {
-                                    val currentActiveCue = subtitlesCuesState.find { cue ->
-                                        val cueEnd = if (cue.endMs > cue.startMs) cue.endMs else cue.startMs + 4000L
-                                        playPositionState in cue.startMs..cueEnd
-                                    }
-                                    if (currentActiveCue != null) {
-                                        trackNotes.filter { note ->
-                                            SubtitleParser.findDedicatedCueForNote(note, subtitlesCuesState) == currentActiveCue
-                                        }
-                                    } else {
-                                        emptyList()
+                        // Play count & Registered Note Indicator (Steady layout without shifts)
+                        val activeNotesForTime = remember(trackNotes, subtitlesCuesState, playPositionState) {
+                            if (subtitlesCuesState.isNotEmpty()) {
+                                val currentActiveCue = subtitlesCuesState.find { cue ->
+                                    val cueEnd = if (cue.endMs > cue.startMs) cue.endMs else cue.startMs + 4000L
+                                    playPositionState in cue.startMs..cueEnd
+                                }
+                                if (currentActiveCue != null) {
+                                    trackNotes.filter { note ->
+                                        SubtitleParser.findDedicatedCueForNote(note, subtitlesCuesState) == currentActiveCue
                                     }
                                 } else {
-                                    trackNotes.filter { note ->
-                                        val s = note.originStartMs ?: note.startTimestampMs
-                                        val e = s + 3000L
-                                        playPositionState in s..e
-                                    }
+                                    emptyList()
+                                }
+                            } else {
+                                trackNotes.filter { note ->
+                                    val s = note.originStartMs ?: note.startTimestampMs
+                                    val e = s + 3000L
+                                    playPositionState in s..e
                                 }
                             }
+                        }
 
-                            if (activeNotesForTime.isNotEmpty()) {
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .clickable { onOpenNotes(activeNotesForTime) }
-                                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.EditNote,
-                                        contentDescription = Loc.getText("view_note"),
-                                        modifier = Modifier.size(14.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        text = if (activeNotesForTime.size > 1) "${Loc.getText("notes")} (${activeNotesForTime.size})" else Loc.getText("notes"),
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(26.dp)
+                                .padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Left balancing space to ensure play count is always rock-steady centered
+                            Spacer(modifier = Modifier.weight(1f))
+
+                            // Center Play Count Indicator - perfectly stationary
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Headphones,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(13.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "${track.playCount}",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+
+                            // Right space for Note Indicator - appears next to play count without shifting anything
+                            val isNoteActive = activeNotesForTime.isNotEmpty()
+                            val noteAlpha by animateFloatAsState(
+                                targetValue = if (isNoteActive) 1f else 0f,
+                                animationSpec = tween(220),
+                                label = "noteAlpha"
+                            )
+                            Box(
+                                modifier = Modifier.weight(1f),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                if (isNoteActive || noteAlpha > 0.01f) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .padding(start = 6.dp)
+                                            .graphicsLayer { alpha = noteAlpha }
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f * noteAlpha))
+                                            .clickable(enabled = isNoteActive) { onOpenNotes(activeNotesForTime) }
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.EditNote,
+                                            contentDescription = Loc.getText("view_note"),
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = if (activeNotesForTime.size > 1) "${Loc.getText("notes")} (${activeNotesForTime.size})" else Loc.getText("notes"),
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
                         }
