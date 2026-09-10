@@ -106,6 +106,8 @@ object Loc {
         "zoom_fit" to mapOf("en" to "Fit", "ar" to "ملائمة"),
         "zoom_wide" to mapOf("en" to "Wide", "ar" to "عريض"),
         "zoom_ultra" to mapOf("en" to "Ultra", "ar" to "فائق"),
+        "zoom_hyper" to mapOf("en" to "Hyper", "ar" to "موسع"),
+        "zoom_extreme" to mapOf("en" to "Max Stretch", "ar" to "أقصى تمدد"),
         "pinch_to_zoom_hint" to mapOf("en" to "Pinch waveform to zoom", "ar" to "باعِد الأصابع للتقريب"),
         "cuts_label" to mapOf("en" to "cuts", "ar" to "وقفة"),
         "follow_playhead" to mapOf("en" to "Follow", "ar" to "تتبع"),

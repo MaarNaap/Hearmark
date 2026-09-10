@@ -88,23 +88,39 @@ fun WaveformSegmentEditorDialog(
     var selectedCutIndex by remember { mutableStateOf<Int?>(null) }
     var followPlayhead by remember { mutableStateOf(true) }
 
-    // Zoom level states: 1.0x (Fit entire audio on screen), 2.0x, 4.0x, 8.0x, 16.0x, 32.0x, 64.0x, 128.0x (Ultra-wide)
-    val zoomLevels = remember { listOf(1.0f, 2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f, 128.0f) }
-    var zoomIndex by remember { mutableIntStateOf(0) } // Default 0: 1x (Fit entire waveform)
-    val currentZoom = zoomLevels[zoomIndex]
-    var pendingFocusRatio by remember { mutableStateOf<Float?>(null) }
+    // Zoom level states defined by physical scale: dp of width per 1 second of audio
+    // 1x (Default Wide) is 180 dp/sec where every single second is stretched wide across 180dp of screen space
+    data class WaveformZoomSetting(
+        val id: String,
+        val dpPerSec: Float, // dp width per 1 second of audio; -1f for Fit whole file
+        val labelKey: String,
+        val displayLabel: String
+    )
 
-    fun changeZoom(newIndex: Int, explicitFocusRatio: Float? = null) {
+    val zoomLevels = remember {
+        listOf(
+            WaveformZoomSetting("fit", -1f, "zoom_fit", "Fit"),
+            WaveformZoomSetting("0.5x", 90f, "zoom_out", "0.5x"),
+            WaveformZoomSetting("1x", 180f, "zoom_wide", "1x (Wide)"), // Default: matches previous 128x ultra-wide
+            WaveformZoomSetting("1.5x", 270f, "zoom_wide", "1.5x"),
+            WaveformZoomSetting("2x", 360f, "zoom_hyper", "2x (Hyper)"), // 360 dp/sec -> 1 full screen = 1 sec
+            WaveformZoomSetting("3x", 540f, "zoom_hyper", "3x"),
+            WaveformZoomSetting("5x", 900f, "zoom_extreme", "5x (Max)") // 900 dp/sec -> maximum stretch
+        )
+    }
+    var zoomIndex by remember { mutableIntStateOf(2) } // Default: index 2 -> 1x (Wide: 180 dp/sec)
+    val currentZoomSetting = zoomLevels[zoomIndex]
+    var pendingFocusMs by remember { mutableStateOf<Long?>(null) }
+    var scrollOffsetPx by remember { mutableDoubleStateOf(0.0) }
+
+    fun changeZoom(newIndex: Int, explicitFocusMs: Long? = null) {
         val bounded = newIndex.coerceIn(0, zoomLevels.lastIndex)
-        if (bounded == zoomIndex && explicitFocusRatio == null) return
-        val focusRatio = explicitFocusRatio ?: run {
-            val focusTimeMs = selectedCutIndex?.let { if (it in cuts.indices) cuts[it] else null } ?: currentPosition
-            if (effectiveDuration > 0) {
-                (focusTimeMs.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f)
-            } else 0f
+        if (bounded == zoomIndex && explicitFocusMs == null) return
+        val focusMs = explicitFocusMs ?: run {
+            selectedCutIndex?.let { if (it in cuts.indices) cuts[it] else null } ?: currentPosition
         }
         zoomIndex = bounded
-        pendingFocusRatio = focusRatio
+        pendingFocusMs = focusMs
     }
 
     // Pinch-to-zoom state on waveform
@@ -138,26 +154,6 @@ fun WaveformSegmentEditorDialog(
                 waveformData = extracted
             }
             isLoadingWaveform = false
-        }
-    }
-
-    // Scroll state for zoomed waveform
-    val horizontalScrollState = rememberScrollState()
-
-    // Auto-scroll to playhead when enabled and playing
-    LaunchedEffect(currentPosition, isPlaying, followPlayhead, currentZoom) {
-        if (followPlayhead && effectiveDuration > 0 && isPlaying) {
-            try {
-                val maxScroll = horizontalScrollState.maxValue
-                if (maxScroll > 0) {
-                    val approxVisiblePx = with(density) { 360.dp.toPx() }
-                    val playheadRatio = (currentPosition.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f)
-                    val targetScrollX = ((playheadRatio * (maxScroll + approxVisiblePx)) - (approxVisiblePx / 2f)).toInt().coerceIn(0, maxScroll)
-                    if (kotlin.math.abs(horizontalScrollState.value - targetScrollX) > 24) {
-                        horizontalScrollState.animateScrollTo(targetScrollX)
-                    }
-                }
-            } catch (_: Exception) {}
         }
     }
 
@@ -340,15 +336,10 @@ fun WaveformSegmentEditorDialog(
                                 shape = RoundedCornerShape(6.dp),
                                 color = MaterialTheme.colorScheme.primaryContainer,
                                 modifier = Modifier.clickable { 
-                                    if (zoomIndex == 0) changeZoom(4) else changeZoom(0) 
+                                    if (zoomIndex == 2) changeZoom(0) else changeZoom(2) 
                                 }
                             ) {
-                                val zoomLabel = when (zoomIndex) {
-                                    0 -> "1x (${Loc.getText("zoom_fit")})"
-                                    zoomLevels.lastIndex -> "128x (${Loc.getText("zoom_ultra")})"
-                                    zoomLevels.lastIndex - 1 -> "64x (${Loc.getText("zoom_wide")})"
-                                    else -> "${zoomLevels[zoomIndex].toInt()}x"
-                                }
+                                val zoomLabel = zoomLevels[zoomIndex].displayLabel
                                 Text(
                                     text = zoomLabel,
                                     fontSize = 11.sp,
@@ -415,10 +406,10 @@ fun WaveformSegmentEditorDialog(
                         ) {
                             val presets = listOf(
                                 0 to Loc.getText("zoom_fit"),
-                                2 to "4x",
-                                4 to "16x",
-                                6 to "64x",
-                                7 to "128x"
+                                1 to "0.5x",
+                                2 to "1x (" + Loc.getText("zoom_wide") + ")",
+                                4 to "2x (" + Loc.getText("zoom_hyper") + ")",
+                                6 to "5x (" + Loc.getText("zoom_extreme") + ")"
                             )
                             presets.forEach { (idx, label) ->
                                 val isSelected = (zoomIndex == idx)
@@ -459,22 +450,29 @@ fun WaveformSegmentEditorDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Safe canvas upper bound to keep within Android display list limits
-                val maxSafeCanvasWidthDp = 36000.dp
-
                 BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(235.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
                         .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                 ) {
                     val containerWidthDp = maxWidth
+                    val containerWidthPx = with(density) { containerWidthDp.toPx() }
+
+                    val primaryColor = MaterialTheme.colorScheme.primary
+                    val playheadColor = Color(0xFFE53935)
+                    val cutColor = MaterialTheme.colorScheme.tertiary
+                    val selectedCutColor = MaterialTheme.colorScheme.primary
+                    val gridColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f)
+                    val silentBarColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.24f)
+                    val unplayedBarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f)
 
                     if (isLoadingWaveform) {
                         Box(
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(255.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -484,32 +482,48 @@ fun WaveformSegmentEditorDialog(
                             }
                         }
                     } else {
-                        val effectiveCanvasWidth = remember(containerWidthDp, currentZoom) {
-                            if (currentZoom <= 1.0f) {
-                                containerWidthDp
+                        val pxPerSec = remember(zoomIndex, containerWidthPx, effectiveDuration) {
+                            val setting = zoomLevels[zoomIndex]
+                            if (setting.dpPerSec <= 0f) {
+                                if (effectiveDuration > 0) {
+                                    (containerWidthPx / (effectiveDuration / 1000.0)).toFloat().coerceAtLeast(6f)
+                                } else 100f
                             } else {
-                                (containerWidthDp * currentZoom).coerceIn(containerWidthDp, maxSafeCanvasWidthDp)
+                                with(density) { setting.dpPerSec.dp.toPx() }
                             }
                         }
 
-                        // Smoothly scroll to keep focal point (cut or playhead) centered whenever zoom changes
-                        LaunchedEffect(zoomIndex, effectiveCanvasWidth) {
-                            val ratio = pendingFocusRatio ?: return@LaunchedEffect
-                            snapshotFlow { horizontalScrollState.maxValue }
-                                .filter { it > 0 || zoomIndex == 0 }
-                                .first()
-                            val maxScroll = horizontalScrollState.maxValue
-                            if (maxScroll > 0) {
-                                val visiblePx = with(density) { containerWidthDp.toPx() }
-                                val target = ((ratio * (maxScroll + visiblePx)) - (visiblePx / 2f)).toInt().coerceIn(0, maxScroll)
-                                horizontalScrollState.scrollTo(target)
-                            } else {
-                                horizontalScrollState.scrollTo(0)
-                            }
-                            pendingFocusRatio = null
+                        val totalVirtualWidthPx = remember(effectiveDuration, pxPerSec) {
+                            (effectiveDuration / 1000.0) * pxPerSec
+                        }
+                        val maxScrollPx = remember(totalVirtualWidthPx, containerWidthPx) {
+                            (totalVirtualWidthPx - containerWidthPx).coerceAtLeast(0.0)
                         }
 
-                        // Auto-gain safeguard so speech waveforms are always big, clear, and prominent
+                        // Keep focal point (cut, playhead, or explicit focus) centered when zoom changes
+                        LaunchedEffect(zoomIndex, pxPerSec, containerWidthPx) {
+                            val focus = pendingFocusMs
+                            if (focus != null) {
+                                val targetScroll = ((focus / 1000.0) * pxPerSec - (containerWidthPx / 2.0)).coerceIn(0.0, maxScrollPx)
+                                scrollOffsetPx = targetScroll
+                                pendingFocusMs = null
+                            } else {
+                                scrollOffsetPx = scrollOffsetPx.coerceIn(0.0, maxScrollPx)
+                            }
+                        }
+
+                        // Auto-scroll to follow playhead during playback
+                        LaunchedEffect(currentPosition, isPlaying, followPlayhead, pxPerSec) {
+                            if (followPlayhead && effectiveDuration > 0 && isPlaying) {
+                                val playheadScreenX = ((currentPosition / 1000.0) * pxPerSec - scrollOffsetPx).toFloat()
+                                if (playheadScreenX > containerWidthPx * 0.72f || playheadScreenX < containerWidthPx * 0.12f) {
+                                    val target = ((currentPosition / 1000.0) * pxPerSec - containerWidthPx * 0.28f).coerceIn(0.0, maxScrollPx)
+                                    scrollOffsetPx = target
+                                }
+                            }
+                        }
+
+                        // Auto-gain safeguard so speech waveforms are always prominent and easy to read
                         val observedMaxAmp = remember(waveformData) {
                             waveformData.maxOfOrNull { it.amplitude } ?: 1.0f
                         }
@@ -523,7 +537,7 @@ fun WaveformSegmentEditorDialog(
 
                         val rulerTextPaint = remember(density) {
                             Paint().apply {
-                                color = android.graphics.Color.argb(165, 140, 145, 155)
+                                color = android.graphics.Color.argb(175, 140, 145, 155)
                                 textSize = with(density) { 9.dp.toPx() }
                                 isAntiAlias = true
                                 typeface = Typeface.MONOSPACE
@@ -539,49 +553,121 @@ fun WaveformSegmentEditorDialog(
                             }
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .horizontalScroll(horizontalScrollState)
-                                .transformable(state = transformState)
-                        ) {
-                            val primaryColor = MaterialTheme.colorScheme.primary
-                            val playheadColor = Color(0xFFE53935)
-                            val cutColor = MaterialTheme.colorScheme.tertiary
-                            val selectedCutColor = MaterialTheme.colorScheme.primary
-                            val gridColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f)
-                            val silentBarColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.22f)
-                            val unplayedBarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.72f)
+                        val cutNumPaint = remember(density) {
+                            Paint().apply {
+                                color = android.graphics.Color.WHITE
+                                textSize = with(density) { 8.dp.toPx() }
+                                typeface = Typeface.DEFAULT_BOLD
+                                textAlign = Paint.Align.CENTER
+                                isAntiAlias = true
+                            }
+                        }
 
-                            Canvas(
+                        val cutTimeBadgePaint = remember(density) {
+                            Paint().apply {
+                                color = android.graphics.Color.argb(220, 90, 100, 120)
+                                textSize = with(density) { 8.dp.toPx() }
+                                typeface = Typeface.MONOSPACE
+                                textAlign = Paint.Align.CENTER
+                                isAntiAlias = true
+                            }
+                        }
+
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // 1. Mini-Map Overview Strip: Full track overview with cut markers and visible viewport window
+                            Box(
                                 modifier = Modifier
-                                    .width(effectiveCanvasWidth)
-                                    .fillMaxHeight()
-                                    .pointerInput(effectiveDuration) {
+                                    .fillMaxWidth()
+                                    .height(20.dp)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                                    .pointerInput(effectiveDuration, totalVirtualWidthPx, pxPerSec, containerWidthPx) {
                                         detectTapGestures { offset ->
-                                            val clickedRatio = (offset.x / size.width).coerceIn(0f, 1f)
-                                            val clickedMs = (clickedRatio * effectiveDuration).toLong()
-                                            AudioPlayerManager.seekTo(clickedMs, isPhysicalTimestamp = false)
-
-                                            // Check if tapped near an existing cut
-                                            val hitThresholdPx = 32.dp.toPx()
-                                            val hitIndex = cuts.indexOfFirst { cutMs ->
-                                                val cutX = (cutMs.toFloat() / effectiveDuration.toFloat()) * size.width
-                                                kotlin.math.abs(cutX - offset.x) <= hitThresholdPx
+                                            if (totalVirtualWidthPx > 0 && effectiveDuration > 0) {
+                                                val ratio = (offset.x / size.width).coerceIn(0f, 1f)
+                                                val targetMs = (ratio * effectiveDuration).toLong()
+                                                val targetScroll = ((targetMs / 1000.0) * pxPerSec - (containerWidthPx / 2.0)).coerceIn(0.0, maxScrollPx)
+                                                scrollOffsetPx = targetScroll
                                             }
-                                            selectedCutIndex = if (hitIndex >= 0) hitIndex else null
                                         }
                                     }
-                                    .pointerInput(effectiveDuration, cuts.size) {
+                            ) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val w = size.width
+                                    val h = size.height
+                                    if (effectiveDuration <= 0) return@Canvas
+
+                                    // Center track line
+                                    drawLine(
+                                        color = primaryColor.copy(alpha = 0.20f),
+                                        start = Offset(0f, h / 2f),
+                                        end = Offset(w, h / 2f),
+                                        strokeWidth = 1.dp.toPx()
+                                    )
+
+                                    // Cuts on mini-map
+                                    cuts.forEach { cutMs ->
+                                        val cutX = (cutMs.toFloat() / effectiveDuration.toFloat()) * w
+                                        drawLine(
+                                            color = cutColor.copy(alpha = 0.85f),
+                                            start = Offset(cutX, 2.dp.toPx()),
+                                            end = Offset(cutX, h - 2.dp.toPx()),
+                                            strokeWidth = 1.5.dp.toPx()
+                                        )
+                                    }
+
+                                    // Playhead on mini-map
+                                    val playheadRatio = (currentPosition.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f)
+                                    val playheadX = playheadRatio * w
+                                    drawLine(
+                                        color = playheadColor,
+                                        start = Offset(playheadX, 0f),
+                                        end = Offset(playheadX, h),
+                                        strokeWidth = 2.dp.toPx()
+                                    )
+
+                                    // Visible viewport window box
+                                    if (totalVirtualWidthPx > containerWidthPx && totalVirtualWidthPx > 0.0) {
+                                        val windowStartRatio = (scrollOffsetPx / totalVirtualWidthPx).toFloat().coerceIn(0f, 1f)
+                                        val windowEndRatio = ((scrollOffsetPx + containerWidthPx) / totalVirtualWidthPx).toFloat().coerceIn(0f, 1f)
+                                        val boxLeft = windowStartRatio * w
+                                        val boxRight = (windowEndRatio * w).coerceAtLeast(boxLeft + 6.dp.toPx())
+                                        drawRoundRect(
+                                            color = primaryColor.copy(alpha = 0.22f),
+                                            topLeft = Offset(boxLeft, 1.dp.toPx()),
+                                            size = Size(boxRight - boxLeft, h - 2.dp.toPx()),
+                                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                                        )
+                                        drawRoundRect(
+                                            color = primaryColor.copy(alpha = 0.85f),
+                                            topLeft = Offset(boxLeft, 1.dp.toPx()),
+                                            size = Size(boxRight - boxLeft, h - 2.dp.toPx()),
+                                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx(), 3.dp.toPx()),
+                                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx())
+                                        )
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f), thickness = 1.dp)
+
+                            // 2. Main Ultra-Wide Waveform Viewport
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(235.dp)
+                                    .transformable(state = transformState)
+                                    .pointerInput(pxPerSec, cuts.size, effectiveDuration) {
                                         awaitEachGesture {
                                             val down = awaitFirstDown(requireUnconsumed = false)
                                             val hitThresholdPx = 32.dp.toPx()
-                                            val hitIndex = cuts.indexOfFirst { cutMs ->
-                                                val cutX = (cutMs.toFloat() / effectiveDuration.toFloat()) * size.width
-                                                kotlin.math.abs(cutX - down.position.x) <= hitThresholdPx
+                                            val hitCutIndex = cuts.indexOfFirst { cutMs ->
+                                                val cutScreenX = ((cutMs / 1000.0) * pxPerSec - scrollOffsetPx).toFloat()
+                                                kotlin.math.abs(cutScreenX - down.position.x) <= hitThresholdPx
                                             }
-                                            if (hitIndex >= 0) {
-                                                selectedCutIndex = hitIndex
+
+                                            if (hitCutIndex >= 0) {
+                                                // Direct Cut Handle Dragging
+                                                selectedCutIndex = hitCutIndex
                                                 down.consume()
                                                 val pointerId = down.id
                                                 while (true) {
@@ -589,283 +675,299 @@ fun WaveformSegmentEditorDialog(
                                                     val change = event.changes.firstOrNull { it.id == pointerId } ?: break
                                                     if (change.isConsumed || !change.pressed) break
                                                     change.consume()
-                                                    val newRatio = (change.position.x / size.width).coerceIn(0f, 1f)
-                                                    val newMs = (newRatio * effectiveDuration).toLong()
-                                                    val prev = if (hitIndex > 0) cuts[hitIndex - 1] + 100L else 100L
-                                                    val next = if (hitIndex < cuts.lastIndex) cuts[hitIndex + 1] - 100L else effectiveDuration - 100L
-                                                    cuts[hitIndex] = newMs.coerceIn(prev, next)
+                                                    val touchX = change.position.x
+                                                    val newMs = (((scrollOffsetPx + touchX) / pxPerSec) * 1000.0).toLong().coerceIn(0L, effectiveDuration)
+                                                    val prev = if (hitCutIndex > 0) cuts[hitCutIndex - 1] + 100L else 100L
+                                                    val next = if (hitCutIndex < cuts.lastIndex) cuts[hitCutIndex + 1] - 100L else effectiveDuration - 100L
+                                                    cuts[hitCutIndex] = newMs.coerceIn(prev, next)
+                                                }
+                                            } else {
+                                                // Waveform Pan / Tap-to-seek
+                                                var totalDragX = 0f
+                                                val pointerId = down.id
+                                                var isDrag = false
+                                                while (true) {
+                                                    val event = awaitPointerEvent()
+                                                    val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                                                    if (!change.pressed) {
+                                                        if (!isDrag) {
+                                                            // Tap to seek playback
+                                                            selectedCutIndex = null
+                                                            val clickedMs = (((scrollOffsetPx + down.position.x) / pxPerSec) * 1000.0).toLong().coerceIn(0L, effectiveDuration)
+                                                            AudioPlayerManager.seekTo(clickedMs, isPhysicalTimestamp = false)
+                                                        }
+                                                        break
+                                                    }
+                                                    val deltaX = change.position.x - change.previousPosition.x
+                                                    totalDragX += deltaX
+                                                    if (!isDrag && kotlin.math.abs(totalDragX) > 6f) {
+                                                        isDrag = true
+                                                    }
+                                                    if (isDrag) {
+                                                        change.consume()
+                                                        scrollOffsetPx = (scrollOffsetPx - deltaX).coerceIn(0.0, maxScrollPx)
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                             ) {
-                                val canvasW = size.width
-                                val canvasH = size.height
-                                val rulerH = 24.dp.toPx()
-                                val waveTop = rulerH + 6.dp.toPx()
-                                val waveH = canvasH - waveTop - 6.dp.toPx()
-                                val centerY = waveTop + (waveH / 2f)
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val canvasW = size.width
+                                    val canvasH = size.height
+                                    val rulerH = 24.dp.toPx()
+                                    val waveTop = rulerH + 6.dp.toPx()
+                                    val waveH = canvasH - waveTop - 6.dp.toPx()
+                                    val centerY = waveTop + (waveH / 2f)
 
-                                // Visible viewport culling window
-                                val scrollX = horizontalScrollState.value.toFloat()
-                                val visibleWPx = containerWidthDp.toPx()
-                                val minVisibleX = (scrollX - 80f).coerceAtLeast(0f)
-                                val maxVisibleX = scrollX + visibleWPx + 80f
+                                    if (effectiveDuration <= 0) return@Canvas
 
-                                // 1. Time Ruler Grid & Exact Timestamps
-                                val pxPerSec = if (effectiveDuration > 0) canvasW / (effectiveDuration / 1000f) else 100f
-                                val (majorStepMs, minorStepMs) = when {
-                                    pxPerSec >= 3000f -> Pair(50L, 10L)     // 50ms major, 10ms minor ticks (Ultra-wide zoom)
-                                    pxPerSec >= 1200f -> Pair(100L, 25L)    // 100ms major, 25ms minor ticks
-                                    pxPerSec >= 500f  -> Pair(250L, 50L)    // 250ms major, 50ms minor ticks
-                                    pxPerSec >= 200f  -> Pair(500L, 100L)   // 500ms major, 100ms minor ticks
-                                    pxPerSec >= 80f   -> Pair(1000L, 200L)  // 1s major, 200ms minor ticks
-                                    pxPerSec >= 35f   -> Pair(2000L, 500L)  // 2s major, 500ms minor ticks
-                                    pxPerSec >= 15f   -> Pair(5000L, 1000L) // 5s major, 1s minor ticks
-                                    pxPerSec >= 6f    -> Pair(15000L, 5000L)// 15s major, 5s minor ticks
-                                    pxPerSec >= 2f    -> Pair(30000L, 10000L)// 30s major, 10s minor ticks
-                                    pxPerSec >= 0.8f  -> Pair(60000L, 15000L)// 1m major, 15s minor ticks
-                                    else              -> Pair(120000L, 30000L)// 2m major, 30s minor ticks
-                                }
-
-                                val minMs = ((minVisibleX / canvasW) * effectiveDuration).toLong().coerceAtLeast(0L)
-                                val maxMs = (((maxVisibleX / canvasW) * effectiveDuration).toLong() + majorStepMs).coerceAtMost(effectiveDuration)
-
-                                val firstMinor = (minMs / minorStepMs) * minorStepMs
-                                var t = firstMinor
-                                while (t <= maxMs) {
-                                    val x = (t.toFloat() / effectiveDuration.toFloat()) * canvasW
-                                    val isMajor = (t % majorStepMs == 0L)
-                                    if (isMajor) {
-                                        // Full vertical guide line
-                                        drawLine(
-                                            color = gridColor,
-                                            start = Offset(x, 0f),
-                                            end = Offset(x, canvasH),
-                                            strokeWidth = 1.dp.toPx()
-                                        )
-                                        val minutes = t / 60000L
-                                        val seconds = (t % 60000L) / 1000L
-                                        val timeLabel = when {
-                                            majorStepMs < 500L -> {
-                                                val millis = t % 1000L
-                                                String.format(java.util.Locale.US, "%d:%02d.%03d", minutes, seconds, millis)
-                                            }
-                                            majorStepMs < 1000L -> {
-                                                val millis = (t % 1000L) / 100L
-                                                "$minutes:${if (seconds < 10) "0$seconds" else "$seconds"}.$millis"
-                                            }
-                                            else -> {
-                                                "$minutes:${if (seconds < 10) "0$seconds" else "$seconds"}"
-                                            }
-                                        }
-                                        drawContext.canvas.nativeCanvas.drawText(
-                                            timeLabel,
-                                            x + 3.dp.toPx(),
-                                            rulerH - 5.dp.toPx(),
-                                            rulerTextPaint
-                                        )
-                                    } else {
-                                        // Minor tick in ruler header
-                                        drawLine(
-                                            color = gridColor.copy(alpha = 0.5f),
-                                            start = Offset(x, rulerH - 5.dp.toPx()),
-                                            end = Offset(x, rulerH),
-                                            strokeWidth = 1.dp.toPx()
-                                        )
+                                    fun timeToScreenX(timeMs: Long): Float {
+                                        return ((timeMs / 1000.0) * pxPerSec - scrollOffsetPx).toFloat()
                                     }
-                                    t += minorStepMs
-                                }
 
-                                // 2. Segment background bands and labels
-                                var prevCutX = 0f
-                                var prevCutTimeMs = 0L
-                                cuts.forEachIndexed { i, cutMs ->
-                                    val cutX = (cutMs.toFloat() / effectiveDuration.toFloat()) * canvasW
-                                    if (cutX >= minVisibleX && prevCutX <= maxVisibleX) {
-                                        val bandColor = if (i % 2 == 0) {
-                                            primaryColor.copy(alpha = 0.05f)
-                                        } else {
-                                            Color(0xFF4CAF50).copy(alpha = 0.06f)
-                                        }
-                                        val drawStart = prevCutX.coerceAtLeast(minVisibleX)
-                                        val drawEnd = cutX.coerceAtMost(maxVisibleX)
-                                        if (drawEnd > drawStart) {
-                                            drawRect(
-                                                color = bandColor,
-                                                topLeft = Offset(drawStart, waveTop),
-                                                size = Size(drawEnd - drawStart, waveH)
-                                            )
-                                        }
+                                    val minVisibleMs = ((scrollOffsetPx / pxPerSec) * 1000.0).toLong().coerceAtLeast(0L)
+                                    val maxVisibleMs = (((scrollOffsetPx + canvasW) / pxPerSec) * 1000.0).toLong().coerceAtMost(effectiveDuration)
 
-                                        // Draw segment label if band is wide enough (> 48dp)
-                                        val segWidthPx = cutX - prevCutX
-                                        if (segWidthPx >= 48.dp.toPx() && (prevCutX + 4.dp.toPx()) in minVisibleX..maxVisibleX) {
-                                            val durationSec = (cutMs - prevCutTimeMs) / 1000f
-                                            val label = "S${i + 1} (${String.format(java.util.Locale.US, "%.1fs", durationSec)})"
-                                            drawContext.canvas.nativeCanvas.drawText(
-                                                label,
-                                                prevCutX + 6.dp.toPx(),
-                                                waveTop + 14.dp.toPx(),
-                                                segmentBadgePaint
-                                            )
-                                        }
+                                    // 1. Time Ruler Grid & Exact Dynamic Timestamps
+                                    val (majorStepMs, minorStepMs) = when {
+                                        pxPerSec >= 600f -> Pair(100L, 20L)    // 100ms major, 20ms minor ticks (5x Max Stretch)
+                                        pxPerSec >= 300f -> Pair(250L, 50L)    // 250ms major, 50ms minor ticks (2x Hyper)
+                                        pxPerSec >= 150f -> Pair(500L, 100L)   // 500ms major, 100ms minor ticks (1x Wide - Default)
+                                        pxPerSec >= 70f  -> Pair(1000L, 200L)  // 1s major, 200ms minor ticks (0.5x)
+                                        pxPerSec >= 30f  -> Pair(2000L, 500L)  // 2s major, 500ms minor ticks
+                                        pxPerSec >= 10f  -> Pair(5000L, 1000L) // 5s major, 1s minor ticks
+                                        else             -> Pair(10000L, 2000L)// 10s major, 2s minor ticks
                                     }
-                                    prevCutX = cutX
-                                    prevCutTimeMs = cutMs
-                                }
-                                if (prevCutX < canvasW && canvasW >= minVisibleX && prevCutX <= maxVisibleX) {
-                                    val drawStart = prevCutX.coerceAtLeast(minVisibleX)
-                                    val drawEnd = canvasW.coerceAtMost(maxVisibleX)
-                                    if (drawEnd > drawStart) {
-                                        drawRect(
-                                            color = primaryColor.copy(alpha = 0.04f),
-                                            topLeft = Offset(drawStart, waveTop),
-                                            size = Size(drawEnd - drawStart, waveH)
-                                        )
-                                    }
-                                    val segWidthPx = canvasW - prevCutX
-                                    if (segWidthPx >= 48.dp.toPx() && (prevCutX + 4.dp.toPx()) in minVisibleX..maxVisibleX) {
-                                        val durationSec = (effectiveDuration - prevCutTimeMs) / 1000f
-                                        val label = "S${cuts.size + 1} (${String.format(java.util.Locale.US, "%.1fs", durationSec)})"
-                                        drawContext.canvas.nativeCanvas.drawText(
-                                            label,
-                                            prevCutX + 6.dp.toPx(),
-                                            waveTop + 14.dp.toPx(),
-                                            segmentBadgePaint
-                                        )
-                                    }
-                                }
 
-                                // 3. Subtle Center Baseline & High-Definition Waveform Bars
-                                drawLine(
-                                    color = primaryColor.copy(alpha = 0.18f),
-                                    start = Offset(minVisibleX, centerY),
-                                    end = Offset(maxVisibleX, centerY),
-                                    strokeWidth = 1.dp.toPx()
-                                )
-
-                                if (waveformData.isNotEmpty()) {
-                                    val barWidthPx = 3.2.dp.toPx()
-                                    val barSpacingPx = 1.8.dp.toPx()
-                                    val barPitchPx = barWidthPx + barSpacingPx
-
-                                    val totalBars = (canvasW / barPitchPx).toInt().coerceAtLeast(1)
-                                    val msPerBar = effectiveDuration.toFloat() / totalBars.toFloat()
-
-                                    val firstVisibleBar = ((minVisibleX / barPitchPx).toInt() - 1).coerceAtLeast(0)
-                                    val lastVisibleBar = ((maxVisibleX / barPitchPx).toInt() + 1).coerceAtMost(totalBars - 1)
-
-                                    val curPlayheadX = (currentPosition.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f) * canvasW
-
-                                    for (b in firstVisibleBar..lastVisibleBar) {
-                                        val barX = b * barPitchPx + (barWidthPx / 2f)
-                                        val barTimeStart = (b * msPerBar).toLong()
-                                        val barTimeEnd = ((b + 1) * msPerBar).toLong()
-
-                                        val startIdx = (barTimeStart / 50L).toInt().coerceIn(0, waveformData.size - 1)
-                                        val endIdx = (barTimeEnd / 50L).toInt().coerceIn(startIdx, waveformData.size - 1)
-
-                                        var peakAmp = 0f
-                                        if (startIdx == endIdx) {
-                                            // Smooth high-zoom linear interpolation between 50ms samples
-                                            val midTime = (barTimeStart + barTimeEnd) / 2f
-                                            val frac = ((midTime - startIdx * 50f) / 50f).coerceIn(0f, 1f)
-                                            val a1 = waveformData[startIdx].amplitude
-                                            val a2 = if (startIdx < waveformData.size - 1) waveformData[startIdx + 1].amplitude else a1
-                                            peakAmp = a1 * (1f - frac) + a2 * frac
-                                        } else {
-                                            // Peak aggregation across 50ms points
-                                            for (k in startIdx..endIdx) {
-                                                val a = waveformData[k].amplitude
-                                                if (a > peakAmp) peakAmp = a
+                                    val firstMinor = (minVisibleMs / minorStepMs) * minorStepMs
+                                    var t = firstMinor
+                                    while (t <= maxVisibleMs + majorStepMs) {
+                                        val x = timeToScreenX(t)
+                                        if (x in -20f..(canvasW + 20f)) {
+                                            val isMajor = (t % majorStepMs == 0L)
+                                            if (isMajor) {
+                                                drawLine(
+                                                    color = gridColor,
+                                                    start = Offset(x, 0f),
+                                                    end = Offset(x, canvasH),
+                                                    strokeWidth = 1.dp.toPx()
+                                                )
+                                                val minutes = t / 60000L
+                                                val seconds = (t % 60000L) / 1000L
+                                                val timeLabel = when {
+                                                    majorStepMs < 500L -> {
+                                                        val millis = t % 1000L
+                                                        String.format(java.util.Locale.US, "%d:%02d.%03d", minutes, seconds, millis)
+                                                    }
+                                                    majorStepMs < 1000L -> {
+                                                        val millis = (t % 1000L) / 100L
+                                                        "$minutes:${if (seconds < 10) "0$seconds" else "$seconds"}.$millis"
+                                                    }
+                                                    else -> {
+                                                        "$minutes:${if (seconds < 10) "0$seconds" else "$seconds"}"
+                                                    }
+                                                }
+                                                drawContext.canvas.nativeCanvas.drawText(
+                                                    timeLabel,
+                                                    x + 3.dp.toPx(),
+                                                    rulerH - 5.dp.toPx(),
+                                                    rulerTextPaint
+                                                )
+                                            } else {
+                                                drawLine(
+                                                    color = gridColor.copy(alpha = 0.5f),
+                                                    start = Offset(x, rulerH - 5.dp.toPx()),
+                                                    end = Offset(x, rulerH),
+                                                    strokeWidth = 1.dp.toPx()
+                                                )
                                             }
                                         }
-
-                                        val boosted = (peakAmp * waveformGain).coerceIn(0f, 1f)
-                                        // Clear separation between speech presence and silence gap
-                                        val isSilentGap = boosted <= 0.08f
-                                        val visualAmp = if (isSilentGap) {
-                                            0.02f
-                                        } else {
-                                            val speechNorm = ((boosted - 0.08f) / 0.92f).coerceIn(0f, 1f)
-                                            (0.12f + 0.88f * Math.pow(speechNorm.toDouble(), 0.50).toFloat()).coerceIn(0.08f, 1.0f)
-                                        }
-                                        val barH = if (isSilentGap) 1.5.dp.toPx() else (visualAmp * (waveH / 2f) * 0.96f).coerceAtLeast(2.8.dp.toPx())
-
-                                        val isPlayed = (barX <= curPlayheadX)
-                                        val barColor = when {
-                                            isSilentGap -> silentBarColor
-                                            isPlayed -> primaryColor
-                                            else -> unplayedBarColor
-                                        }
-
-                                        drawLine(
-                                            color = barColor,
-                                            start = Offset(barX, centerY - barH),
-                                            end = Offset(barX, centerY + barH),
-                                            strokeWidth = barWidthPx,
-                                            cap = StrokeCap.Round
-                                        )
+                                        t += minorStepMs
                                     }
-                                }
 
-                                // 4. Cut boundary lines and flags
-                                cuts.forEachIndexed { i, cutMs ->
-                                    val cutX = (cutMs.toFloat() / effectiveDuration.toFloat()) * canvasW
-                                    if (cutX in minVisibleX..maxVisibleX) {
-                                        val isSelected = (selectedCutIndex == i)
-                                        val flagColor = if (isSelected) selectedCutColor else cutColor
+                                    // 2. Segment background bands and badges
+                                    var prevCutMs = 0L
+                                    cuts.forEachIndexed { i, cutMs ->
+                                        val startX = timeToScreenX(prevCutMs)
+                                        val endX = timeToScreenX(cutMs)
+                                        if (endX >= 0f && startX <= canvasW) {
+                                            val bandColor = if (i % 2 == 0) {
+                                                primaryColor.copy(alpha = 0.05f)
+                                            } else {
+                                                Color(0xFF4CAF50).copy(alpha = 0.06f)
+                                            }
+                                            val drawStart = startX.coerceAtLeast(0f)
+                                            val drawEnd = endX.coerceAtMost(canvasW)
+                                            if (drawEnd > drawStart) {
+                                                drawRect(
+                                                    color = bandColor,
+                                                    topLeft = Offset(drawStart, waveTop),
+                                                    size = Size(drawEnd - drawStart, waveH)
+                                                )
+                                            }
 
-                                        // Vertical line
-                                        drawLine(
-                                            color = flagColor,
-                                            start = Offset(cutX, rulerH),
-                                            end = Offset(cutX, canvasH),
-                                            strokeWidth = if (isSelected) 2.6.dp.toPx() else 1.6.dp.toPx(),
-                                            pathEffect = if (isSelected) null else PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
-                                        )
-
-                                        // Pin handle at ruler
-                                        val pinY = rulerH / 2f
-                                        drawCircle(
-                                            color = flagColor,
-                                            radius = if (isSelected) 8.dp.toPx() else 5.5.dp.toPx(),
-                                            center = Offset(cutX, pinY)
-                                        )
-
-                                        // Cut index number inside pin
-                                        val cutNumPaint = Paint().apply {
-                                            color = android.graphics.Color.WHITE
-                                            textSize = with(density) { 8.dp.toPx() }
-                                            typeface = Typeface.DEFAULT_BOLD
-                                            textAlign = Paint.Align.CENTER
-                                            isAntiAlias = true
+                                            val segWidthPx = endX - startX
+                                            if (segWidthPx >= 48.dp.toPx() && (startX + 4.dp.toPx()) in 0f..canvasW) {
+                                                val durationSec = (cutMs - prevCutMs) / 1000f
+                                                val label = "S${i + 1} (${String.format(java.util.Locale.US, "%.1fs", durationSec)})"
+                                                drawContext.canvas.nativeCanvas.drawText(
+                                                    label,
+                                                    startX.coerceAtLeast(4.dp.toPx()) + 4.dp.toPx(),
+                                                    waveTop + 14.dp.toPx(),
+                                                    segmentBadgePaint
+                                                )
+                                            }
                                         }
-                                        drawContext.canvas.nativeCanvas.drawText(
-                                            "${i + 1}",
-                                            cutX,
-                                            pinY + with(density) { 3.dp.toPx() },
-                                            cutNumPaint
-                                        )
+                                        prevCutMs = cutMs
                                     }
-                                }
+                                    if (prevCutMs < effectiveDuration) {
+                                        val startX = timeToScreenX(prevCutMs)
+                                        val endX = timeToScreenX(effectiveDuration)
+                                        if (endX >= 0f && startX <= canvasW) {
+                                            val drawStart = startX.coerceAtLeast(0f)
+                                            val drawEnd = endX.coerceAtMost(canvasW)
+                                            if (drawEnd > drawStart) {
+                                                drawRect(
+                                                    color = primaryColor.copy(alpha = 0.04f),
+                                                    topLeft = Offset(drawStart, waveTop),
+                                                    size = Size(drawEnd - drawStart, waveH)
+                                                )
+                                            }
+                                            val segWidthPx = endX - startX
+                                            if (segWidthPx >= 48.dp.toPx() && (startX + 4.dp.toPx()) in 0f..canvasW) {
+                                                val durationSec = (effectiveDuration - prevCutMs) / 1000f
+                                                val label = "S${cuts.size + 1} (${String.format(java.util.Locale.US, "%.1fs", durationSec)})"
+                                                drawContext.canvas.nativeCanvas.drawText(
+                                                    label,
+                                                    startX.coerceAtLeast(4.dp.toPx()) + 4.dp.toPx(),
+                                                    waveTop + 14.dp.toPx(),
+                                                    segmentBadgePaint
+                                                )
+                                            }
+                                        }
+                                    }
 
-                                // 5. Playhead Line & Marker
-                                val playheadRatio = (currentPosition.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f)
-                                val playheadX = playheadRatio * canvasW
-                                if (playheadX in minVisibleX..maxVisibleX) {
+                                    // 3. Subtle Center Baseline
                                     drawLine(
-                                        color = playheadColor,
-                                        start = Offset(playheadX, 0f),
-                                        end = Offset(playheadX, canvasH),
-                                        strokeWidth = 2.2.dp.toPx()
+                                        color = primaryColor.copy(alpha = 0.18f),
+                                        start = Offset(0f, centerY),
+                                        end = Offset(canvasW, centerY),
+                                        strokeWidth = 1.dp.toPx()
                                     )
-                                    drawCircle(
-                                        color = playheadColor,
-                                        radius = 6.5.dp.toPx(),
-                                        center = Offset(playheadX, rulerH / 2f)
-                                    )
+
+                                    // 4. Ultra-Wide High-Definition Waveform Bars
+                                    if (waveformData.isNotEmpty()) {
+                                        val barWidthPx = 3.2.dp.toPx()
+                                        val barSpacingPx = 1.8.dp.toPx()
+                                        val barPitchPx = barWidthPx + barSpacingPx
+
+                                        val numScreenBars = (canvasW / barPitchPx).toInt() + 2
+                                        val curPlayheadX = timeToScreenX(currentPosition)
+
+                                        for (b in 0..numScreenBars) {
+                                            val barX = b * barPitchPx + (barWidthPx / 2f)
+                                            val barTimeMs = (((scrollOffsetPx + barX) / pxPerSec) * 1000.0).toLong()
+
+                                            if (barTimeMs in 0L..effectiveDuration) {
+                                                val sampleIdx = (barTimeMs / 50L).toInt().coerceIn(0, waveformData.size - 1)
+                                                val nextIdx = (sampleIdx + 1).coerceAtMost(waveformData.size - 1)
+                                                val frac = ((barTimeMs % 50L) / 50f).coerceIn(0f, 1f)
+                                                val smoothFrac = (1f - kotlin.math.cos(frac * Math.PI.toFloat())) / 2f
+                                                val rawAmp = waveformData[sampleIdx].amplitude * (1f - smoothFrac) + waveformData[nextIdx].amplitude * smoothFrac
+                                                val boosted = (rawAmp * waveformGain).coerceIn(0f, 1f)
+
+                                                // Clear distinction: silence has small baseline dots, speech has prominent bars
+                                                val isSilentGap = boosted <= 0.08f
+                                                val visualAmp = if (isSilentGap) {
+                                                    0.02f
+                                                } else {
+                                                    val speechNorm = ((boosted - 0.08f) / 0.92f).coerceIn(0f, 1f)
+                                                    (0.12f + 0.88f * Math.pow(speechNorm.toDouble(), 0.50).toFloat()).coerceIn(0.08f, 1.0f)
+                                                }
+                                                val barH = if (isSilentGap) 1.5.dp.toPx() else (visualAmp * (waveH / 2f) * 0.96f).coerceAtLeast(2.8.dp.toPx())
+
+                                                val isPlayed = (barX <= curPlayheadX)
+                                                val barColor = when {
+                                                    isSilentGap -> silentBarColor
+                                                    isPlayed -> primaryColor
+                                                    else -> unplayedBarColor
+                                                }
+
+                                                drawLine(
+                                                    color = barColor,
+                                                    start = Offset(barX, centerY - barH),
+                                                    end = Offset(barX, centerY + barH),
+                                                    strokeWidth = barWidthPx,
+                                                    cap = StrokeCap.Round
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // 5. Cut Boundary Lines, Pins, and Timestamp Badges
+                                    cuts.forEachIndexed { i, cutMs ->
+                                        val cutX = timeToScreenX(cutMs)
+                                        if (cutX in -30f..(canvasW + 30f)) {
+                                            val isSelected = (selectedCutIndex == i)
+                                            val flagColor = if (isSelected) selectedCutColor else cutColor
+
+                                            // Vertical line
+                                            drawLine(
+                                                color = flagColor,
+                                                start = Offset(cutX, rulerH),
+                                                end = Offset(cutX, canvasH),
+                                                strokeWidth = if (isSelected) 2.8.dp.toPx() else 1.8.dp.toPx(),
+                                                pathEffect = if (isSelected) null else PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
+                                            )
+
+                                            // Pin handle at ruler
+                                            val pinY = rulerH / 2f
+                                            drawCircle(
+                                                color = flagColor,
+                                                radius = if (isSelected) 8.5.dp.toPx() else 6.dp.toPx(),
+                                                center = Offset(cutX, pinY)
+                                            )
+
+                                            // Cut index number inside pin
+                                            drawContext.canvas.nativeCanvas.drawText(
+                                                "${i + 1}",
+                                                cutX,
+                                                pinY + 3.dp.toPx(),
+                                                cutNumPaint
+                                            )
+
+                                            // Floating millisecond badge at bottom
+                                            if (isSelected || pxPerSec >= 150f) {
+                                                val millis = cutMs % 1000L
+                                                val seconds = (cutMs % 60000L) / 1000L
+                                                val minutes = cutMs / 60000L
+                                                val badgeText = String.format(java.util.Locale.US, "%d:%02d.%03d", minutes, seconds, millis)
+                                                drawContext.canvas.nativeCanvas.drawText(
+                                                    badgeText,
+                                                    cutX,
+                                                    canvasH - 4.dp.toPx(),
+                                                    cutTimeBadgePaint
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // 6. Playhead Line & Top Marker
+                                    val playheadX = timeToScreenX(currentPosition)
+                                    if (playheadX in -20f..(canvasW + 20f)) {
+                                        drawLine(
+                                            color = playheadColor,
+                                            start = Offset(playheadX, 0f),
+                                            end = Offset(playheadX, canvasH),
+                                            strokeWidth = 2.2.dp.toPx()
+                                        )
+                                        drawCircle(
+                                            color = playheadColor,
+                                            radius = 6.5.dp.toPx(),
+                                            center = Offset(playheadX, rulerH / 2f)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1169,8 +1271,8 @@ fun WaveformSegmentEditorDialog(
                                         selectedCutIndex = idx
                                         AudioPlayerManager.seekTo(startMs, isPhysicalTimestamp = false)
                                         if (effectiveDuration > 0) {
-                                            val midMs = (startMs + cutMs) / 2f
-                                            pendingFocusRatio = (midMs / effectiveDuration.toFloat()).coerceIn(0f, 1f)
+                                            val midMs = (startMs + cutMs) / 2L
+                                            pendingFocusMs = midMs
                                         }
                                     }
                             ) {
