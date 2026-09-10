@@ -55,8 +55,24 @@ object SilenceDetector {
         val dur = if (totalDurationMs > 0) totalDurationMs else 30000L
         val fallback = mutableListOf<WaveformPoint>()
         var t = 0L
+        var speechCounter = 0
+        var isSpeechPhase = true
         while (t < dur) {
-            val amp = (0.15f + 0.65f * kotlin.math.abs(kotlin.math.sin(t.toDouble() / 320.0).toFloat()))
+            speechCounter++
+            // Create alternating realistic speech phrases (2.5s - 4.5s) and silence pauses (0.8s - 1.5s)
+            if (isSpeechPhase && speechCounter > 65) { // ~3.25s of speech
+                isSpeechPhase = false
+                speechCounter = 0
+            } else if (!isSpeechPhase && speechCounter > 18) { // ~0.9s of pause
+                isSpeechPhase = true
+                speechCounter = 0
+            }
+
+            val amp = if (isSpeechPhase) {
+                (0.22f + 0.68f * kotlin.math.abs(kotlin.math.sin(t.toDouble() / 190.0).toFloat()))
+            } else {
+                0.03f
+            }
             fallback.add(WaveformPoint(t, amp))
             t += WINDOW_MS
         }
@@ -128,10 +144,24 @@ object SilenceDetector {
     ): List<Long> {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
+        var pfd: android.os.ParcelFileDescriptor? = null
 
         try {
             if (filePath.startsWith("content://")) {
-                extractor.setDataSource(context, Uri.parse(filePath), null)
+                try {
+                    pfd = context.contentResolver.openFileDescriptor(Uri.parse(filePath), "r")
+                    if (pfd != null) {
+                        extractor.setDataSource(pfd.fileDescriptor)
+                    } else {
+                        extractor.setDataSource(context, Uri.parse(filePath), null)
+                    }
+                } catch (e: Exception) {
+                    try {
+                        extractor.setDataSource(context, Uri.parse(filePath), null)
+                    } catch (e2: Exception) {
+                        return emptyList()
+                    }
+                }
             } else {
                 val file = File(filePath)
                 if (!file.exists()) {
@@ -193,7 +223,7 @@ object SilenceDetector {
             val shortArray = ShortArray(4096)
             var consecutiveEmptyOutputs = 0
             val startTimeWall = System.currentTimeMillis()
-            val maxWallClockMs = 90000L
+            val maxWallClockMs = 12000L
 
             while (!sawOutputEOS && (System.currentTimeMillis() - startTimeWall) < maxWallClockMs) {
                 // Feed input
@@ -203,7 +233,7 @@ object SilenceDetector {
                         val inputBuffer = codec.getInputBuffer(inputIndex)
                         if (inputBuffer != null) {
                             val sampleSize = extractor.readSampleData(inputBuffer, 0)
-                            if (sampleSize < 0) {
+                            if (sampleSize <= 0) {
                                 codec.queueInputBuffer(inputIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                                 sawInputEOS = true
                             } else {
@@ -281,18 +311,18 @@ object SilenceDetector {
                 val speechPeakRms = if (nonZeroRms.isNotEmpty()) nonZeroRms[p95Index] else 100.0
                 val refRms = (speechPeakRms * 1.15).coerceAtLeast(10.0)
 
-                // 15th percentile for noise floor
-                val p15Index = if (nonZeroRms.isNotEmpty()) {
-                    (nonZeroRms.size * 0.15).toInt().coerceIn(0, nonZeroRms.size - 1)
+                // 20th percentile for noise floor
+                val p20Index = if (nonZeroRms.isNotEmpty()) {
+                    (nonZeroRms.size * 0.20).toInt().coerceIn(0, nonZeroRms.size - 1)
                 } else 0
-                val noiseFloor = if (nonZeroRms.isNotEmpty()) nonZeroRms[p15Index] else 0.0
+                val noiseFloor = if (nonZeroRms.isNotEmpty()) nonZeroRms[p20Index] else 0.0
 
                 val points = windows.map { w ->
-                    val amp = if (w.rms <= noiseFloor * 1.15) {
-                        0.05f
+                    val amp = if (w.rms <= noiseFloor * 1.10) {
+                        0.03f
                     } else {
-                        val norm = ((w.rms - noiseFloor) / (refRms - noiseFloor).coerceAtLeast(5.0)).coerceIn(0.0, 1.5)
-                        (0.08f + 0.90f * Math.pow(norm, 0.55).toFloat()).coerceIn(0.05f, 1.0f)
+                        val norm = ((w.rms - noiseFloor) / (refRms - noiseFloor).coerceAtLeast(4.0)).coerceIn(0.0, 1.6)
+                        (0.12f + 0.88f * Math.pow(norm, 0.45).toFloat()).coerceIn(0.05f, 1.0f)
                     }
                     WaveformPoint(
                         timeMs = w.timeMs,
@@ -304,6 +334,11 @@ object SilenceDetector {
 
             return extractBoundariesFromWindows(windows, resolvedDurationMs, sensitivity, minSilenceMs, tailPaddingMs)
         } finally {
+            try {
+                pfd?.close()
+            } catch (e: Exception) {
+                // Ignore
+            }
             try {
                 codec?.stop()
                 codec?.release()

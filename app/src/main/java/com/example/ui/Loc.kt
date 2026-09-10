@@ -151,6 +151,8 @@ object Loc {
         "save_and_apply" to mapOf("en" to "Save & Apply", "ar" to "حفظ وتطبيق"),
         "selected_cut_time" to mapOf("en" to "Selected Cut: %s", "ar" to "الوقفة المحددة: %s"),
         "no_cuts_yet" to mapOf("en" to "No manual cuts defined yet. Tap '+ Add Cut Here' while listening or import from silence.", "ar" to "لم تتم إضافة أي وقفات يدوية بعد. اضغط على '+ إضافة وقفة هنا' أثناء الاستماع أو انسخ من تحليل الصمت."),
+        "manual_segments_empty_title" to mapOf("en" to "No Practice Cuts Yet", "ar" to "لا توجد وقفات ترديد بعد"),
+        "manual_segments_empty_desc" to mapOf("en" to "Auto-detect cuts from speech silence, import from subtitles, or add cuts directly on the waveform.", "ar" to "اكتشف الوقفات تلقائياً من صمت الكلام، أو استوردها من الترجمة، أو أضفها مباشرة على المخطط الموجي."),
         "silence_analysis_tuning" to mapOf("en" to "Silence Detection Tuning", "ar" to "ضبط تحليل الصمت الصوتي"),
         "silence_analysis_tuning_desc" to mapOf("en" to "Fine-tune pause detection to prevent cutting word endings", "ar" to "تعديل إعدادات كشف الوقفات لمنع قطع نهايات الكلمات"),
         "silence_sensitivity" to mapOf("en" to "Detection Sensitivity", "ar" to "حساسية كشف الصوت"),
@@ -729,6 +731,8 @@ object Loc {
         "ai_prompt_msg_summarize_audio" to mapOf("en" to "Summarize the key points of this audio track", "ar" to "لخّص النقاط والأفكار الرئيسية لهذا المقطع الصوتي"),
         "ai_prompt_msg_translate_examples" to mapOf("en" to "Translate this part and provide usage examples", "ar" to "ترجم هذا الجزء مع إعطاء أمثلة توضيحية على الاستخدام"),
         "dedicated_cue" to mapOf("en" to "Dedicated Subtitle Cue", "ar" to "المقطع الأساسي للملاحظة"),
-        "dedicated_cue_desc" to mapOf("en" to "Note icon will only appear on this specific cue while playing", "ar" to "ستظهر أيقونة الملاحظة فقط بجانب هذا المقطع أثناء التشغيل")
+        "dedicated_cue_desc" to mapOf("en" to "Note icon will only appear on this specific cue while playing", "ar" to "ستظهر أيقونة الملاحظة فقط بجانب هذا المقطع أثناء التشغيل"),
+        "manual_segments_empty_title" to mapOf("en" to "No Practice Cuts Yet", "ar" to "لا توجد فواصل للممارسة بعد"),
+        "manual_segments_empty_desc" to mapOf("en" to "Create segment cuts on speech pauses for sentence-by-sentence practice. Auto-detect speech silence below or tap on the waveform to add cuts.", "ar" to "أنشئ فواصل تدريبية عند فترات الصمت لتكرار وممارسة كل جملة بشكل منفصل. يمكنك الكشف التلقائي عن الصمت أدناه أو النقر على الموجة الصوتية لإضافة فواصل.")
     )
 }
