@@ -24,6 +24,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import com.example.R
 import com.example.ui.Loc
@@ -358,11 +359,12 @@ object AudioPlayerManager {
                     addAction("com.example.ACTION_SKIP_FORWARD")
                     addAction("com.example.ACTION_SKIP_BACKWARD")
                 }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    context.applicationContext.registerReceiver(notificationControlReceiver, controlFilter, Context.RECEIVER_NOT_EXPORTED)
-                } else {
-                    context.applicationContext.registerReceiver(notificationControlReceiver, controlFilter)
-                }
+                ContextCompat.registerReceiver(
+                    context.applicationContext,
+                    notificationControlReceiver,
+                    controlFilter,
+                    ContextCompat.RECEIVER_NOT_EXPORTED
+                )
             } catch (e: Exception) {
                 Log.e(TAG, "Error registering control receiver: ${e.message}")
             }
