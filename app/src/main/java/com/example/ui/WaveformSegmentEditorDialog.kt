@@ -139,7 +139,7 @@ fun WaveformSegmentEditorDialog(
     var waveformData by remember { mutableStateOf<List<WaveformPoint>>(emptyList()) }
     var isLoadingWaveform by remember { mutableStateOf(true) }
 
-    // Immediate rich envelope fallback so the waveform canvas is NEVER blank while loading or decoding
+    // Immediate dynamic envelope fallback so the waveform canvas is NEVER blank while loading or decoding
     val activeWaveform = remember(waveformData, effectiveDuration) {
         if (waveformData.isNotEmpty()) {
             waveformData
@@ -159,9 +159,11 @@ fun WaveformSegmentEditorDialog(
                     speechCounter = 0
                 }
                 val amp = if (isSpeechPhase) {
-                    (0.22f + 0.68f * kotlin.math.abs(kotlin.math.sin(t.toDouble() / 190.0).toFloat()))
+                    val wordEnvelope = (0.35f + 0.65f * kotlin.math.abs(kotlin.math.sin(t.toDouble() / 320.0).toFloat()))
+                    val syllableEnvelope = (0.20f + 0.80f * kotlin.math.abs(kotlin.math.sin(t.toDouble() / 90.0).toFloat()))
+                    (wordEnvelope * syllableEnvelope).coerceIn(0.05f, 0.95f)
                 } else {
-                    0.03f
+                    0.0f
                 }
                 pts.add(WaveformPoint(t, amp))
                 t += 50L
@@ -172,19 +174,12 @@ fun WaveformSegmentEditorDialog(
 
     LaunchedEffect(track.filePath) {
         isLoadingWaveform = true
-        val cached = SilenceDetector.getCachedWaveform(track.filePath)
-        // If cached data exists and has rich amplitude (> 0.30f peak), use it; otherwise re-extract
-        if (cached != null && cached.isNotEmpty() && cached.any { it.amplitude >= 0.30f }) {
-            waveformData = cached
-            isLoadingWaveform = false
-        } else {
-            withContext(Dispatchers.IO) {
-                SilenceDetector.clearWaveformCacheFor(track.filePath)
-                val extracted = SilenceDetector.extractWaveform(context, track.filePath, effectiveDuration)
-                waveformData = extracted
-            }
-            isLoadingWaveform = false
+        withContext(Dispatchers.IO) {
+            SilenceDetector.clearWaveformCacheFor(track.filePath)
+            val extracted = SilenceDetector.extractWaveform(context, track.filePath, effectiveDuration)
+            waveformData = extracted
         }
+        isLoadingWaveform = false
     }
 
     // Auto-detect cuts if none exist when opening editor so the user is never faced with an empty blank screen
@@ -529,13 +524,13 @@ fun WaveformSegmentEditorDialog(
                             }
                         }
 
-                        // Auto-gain safeguard so speech waveforms are always prominent and easy to read
+                        // Dynamic gain safeguard so very quiet recordings are audible while preserving loudness range
                         val observedMaxAmp = remember(waveformData) {
                             waveformData.maxOfOrNull { it.amplitude } ?: 1.0f
                         }
                         val waveformGain = remember(observedMaxAmp) {
-                            if (observedMaxAmp < 0.40f && observedMaxAmp > 0.001f) {
-                                (0.92f / observedMaxAmp).coerceAtMost(12.0f)
+                            if (observedMaxAmp < 0.25f && observedMaxAmp > 0.01f) {
+                                (0.85f / observedMaxAmp).coerceAtMost(3.0f)
                             } else {
                                 1.0f
                             }
@@ -660,7 +655,7 @@ fun WaveformSegmentEditorDialog(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(235.dp)
+                                    .height(118.dp)
                                     .transformable(state = transformState)
                                     .pointerInput(pxPerSec, cuts.size, effectiveDuration) {
                                         awaitEachGesture {
@@ -721,9 +716,9 @@ fun WaveformSegmentEditorDialog(
                                 Canvas(modifier = Modifier.fillMaxSize()) {
                                     val canvasW = size.width
                                     val canvasH = size.height
-                                    val rulerH = 24.dp.toPx()
-                                    val waveTop = rulerH + 6.dp.toPx()
-                                    val waveH = canvasH - waveTop - 6.dp.toPx()
+                                    val rulerH = 20.dp.toPx()
+                                    val waveTop = rulerH + 2.dp.toPx()
+                                    val waveH = (canvasH - waveTop - 2.dp.toPx()).coerceAtLeast(10f)
                                     val centerY = waveTop + (waveH / 2f)
 
                                     if (effectiveDuration <= 0) return@Canvas
@@ -820,7 +815,7 @@ fun WaveformSegmentEditorDialog(
                                                 drawContext.canvas.nativeCanvas.drawText(
                                                     label,
                                                     startX.coerceAtLeast(4.dp.toPx()) + 4.dp.toPx(),
-                                                    waveTop + 14.dp.toPx(),
+                                                    waveTop + 10.dp.toPx(),
                                                     segmentBadgePaint
                                                 )
                                             }
@@ -847,7 +842,7 @@ fun WaveformSegmentEditorDialog(
                                                 drawContext.canvas.nativeCanvas.drawText(
                                                     label,
                                                     startX.coerceAtLeast(4.dp.toPx()) + 4.dp.toPx(),
-                                                    waveTop + 14.dp.toPx(),
+                                                    waveTop + 10.dp.toPx(),
                                                     segmentBadgePaint
                                                 )
                                             }
@@ -882,21 +877,21 @@ fun WaveformSegmentEditorDialog(
                                                 val frac = ((barTimeMs % 50L) / 50f).coerceIn(0f, 1f)
                                                 val smoothFrac = (1f - kotlin.math.cos(frac * Math.PI.toFloat())) / 2f
                                                 val rawAmp = activeData[sampleIdx].amplitude * (1f - smoothFrac) + activeData[nextIdx].amplitude * smoothFrac
-                                                val boosted = (rawAmp * waveformGain).coerceIn(0f, 1f)
+                                                val amp = (rawAmp * waveformGain).coerceIn(0f, 1f)
 
-                                                // Clear distinction: silence has small baseline dots, speech has prominent bars
-                                                val isSilentGap = boosted <= 0.08f
-                                                val visualAmp = if (isSilentGap) {
-                                                    0.02f
+                                                // True dynamic loudness: silence is flat on baseline, speech height varies proportionally with volume
+                                                val isSilence = (amp <= 0.035f)
+                                                val maxHalfH = (waveH / 2f) - 1.5.dp.toPx()
+                                                val barH = if (isSilence) {
+                                                    1.2.dp.toPx() // Flat subtle baseline indicator for silence
                                                 } else {
-                                                    val speechNorm = ((boosted - 0.08f) / 0.92f).coerceIn(0f, 1f)
-                                                    (0.12f + 0.88f * Math.pow(speechNorm.toDouble(), 0.50).toFloat()).coerceIn(0.08f, 1.0f)
+                                                    // Dynamic amplitude: quiet speech is short (15-35%), normal speech is medium (40-65%), loud bursts reach high (75-95%)
+                                                    (amp * maxHalfH).coerceIn(2.5.dp.toPx(), maxHalfH)
                                                 }
-                                                val barH = if (isSilentGap) 1.8.dp.toPx() else (visualAmp * (waveH / 2f) * 0.96f).coerceAtLeast(3.2.dp.toPx())
 
                                                 val isPlayed = (barX <= curPlayheadX)
                                                 val barColor = when {
-                                                    isSilentGap -> silentBarColor
+                                                    isSilence -> silentBarColor
                                                     isPlayed -> primaryColor
                                                     else -> unplayedBarColor
                                                 }

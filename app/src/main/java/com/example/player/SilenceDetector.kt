@@ -69,9 +69,11 @@ object SilenceDetector {
             }
 
             val amp = if (isSpeechPhase) {
-                (0.22f + 0.68f * kotlin.math.abs(kotlin.math.sin(t.toDouble() / 190.0).toFloat()))
+                val wordEnvelope = (0.35f + 0.65f * kotlin.math.abs(kotlin.math.sin(t.toDouble() / 320.0).toFloat()))
+                val syllableEnvelope = (0.20f + 0.80f * kotlin.math.abs(kotlin.math.sin(t.toDouble() / 90.0).toFloat()))
+                (wordEnvelope * syllableEnvelope).coerceIn(0.05f, 0.95f)
             } else {
-                0.03f
+                0.0f
             }
             fallback.add(WaveformPoint(t, amp))
             t += WINDOW_MS
@@ -304,25 +306,30 @@ object SilenceDetector {
 
             if (windows.isNotEmpty()) {
                 val nonZeroRms = windows.map { it.rms }.filter { it > 1.0 }.sorted()
-                // Use 92nd-95th percentile to disregard isolated plosive clicks/pops
+                // Use 95th percentile of RMS to disregard isolated loud pops/clicks
                 val p95Index = if (nonZeroRms.isNotEmpty()) {
                     (nonZeroRms.size * 0.95).toInt().coerceIn(0, nonZeroRms.size - 1)
                 } else 0
                 val speechPeakRms = if (nonZeroRms.isNotEmpty()) nonZeroRms[p95Index] else 100.0
-                val refRms = (speechPeakRms * 1.15).coerceAtLeast(10.0)
 
-                // 20th percentile for noise floor
+                // 20th percentile for background ambient noise floor
                 val p20Index = if (nonZeroRms.isNotEmpty()) {
                     (nonZeroRms.size * 0.20).toInt().coerceIn(0, nonZeroRms.size - 1)
                 } else 0
                 val noiseFloor = if (nonZeroRms.isNotEmpty()) nonZeroRms[p20Index] else 0.0
 
+                // True silence threshold (sound below this is ambient pause)
+                val silenceThreshold = (noiseFloor * 1.30).coerceAtLeast(noiseFloor + 4.0)
+                val dynamicRange = (speechPeakRms - silenceThreshold).coerceAtLeast(15.0)
+
                 val points = windows.map { w ->
-                    val amp = if (w.rms <= noiseFloor * 1.10) {
-                        0.03f
+                    val amp = if (w.rms <= silenceThreshold) {
+                        0.0f
                     } else {
-                        val norm = ((w.rms - noiseFloor) / (refRms - noiseFloor).coerceAtLeast(4.0)).coerceIn(0.0, 1.6)
-                        (0.12f + 0.88f * Math.pow(norm, 0.45).toFloat()).coerceIn(0.05f, 1.0f)
+                        val linearRatio = ((w.rms - silenceThreshold) / dynamicRange).coerceIn(0.0, 1.2)
+                        // Dynamic loudness: soft sounds remain low, loud speech reaches high
+                        val curved = Math.pow(linearRatio.coerceAtMost(1.0), 0.85).toFloat()
+                        curved.coerceIn(0.04f, 1.0f)
                     }
                     WaveformPoint(
                         timeMs = w.timeMs,
