@@ -66,10 +66,26 @@ fun WaveformSegmentEditorDialog(
     val currentPosition by AudioPlayerManager.currentPosition.collectAsStateWithLifecycle()
     val durationState by AudioPlayerManager.duration.collectAsStateWithLifecycle()
 
-    val effectiveDuration = remember(track.duration, durationState) {
-        if (durationState > 0) durationState
-        else if (track.duration > 0) track.duration
-        else 60000L
+    var fileDurationMs by remember(track.filePath) { mutableLongStateOf(0L) }
+    LaunchedEffect(track.filePath) {
+        withContext(Dispatchers.IO) {
+            val d = SilenceDetector.getAudioDuration(context, track.filePath)
+            if (d > 0) fileDurationMs = d
+        }
+    }
+
+    var waveformData by remember { mutableStateOf<List<WaveformPoint>>(emptyList()) }
+    var isLoadingWaveform by remember { mutableStateOf(true) }
+
+    val effectiveDuration = remember(track.duration, durationState, fileDurationMs, waveformData) {
+        val maxWaveformTime = waveformData.lastOrNull()?.timeMs ?: 0L
+        maxOf(
+            durationState,
+            track.duration,
+            fileDurationMs,
+            maxWaveformTime,
+            1000L
+        )
     }
 
     // Cuts state (sorted milliseconds)
@@ -100,14 +116,15 @@ fun WaveformSegmentEditorDialog(
     val zoomLevels = remember {
         listOf(
             WaveformZoomSetting("fit", -1f, "zoom_fit", "Fit"),
-            WaveformZoomSetting("0.5x", 100f, "zoom_out", "0.5x"),
-            WaveformZoomSetting("1x", 220f, "zoom_wide", "1x (Wide)"), // Default: 220 dp/sec -> wide stretch
-            WaveformZoomSetting("2x", 450f, "zoom_hyper", "2x (Hyper)"), // 450 dp/sec -> 1 full screen < 1 sec
-            WaveformZoomSetting("3x", 800f, "zoom_hyper", "3x (Ultra)"), // 800 dp/sec -> extreme stretch
-            WaveformZoomSetting("5x", 1400f, "zoom_extreme", "5x (Max)") // 1400 dp/sec -> maximum stretch
+            WaveformZoomSetting("0.5x", 100f, "zoom_0_5x", "0.5x"),
+            WaveformZoomSetting("1x", 220f, "zoom_1x", "1x"),
+            WaveformZoomSetting("2x", 450f, "zoom_2x", "2x"),
+            WaveformZoomSetting("3x", 800f, "zoom_3x", "3x"),
+            WaveformZoomSetting("4x", 1100f, "zoom_4x", "4x"),
+            WaveformZoomSetting("5x", 1400f, "zoom_5x", "5x")
         )
     }
-    var zoomIndex by remember { mutableIntStateOf(2) } // Default: index 2 -> 1x (Wide: 220 dp/sec)
+    var zoomIndex by remember { mutableIntStateOf(2) } // Default: index 2 -> 1x (220 dp/sec)
     val currentZoomSetting = zoomLevels[zoomIndex]
     var pendingFocusMs by remember { mutableStateOf<Long?>(null) }
     var scrollOffsetPx by remember { mutableDoubleStateOf(0.0) }
@@ -134,10 +151,6 @@ fun WaveformSegmentEditorDialog(
             accumulatedPinchZoom = 1f
         }
     }
-
-    // Waveform data
-    var waveformData by remember { mutableStateOf<List<WaveformPoint>>(emptyList()) }
-    var isLoadingWaveform by remember { mutableStateOf(true) }
 
     // Immediate dynamic envelope fallback so the waveform canvas is NEVER blank while loading or decoding
     val activeWaveform = remember(waveformData, effectiveDuration) {
@@ -176,38 +189,11 @@ fun WaveformSegmentEditorDialog(
         isLoadingWaveform = true
         withContext(Dispatchers.IO) {
             SilenceDetector.clearWaveformCacheFor(track.filePath)
-            val extracted = SilenceDetector.extractWaveform(context, track.filePath, effectiveDuration)
+            val dur = maxOf(effectiveDuration, fileDurationMs, track.duration)
+            val extracted = SilenceDetector.extractWaveform(context, track.filePath, dur)
             waveformData = extracted
         }
         isLoadingWaveform = false
-    }
-
-    // Auto-detect cuts if none exist when opening editor so the user is never faced with an empty blank screen
-    LaunchedEffect(track.filePath) {
-        if (cuts.isEmpty()) {
-            val subs = AudioPlayerManager.subtitlesCues.value
-            if (subs.isNotEmpty()) {
-                val subCuts = subs.map { it.endMs }.filter { it > 0 && it < effectiveDuration }.distinct().sorted()
-                if (subCuts.isNotEmpty()) {
-                    cuts.addAll(subCuts)
-                    selectedCutIndex = 0
-                }
-            } else {
-                withContext(Dispatchers.IO) {
-                    val silenceCuts = SilenceDetector.detectBoundaries(
-                        context = context,
-                        filePath = track.filePath,
-                        totalDurationMs = effectiveDuration
-                    )
-                    if (silenceCuts.isNotEmpty() && cuts.isEmpty()) {
-                        withContext(Dispatchers.Main) {
-                            cuts.addAll(silenceCuts)
-                            selectedCutIndex = 0
-                        }
-                    }
-                }
-            }
-        }
     }
 
     // Single segment preview playback job
@@ -335,22 +321,7 @@ fun WaveformSegmentEditorDialog(
 
                         Button(
                             onClick = {
-                                val finalCuts = if (cuts.isEmpty()) {
-                                    val dur = if (effectiveDuration > 0) effectiveDuration else 60000L
-                                    val autoList = mutableListOf<Long>()
-                                    var t = 5000L
-                                    while (t < dur) {
-                                        autoList.add(t)
-                                        t += 5000L
-                                    }
-                                    if (dur > 0 && (autoList.isEmpty() || autoList.last() < dur)) {
-                                        autoList.add(dur)
-                                    }
-                                    autoList
-                                } else {
-                                    cuts.toList()
-                                }
-                                viewModel.saveManualPracticeSegments(track, finalCuts, context, autoEnable = true)
+                                viewModel.saveManualPracticeSegments(track, cuts.toList(), context, autoEnable = true)
                                 viewModel.updatePracticeSettings("MANUAL", viewModel.practicePauseMultiplierSetting)
                                 onDismiss()
                             },
@@ -404,7 +375,7 @@ fun WaveformSegmentEditorDialog(
                                 shape = RoundedCornerShape(6.dp),
                                 color = MaterialTheme.colorScheme.primaryContainer,
                                 modifier = Modifier.clickable { 
-                                    if (zoomIndex == 2) changeZoom(3) else changeZoom(2) 
+                                    changeZoom((zoomIndex + 1) % zoomLevels.size)
                                 }
                             ) {
                                 val zoomLabel = zoomLevels[zoomIndex].displayLabel
@@ -872,11 +843,15 @@ fun WaveformSegmentEditorDialog(
                                             val barTimeMs = (((scrollOffsetPx + barX) / pxPerSec) * 1000.0).toLong()
 
                                             if (barTimeMs in 0L..effectiveDuration) {
-                                                val sampleIdx = (barTimeMs / 50L).toInt().coerceIn(0, activeData.size - 1)
-                                                val nextIdx = (sampleIdx + 1).coerceAtMost(activeData.size - 1)
-                                                val frac = ((barTimeMs % 50L) / 50f).coerceIn(0f, 1f)
-                                                val smoothFrac = (1f - kotlin.math.cos(frac * Math.PI.toFloat())) / 2f
-                                                val rawAmp = activeData[sampleIdx].amplitude * (1f - smoothFrac) + activeData[nextIdx].amplitude * smoothFrac
+                                                val sampleIdx = (barTimeMs / 50L).toInt()
+                                                val rawAmp = if (sampleIdx in activeData.indices) {
+                                                    val nextIdx = (sampleIdx + 1).coerceAtMost(activeData.size - 1)
+                                                    val frac = ((barTimeMs % 50L) / 50f).coerceIn(0f, 1f)
+                                                    val smoothFrac = (1f - kotlin.math.cos(frac * Math.PI.toFloat())) / 2f
+                                                    activeData[sampleIdx].amplitude * (1f - smoothFrac) + activeData[nextIdx].amplitude * smoothFrac
+                                                } else {
+                                                    0.0f
+                                                }
                                                 val amp = (rawAmp * waveformGain).coerceIn(0f, 1f)
 
                                                 // True dynamic loudness: silence is flat on baseline, speech height varies proportionally with volume

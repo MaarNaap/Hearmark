@@ -45,14 +45,16 @@ object SilenceDetector {
         totalDurationMs: Long
     ): List<WaveformPoint> = withContext(Dispatchers.Default) {
         waveformCache[filePath]?.let { return@withContext it }
+        val fileDuration = getAudioDuration(context, filePath)
+        val accurateDuration = maxOf(totalDurationMs, fileDuration)
         try {
-            analyzeAudioPcmSilence(context, filePath, totalDurationMs, "MEDIUM", DEFAULT_MIN_SILENCE_MS, DEFAULT_TAIL_PADDING_MS)
+            analyzeAudioPcmSilence(context, filePath, accurateDuration, "MEDIUM", DEFAULT_MIN_SILENCE_MS, DEFAULT_TAIL_PADDING_MS)
             waveformCache[filePath]?.let { return@withContext it }
         } catch (e: Exception) {
             Log.w(TAG, "Waveform extraction failed: ${e.message}")
         }
         // Fallback waveform if decoding fails
-        val dur = if (totalDurationMs > 0) totalDurationMs else 30000L
+        val dur = if (accurateDuration > 0) accurateDuration else 30000L
         val fallback = mutableListOf<WaveformPoint>()
         var t = 0L
         var speechCounter = 0
@@ -205,7 +207,7 @@ object SilenceDetector {
                 audioFormat.getLong(MediaFormat.KEY_DURATION)
             } else 0L
             val formatDurationMs = formatDurationUs / 1000L
-            val resolvedDurationMs = if (totalDurationMs > 0) totalDurationMs else formatDurationMs
+            val resolvedDurationMs = maxOf(totalDurationMs, formatDurationMs)
 
             codec = MediaCodec.createDecoderByType(mime)
             codec.configure(audioFormat, null, null, 0)
@@ -218,37 +220,37 @@ object SilenceDetector {
 
             // Samples needed per 50ms window (stepping by channelCount)
             val samplesPerWindow = ((sampleRate.toLong() * WINDOW_MS) / 1000L).toInt().coerceAtLeast(50)
-            var currentWindowSumSquares = 0.0
+            var currentWindowSumSquares = 0L
             var currentWindowSampleCount = 0
             var currentWindowStartMs = 0L
 
-            val shortArray = ShortArray(4096)
+            val shortArray = ShortArray(8192)
             var consecutiveEmptyOutputs = 0
             val startTimeWall = System.currentTimeMillis()
-            val maxWallClockMs = 12000L
+            val maxWallClockMs = 90000L // Generous safety cap to allow full decode of long tracks
 
             while (!sawOutputEOS && (System.currentTimeMillis() - startTimeWall) < maxWallClockMs) {
-                // Feed input
-                if (!sawInputEOS) {
-                    val inputIndex = codec.dequeueInputBuffer(1000L)
-                    if (inputIndex >= 0) {
-                        val inputBuffer = codec.getInputBuffer(inputIndex)
-                        if (inputBuffer != null) {
-                            val sampleSize = extractor.readSampleData(inputBuffer, 0)
-                            if (sampleSize <= 0) {
-                                codec.queueInputBuffer(inputIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                                sawInputEOS = true
-                            } else {
-                                val sampleTime = extractor.sampleTime
-                                codec.queueInputBuffer(inputIndex, 0, sampleSize, sampleTime, 0)
-                                extractor.advance()
-                            }
-                        }
+                // 1. Feed all available input buffers to keep decoder pipeline fully saturated
+                while (!sawInputEOS) {
+                    val inputIndex = codec.dequeueInputBuffer(0L)
+                    if (inputIndex < 0) break
+                    val inputBuffer = codec.getInputBuffer(inputIndex)
+                    if (inputBuffer == null) break
+
+                    val sampleSize = extractor.readSampleData(inputBuffer, 0)
+                    if (sampleSize < 0) {
+                        codec.queueInputBuffer(inputIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                        sawInputEOS = true
+                        break
+                    } else {
+                        val sampleTime = extractor.sampleTime
+                        codec.queueInputBuffer(inputIndex, 0, sampleSize, sampleTime, 0)
+                        extractor.advance()
                     }
                 }
 
-                // Process output
-                val outputIndex = codec.dequeueOutputBuffer(info, 1000L)
+                // 2. Drain output buffers
+                val outputIndex = codec.dequeueOutputBuffer(info, 2000L)
                 if (outputIndex >= 0) {
                     consecutiveEmptyOutputs = 0
                     if ((info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
@@ -268,18 +270,19 @@ object SilenceDetector {
 
                             var i = 0
                             while (i < toRead) {
-                                val sample = shortArray[i].toDouble()
+                                val sample = shortArray[i].toLong()
                                 currentWindowSumSquares += sample * sample
                                 currentWindowSampleCount++
 
                                 if (currentWindowSampleCount >= samplesPerWindow) {
-                                    val rms = sqrt(currentWindowSumSquares / currentWindowSampleCount)
+                                    val rms = sqrt((currentWindowSumSquares / currentWindowSampleCount).toDouble())
                                     windows.add(AudioWindow(timeMs = currentWindowStartMs, rms = rms))
                                     currentWindowStartMs += WINDOW_MS
-                                    currentWindowSumSquares = 0.0
+                                    currentWindowSumSquares = 0L
                                     currentWindowSampleCount = 0
 
-                                    if (resolvedDurationMs > 0 && currentWindowStartMs > resolvedDurationMs) {
+                                    // Generous overrun guard (15s beyond detected duration)
+                                    if (resolvedDurationMs > 0 && currentWindowStartMs > resolvedDurationMs + 15000L) {
                                         sawOutputEOS = true
                                         break
                                     }
@@ -292,7 +295,7 @@ object SilenceDetector {
                 } else {
                     if (sawInputEOS) {
                         consecutiveEmptyOutputs++
-                        if (consecutiveEmptyOutputs > 60) {
+                        if (consecutiveEmptyOutputs > 500) {
                             sawOutputEOS = true
                         }
                     }
@@ -300,8 +303,16 @@ object SilenceDetector {
             }
 
             if (currentWindowSampleCount > 0) {
-                val rms = sqrt(currentWindowSumSquares / currentWindowSampleCount)
+                val rms = sqrt((currentWindowSumSquares / currentWindowSampleCount).toDouble())
                 windows.add(AudioWindow(timeMs = currentWindowStartMs, rms = rms))
+                currentWindowStartMs += WINDOW_MS
+            }
+
+            // Ensure windows span the entire duration of the track
+            var padTime = currentWindowStartMs
+            while (resolvedDurationMs > 0 && padTime < resolvedDurationMs) {
+                windows.add(AudioWindow(timeMs = padTime, rms = 0.0))
+                padTime += WINDOW_MS
             }
 
             if (windows.isNotEmpty()) {
