@@ -17,6 +17,15 @@ object Loc {
         return strings[currentLanguage] ?: strings["en"] ?: key
     }
 
+    fun getFormattedText(key: String, vararg args: Any): String {
+        val raw = getText(key)
+        return try {
+            String.format(raw, *args)
+        } catch (e: Exception) {
+            raw
+        }
+    }
+
     private val translations = mapOf(
         "app_name" to mapOf("en" to "Hearmark", "ar" to "هيرمارك"),
         "home" to mapOf("en" to "Home", "ar" to "الرئيسية"),
@@ -584,6 +593,31 @@ object Loc {
         "ai_no_messages_yet" to mapOf("en" to "Ask Gemini anything about your audio, vocabulary, idioms, or grammar!", "ar" to "اسأل جيميناي أي استفسار حول المقطع، المفردات، أو القواعد!"),
         "custom_gemini_api_key" to mapOf("en" to "Google AI Studio API Key (Optional)", "ar" to "مفتاح Google AI Studio API (اختياري)"),
         "custom_gemini_api_key_desc" to mapOf("en" to "Use your personal Gemini API key from Google AI Studio", "ar" to "استخدم مفتاحك الشخصي المجاني من Google AI Studio"),
+        "custom_gemini_api_key_multi_desc" to mapOf(
+            "en" to "Save multiple Google AI Studio API keys and easily switch between them anytime.",
+            "ar" to "احفظ عدة مفاتيح Google AI Studio API وبدّل بينها بلمسة واحدة في أي وقت."
+        ),
+        "manage_api_keys" to mapOf("en" to "Manage API Keys", "ar" to "إدارة مفاتيح API"),
+        "saved_api_keys" to mapOf("en" to "Saved API Keys", "ar" to "مفاتيح API المحفوظة"),
+        "add_api_key" to mapOf("en" to "Add API Key", "ar" to "إضافة مفتاح API"),
+        "edit_api_key" to mapOf("en" to "Edit API Key", "ar" to "تعديل مفتاح API"),
+        "delete_api_key" to mapOf("en" to "Delete Key", "ar" to "حذف المفتاح"),
+        "delete_api_key_confirm" to mapOf("en" to "Delete API key \"%s\"?", "ar" to "هل تريد حذف مفتاح API \"%s\"؟"),
+        "key_name_label" to mapOf("en" to "Key Label / Name", "ar" to "اسم / تصنيف المفتاح"),
+        "key_name_placeholder" to mapOf("en" to "e.g. Work, Personal, Backup", "ar" to "مثال: عمل، شخصي، احتياطي"),
+        "api_key_value_label" to mapOf("en" to "Gemini API Key", "ar" to "مفتاح Gemini API"),
+        "api_key_value_placeholder" to mapOf("en" to "Paste AIzaSy... key here", "ar" to "ألصق مفتاح AIzaSy... هنا"),
+        "active_key_badge" to mapOf("en" to "ACTIVE", "ar" to "نشط"),
+        "active_key_label" to mapOf("en" to "Active Key", "ar" to "المفتاح النشط"),
+        "in_use" to mapOf("en" to "In Use", "ar" to "قيد الاستخدام"),
+        "tap_to_switch_key" to mapOf("en" to "Tap to switch to this key", "ar" to "اضغط للتبديل إلى هذا المفتاح"),
+        "set_as_active_key" to mapOf("en" to "Set as active key now", "ar" to "تعيين كمفتاح نشط حالياً"),
+        "no_api_keys_saved" to mapOf("en" to "No API keys saved yet. Tap 'Add API Key' to save your keys.", "ar" to "لم يتم حفظ أي مفتاح بعد. اضغط على 'إضافة مفتاح API' لحفظ مفاتيحك."),
+        "key_switched_success" to mapOf("en" to "Switched active API key to \"%s\"", "ar" to "تم التبديل إلى مفتاح \"%s\""),
+        "key_added_success" to mapOf("en" to "API Key saved successfully!", "ar" to "تم حفظ مفتاح API بنجاح!"),
+        "key_updated_success" to mapOf("en" to "API Key updated successfully!", "ar" to "تم تحديث مفتاح API بنجاح!"),
+        "key_deleted_success" to mapOf("en" to "API Key removed", "ar" to "تمت إزالة مفتاح API"),
+        "api_key_cannot_be_empty" to mapOf("en" to "API Key cannot be empty", "ar" to "لا يمكن أن يكون مفتاح API فارغاً"),
         "gemini_api_key_saved" to mapOf("en" to "API Key saved successfully!", "ar" to "تم حفظ مفتاح API بنجاح!"),
         "gemini_api_key_removed" to mapOf("en" to "API Key removed", "ar" to "تمت إزالة مفتاح API"),
         "missing_api_key_prompt" to mapOf("en" to "Please enter your Gemini API key in Settings > AI Assistant, or configure GEMINI_API_KEY.", "ar" to "يرجى إدخال مفتاح Gemini API في الإعدادات > المساعد الذكي، أو ضبط GEMINI_API_KEY."),

@@ -27,6 +27,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import android.util.Log
+import org.json.JSONArray
+import org.json.JSONObject
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getDatabase(application)
@@ -100,6 +103,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var silenceMinDurationSetting by mutableStateOf(500L) // 350L, 500L, 750L, 1000L
     var silencePaddingSetting by mutableStateOf(200L) // 100L, 200L, 300L, 400L
     var customGeminiApiKey by mutableStateOf("")
+    var savedApiKeys by mutableStateOf<List<SavedApiKey>>(emptyList())
+    var activeApiKeyId by mutableStateOf("")
 
     // Gemini Chatbot State
     private val _chatMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
@@ -204,10 +209,92 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _chatMessages.value = emptyList()
     }
 
-    fun updateCustomGeminiApiKey(key: String) {
-        customGeminiApiKey = key.trim()
+    data class SavedApiKey(
+        val id: String = UUID.randomUUID().toString(),
+        val name: String,
+        val key: String
+    )
+
+    private fun persistApiKeys(keys: List<SavedApiKey>, activeId: String) {
         val sharedPref = getApplication<Application>().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-        sharedPref.edit().putString("custom_gemini_api_key", customGeminiApiKey).apply()
+        val array = JSONArray()
+        for (k in keys) {
+            val obj = JSONObject()
+            obj.put("id", k.id)
+            obj.put("name", k.name)
+            obj.put("key", k.key)
+            array.put(obj)
+        }
+        val activeKeyString = keys.firstOrNull { it.id == activeId }?.key ?: ""
+        sharedPref.edit()
+            .putString("saved_gemini_api_keys", array.toString())
+            .putString("active_gemini_api_key_id", activeId)
+            .putString("custom_gemini_api_key", activeKeyString)
+            .apply()
+
+        savedApiKeys = keys
+        activeApiKeyId = activeId
+        customGeminiApiKey = activeKeyString
+    }
+
+    fun selectActiveApiKey(keyId: String) {
+        val target = savedApiKeys.firstOrNull { it.id == keyId }
+        if (target != null) {
+            persistApiKeys(savedApiKeys, target.id)
+        }
+    }
+
+    fun addSavedApiKey(name: String, key: String, setAsActive: Boolean = true): SavedApiKey {
+        val trimmedKey = key.trim()
+        val trimmedName = name.trim().ifBlank { "Key ${savedApiKeys.size + 1}" }
+        val newKey = SavedApiKey(name = trimmedName, key = trimmedKey)
+        val updated = savedApiKeys + newKey
+        val newActiveId = if (setAsActive || activeApiKeyId.isBlank() || savedApiKeys.none { it.id == activeApiKeyId }) {
+            newKey.id
+        } else {
+            activeApiKeyId
+        }
+        persistApiKeys(updated, newActiveId)
+        return newKey
+    }
+
+    fun updateSavedApiKey(id: String, newName: String, newKey: String) {
+        val trimmedKey = newKey.trim()
+        val trimmedName = newName.trim().ifBlank { "Key" }
+        val updated = savedApiKeys.map {
+            if (it.id == id) it.copy(name = trimmedName, key = trimmedKey) else it
+        }
+        persistApiKeys(updated, activeApiKeyId)
+    }
+
+    fun deleteSavedApiKey(id: String) {
+        val updated = savedApiKeys.filterNot { it.id == id }
+        val newActiveId = if (activeApiKeyId == id) {
+            updated.firstOrNull()?.id ?: ""
+        } else {
+            activeApiKeyId
+        }
+        persistApiKeys(updated, newActiveId)
+    }
+
+    fun updateCustomGeminiApiKey(key: String) {
+        val trimmed = key.trim()
+        if (trimmed.isBlank()) {
+            if (activeApiKeyId.isNotBlank()) {
+                deleteSavedApiKey(activeApiKeyId)
+            } else {
+                customGeminiApiKey = ""
+                val sharedPref = getApplication<Application>().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+                sharedPref.edit().putString("custom_gemini_api_key", "").apply()
+            }
+        } else {
+            val existing = savedApiKeys.firstOrNull { it.id == activeApiKeyId }
+            if (existing != null) {
+                updateSavedApiKey(existing.id, existing.name, trimmed)
+            } else {
+                addSavedApiKey("Key 1", trimmed, setAsActive = true)
+            }
+        }
     }
 
     fun sendChatMessage(
@@ -379,7 +466,49 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         skipSecondsSetting = sharedPref.getInt("skip_seconds", 10)
         headsetControlsEnabled = sharedPref.getBoolean("headset_controls_enabled", true)
         headsetMultiClickAction = sharedPref.getString("headset_multiclick_action", "NEXT_PREV") ?: "NEXT_PREV"
-        customGeminiApiKey = sharedPref.getString("custom_gemini_api_key", "") ?: ""
+        
+        // Load saved API keys and active selection
+        val savedKeysJson = sharedPref.getString("saved_gemini_api_keys", "") ?: ""
+        val legacyKey = sharedPref.getString("custom_gemini_api_key", "") ?: ""
+        val activeKeyIdFromPref = sharedPref.getString("active_gemini_api_key_id", "") ?: ""
+
+        val parsedKeys = mutableListOf<SavedApiKey>()
+        if (savedKeysJson.isNotBlank()) {
+            try {
+                val array = JSONArray(savedKeysJson)
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    val id = obj.optString("id", UUID.randomUUID().toString())
+                    val name = obj.optString("name", "Key ${i + 1}")
+                    val key = obj.optString("key", "")
+                    if (key.isNotBlank()) {
+                        parsedKeys.add(SavedApiKey(id, name, key))
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("AppViewModel", "Failed to parse saved API keys: ${e.message}")
+            }
+        }
+
+        if (parsedKeys.isEmpty() && legacyKey.isNotBlank()) {
+            val initial = SavedApiKey(name = "Key 1", key = legacyKey)
+            parsedKeys.add(initial)
+            savedApiKeys = parsedKeys
+            activeApiKeyId = initial.id
+            customGeminiApiKey = legacyKey
+            persistApiKeys(parsedKeys, initial.id)
+        } else {
+            savedApiKeys = parsedKeys
+            val active = parsedKeys.firstOrNull { it.id == activeKeyIdFromPref } ?: parsedKeys.firstOrNull()
+            if (active != null) {
+                activeApiKeyId = active.id
+                customGeminiApiKey = active.key
+            } else {
+                activeApiKeyId = ""
+                customGeminiApiKey = ""
+            }
+        }
+
         Loc.currentLanguage = sharedPref.getString("language", "en") ?: "en"
         segmentSourceSetting = sharedPref.getString("segment_source", "SILENCE") ?: "SILENCE"
         practicePauseMultiplierSetting = sharedPref.getFloat("practice_pause_multiplier", 1.0f)
