@@ -65,6 +65,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val allTaskProgress: StateFlow<List<TaskTrackProgress>> = repository.getAllTaskProgressFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    fun getTodayDateString(): String =
+        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+
+    val todayDailyProgress: StateFlow<List<TaskDailyProgress>> =
+        repository.getDailyProgressForDateFlow(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val trackMetadataCache = MutableStateFlow<Map<Long, com.example.util.TrackMetadata>>(emptyMap())
 
     val playbackHistory: StateFlow<List<PlaybackHistory>> = repository.playbackHistory
@@ -889,7 +896,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         endDate: Long?,
         manualTrackIds: List<Long> = emptyList(),
         customThreshold: Int? = null,
-        labels: String = ""
+        labels: String = "",
+        dailyTargetValue: Int? = null
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val finalTitle = Task.buildCombinedTitle(title, labels)
@@ -904,7 +912,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 startDate = startDate,
                 endDate = endDate,
                 customThreshold = customThreshold,
-                labels = labels
+                labels = labels,
+                dailyTargetValue = dailyTargetValue
             )
 
             // If manual, setup progresses
@@ -939,7 +948,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         sourceId: Long?,
         manualTrackIds: List<Long> = emptyList(),
         customThreshold: Int? = null,
-        labels: String = ""
+        labels: String = "",
+        dailyTargetValue: Int? = null
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val previousTask = repository.getTaskById(taskId) ?: return@launch
@@ -955,7 +965,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 sourceType = sourceType,
                 sourceId = sourceId,
                 customThreshold = customThreshold,
-                labels = labels
+                labels = labels,
+                dailyTargetValue = dailyTargetValue
             )
             repository.updateTask(updatedTask)
 
@@ -1085,7 +1096,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 startDate = now,
                 endDate = originalTask.endDate,
                 customThreshold = originalTask.customThreshold,
-                labels = originalTask.labels
+                labels = originalTask.labels,
+                dailyTargetValue = originalTask.dailyTargetValue
             )
 
             // If it's a manual TRACKS task, copy the track IDs from existing progress
@@ -1928,6 +1940,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 obj.put("status", task.status)
                 if (task.customThreshold != null) obj.put("customThreshold", task.customThreshold)
                 obj.put("labels", task.labels)
+                if (task.dailyTargetValue != null) obj.put("dailyTargetValue", task.dailyTargetValue)
                 tasksArray.put(obj)
             }
             root.put("tasks", tasksArray)
@@ -2030,7 +2043,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             isCompleted = obj.optBoolean("isCompleted", false),
                             status = obj.optString("status", "ACTIVE"),
                             customThreshold = if (obj.has("customThreshold") && !obj.isNull("customThreshold")) obj.getInt("customThreshold") else null,
-                            labels = obj.optString("labels", "")
+                            labels = obj.optString("labels", ""),
+                            dailyTargetValue = if (obj.has("dailyTargetValue") && !obj.isNull("dailyTargetValue")) obj.getInt("dailyTargetValue") else null
                         )
                         repository.insertTask(task)
                     }

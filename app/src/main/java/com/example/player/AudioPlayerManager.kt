@@ -1593,6 +1593,7 @@ object AudioPlayerManager {
                     val matchingProgress = taskProgresses.find { it.trackId == track.id }
                     if (matchingProgress != null) {
                         completedTaskIdsForCurrentSession.add(task.id)
+                        repo.incrementDailyPlayCount(task.id, todayStr)
                         
                         var updatedProgress = matchingProgress
                         if (task.targetType == "PLAY_COUNT") {
@@ -1654,6 +1655,7 @@ object AudioPlayerManager {
             
             if (matchingProgress != null) {
                 completedTaskIdsForCurrentSession.add(task.id)
+                repo.incrementDailyPlayCount(task.id, todayStr)
                 var updatedProgress = matchingProgress
                 if (task.targetType == "PLAY_COUNT") {
                     val newCount = matchingProgress.completedPlayCount + 1

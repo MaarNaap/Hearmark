@@ -215,7 +215,8 @@ data class Task(
     val isCompleted: Boolean = false,
     val status: String = "ACTIVE", // "ACTIVE", "COMPLETED"
     val customThreshold: Int? = null, // custom threshold from 70 to 100 or null to use global
-    val labels: String = "" // comma-separated labels e.g. "Loud,Pronunciation,0.75x"
+    val labels: String = "", // comma-separated labels e.g. "Loud,Pronunciation,0.75x"
+    val dailyTargetValue: Int? = null // optional daily mini-goal (plays per day)
 ) {
     fun getLabelsList(): List<String> = formatLabelsList(labels)
 
@@ -365,6 +366,16 @@ data class TaskLabel(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "task_daily_progress",
+    primaryKeys = ["taskId", "date"]
+)
+data class TaskDailyProgress(
+    val taskId: Long,
+    val date: String, // e.g. "2026-09-11"
+    val completedPlayCount: Int = 0
 )
 
 // --- DAOs ---
@@ -552,6 +563,25 @@ interface AppDao {
     """)
     suspend fun getAllTasksForTrack(trackId: Long): List<Task>
 
+    // Task Daily Progress
+    @Query("SELECT * FROM task_daily_progress WHERE date = :date")
+    fun getDailyProgressForDateFlow(date: String): Flow<List<TaskDailyProgress>>
+
+    @Query("SELECT * FROM task_daily_progress WHERE date = :date")
+    suspend fun getDailyProgressForDateDirect(date: String): List<TaskDailyProgress>
+
+    @Query("SELECT * FROM task_daily_progress WHERE taskId = :taskId AND date = :date")
+    suspend fun getDailyProgress(taskId: Long, date: String): TaskDailyProgress?
+
+    @Query("SELECT * FROM task_daily_progress WHERE taskId = :taskId")
+    fun getAllDailyProgressForTask(taskId: Long): Flow<List<TaskDailyProgress>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTaskDailyProgress(progress: TaskDailyProgress)
+
+    @Query("DELETE FROM task_daily_progress WHERE taskId = :taskId")
+    suspend fun deleteDailyProgressForTask(taskId: Long)
+
     // Stats / Playback History
     @Query("SELECT * FROM playback_history ORDER BY completedAt DESC")
     fun getPlaybackHistoryFlow(): Flow<List<PlaybackHistory>>
@@ -654,9 +684,10 @@ interface AppDao {
         PlaybackHistory::class,
         Note::class,
         NoteTag::class,
-        TaskLabel::class
+        TaskLabel::class,
+        TaskDailyProgress::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -769,6 +800,20 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE tasks ADD COLUMN dailyTargetValue INTEGER DEFAULT NULL")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `task_daily_progress` (
+                        `taskId` INTEGER NOT NULL,
+                        `date` TEXT NOT NULL,
+                        `completedPlayCount` INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY(`taskId`, `date`)
+                    )
+                """.trimIndent())
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -776,7 +821,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smart_audio_tasks_db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     .fallbackToDestructiveMigrationOnDowngrade(true)
                     .build()
                 INSTANCE = instance
@@ -907,7 +952,8 @@ class AppRepository(val dao: AppDao) {
         startDate: Long,
         endDate: Long?,
         customThreshold: Int? = null,
-        labels: String = ""
+        labels: String = "",
+        dailyTargetValue: Int? = null
     ): Long {
         val finalTitle = Task.buildCombinedTitle(title, labels)
         val task = Task(
@@ -921,7 +967,8 @@ class AppRepository(val dao: AppDao) {
             startDate = startDate,
             endDate = endDate,
             customThreshold = customThreshold,
-            labels = labels
+            labels = labels,
+            dailyTargetValue = dailyTargetValue
         )
         val taskId = dao.insertTask(task)
         initializeTaskProgress(taskId, sourceType, sourceId)
@@ -958,6 +1005,7 @@ class AppRepository(val dao: AppDao) {
     suspend fun deleteTask(id: Long) {
         dao.deleteTask(id)
         dao.clearTaskProgress(id)
+        dao.deleteDailyProgressForTask(id)
         syncAndCleanTaskLabels()
     }
 
@@ -976,6 +1024,19 @@ class AppRepository(val dao: AppDao) {
     suspend fun getProgressForTask(taskId: Long) = dao.getProgressForTask(taskId)
     suspend fun insertTaskProgress(progress: TaskTrackProgress) = dao.insertTaskProgress(progress)
     suspend fun deleteSingleTaskProgress(taskId: Long, trackId: Long) = dao.deleteSingleTaskProgress(taskId, trackId)
+
+    // Task Daily Progress
+    fun getDailyProgressForDateFlow(date: String): Flow<List<TaskDailyProgress>> = dao.getDailyProgressForDateFlow(date)
+    suspend fun getDailyProgressForDateDirect(date: String): List<TaskDailyProgress> = dao.getDailyProgressForDateDirect(date)
+    suspend fun getDailyProgress(taskId: Long, date: String): TaskDailyProgress? = dao.getDailyProgress(taskId, date)
+    suspend fun insertTaskDailyProgress(progress: TaskDailyProgress) = dao.insertTaskDailyProgress(progress)
+    suspend fun deleteDailyProgressForTask(taskId: Long) = dao.deleteDailyProgressForTask(taskId)
+    suspend fun incrementDailyPlayCount(taskId: Long, date: String): Int {
+        val current = dao.getDailyProgress(taskId, date)
+        val newCount = (current?.completedPlayCount ?: 0) + 1
+        dao.insertTaskDailyProgress(TaskDailyProgress(taskId = taskId, date = date, completedPlayCount = newCount))
+        return newCount
+    }
 
     // Re-activate task
     suspend fun reactivateTask(taskId: Long) {

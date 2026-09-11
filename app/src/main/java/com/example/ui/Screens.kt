@@ -1732,6 +1732,37 @@ fun HomeView(
     val activeTasks by viewModel.activeTasks.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val allTaskProgress by viewModel.allTaskProgress.collectAsStateWithLifecycle()
+    val todayDailyProgressList by viewModel.todayDailyProgress.collectAsStateWithLifecycle()
+
+    val dayOfWeekToday = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
+    val todayStr = when (dayOfWeekToday) {
+        Calendar.SUNDAY -> "SUNDAY"
+        Calendar.MONDAY -> "MONDAY"
+        Calendar.TUESDAY -> "TUESDAY"
+        Calendar.WEDNESDAY -> "WEDNESDAY"
+        Calendar.THURSDAY -> "THURSDAY"
+        Calendar.FRIDAY -> "FRIDAY"
+        Calendar.SATURDAY -> "SATURDAY"
+        else -> ""
+    }
+
+    val todayTasks = remember(activeTasks, todayStr) {
+        activeTasks.filter { it.scheduledDays.split(",").contains(todayStr) }
+    }
+
+    val sortedTodayTasks = remember(todayTasks, todayDailyProgressList) {
+        todayTasks.sortedWith(
+            compareBy<Task> { task ->
+                val isDoneOverall = task.isCompleted
+                val dailyTarget = task.dailyTargetValue
+                val isDailyDone = if (dailyTarget != null && dailyTarget > 0) {
+                    val currentPlays = todayDailyProgressList.find { it.taskId == task.id }?.completedPlayCount ?: 0
+                    currentPlays >= dailyTarget
+                } else false
+                if (isDoneOverall || isDailyDone) 1 else 0
+            }
+        )
+    }
 
     // Find continuation track based on custom adaptive logic:
     val latestResumableTrack = remember(tracks, activeTasks, allTaskProgress) {
@@ -2101,23 +2132,16 @@ fun HomeView(
             )
         }
 
-        // Fetch task active today
-        val dayOfWeekToday = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
-        val todayStr = when (dayOfWeekToday) {
-            Calendar.SUNDAY -> "SUNDAY"
-            Calendar.MONDAY -> "MONDAY"
-            Calendar.TUESDAY -> "TUESDAY"
-            Calendar.WEDNESDAY -> "WEDNESDAY"
-            Calendar.THURSDAY -> "THURSDAY"
-            Calendar.FRIDAY -> "FRIDAY"
-            Calendar.SATURDAY -> "SATURDAY"
-            else -> ""
-        }
+        if (sortedTodayTasks.isNotEmpty()) {
+            items(sortedTodayTasks, key = { it.id }) { task ->
+                val isDoneOverall = task.isCompleted
+                val dailyTarget = task.dailyTargetValue
+                val isDailyDone = if (dailyTarget != null && dailyTarget > 0) {
+                    val currentPlays = todayDailyProgressList.find { it.taskId == task.id }?.completedPlayCount ?: 0
+                    currentPlays >= dailyTarget
+                } else false
+                val isCompletedToday = isDoneOverall || isDailyDone
 
-        val todayTasks = activeTasks.filter { it.scheduledDays.split(",").contains(todayStr) }
-
-        if (todayTasks.isNotEmpty()) {
-            items(todayTasks) { task ->
                 val progressList by viewModel.repository.getProgressForTaskFlow(task.id).collectAsStateWithLifecycle(emptyList())
                 val overallPercent = if (progressList.isNotEmpty()) {
                     var totalCompleted = 0
@@ -2157,9 +2181,9 @@ fun HomeView(
                                 modifier = Modifier.widthIn(min = 32.dp)
                             ) {
                                 Icon(
-                                    imageVector = if (task.isCompleted) Icons.Filled.CheckCircle else Icons.Filled.Bookmark,
+                                    imageVector = if (isCompletedToday) Icons.Filled.CheckCircle else Icons.Filled.Bookmark,
                                     contentDescription = "Task icon",
-                                    tint = if (task.isCompleted) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary,
+                                    tint = if (isCompletedToday) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(15.dp)
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
@@ -2167,7 +2191,7 @@ fun HomeView(
                                     text = "${(overallPercent * 100).toInt()}%",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (task.isCompleted) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
+                                    color = if (isCompletedToday) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
                                 )
                             }
                             Spacer(modifier = Modifier.width(12.dp))
@@ -2196,7 +2220,7 @@ fun HomeView(
                                 .fillMaxWidth()
                                 .height(3.dp)
                                 .clip(CircleShape),
-                            color = if (task.isCompleted) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary,
+                            color = if (isCompletedToday) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary,
                             trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
                         )
                     }
@@ -7899,8 +7923,16 @@ fun CreateTaskScreen(
     }
     var scheduledDays by remember(initialDays) { mutableStateOf(initialDays) }
     var reminderTime by remember(editingTask) { mutableStateOf(editingTask?.reminderTime ?: "09:00 AM") }
+    var enableDailyGoal by remember(editingTask) {
+        mutableStateOf(editingTask?.dailyTargetValue != null && editingTask.dailyTargetValue > 0)
+    }
+    var dailyTargetValue by remember(editingTask) {
+        mutableStateOf(editingTask?.dailyTargetValue ?: 1)
+    }
 
-    var currentStep by remember { mutableStateOf(1) } // Stepper: 1 to 5
+    val coroutineScope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
+    val currentStep = pagerState.currentPage + 1
 
     val allFolders by viewModel.folders.collectAsStateWithLifecycle()
     val allPlaylists by viewModel.playlists.collectAsStateWithLifecycle()
@@ -7962,6 +7994,8 @@ fun CreateTaskScreen(
             targetType = editingTask.targetType
             targetValue = editingTask.targetValue
             reminderTime = editingTask.reminderTime
+            enableDailyGoal = editingTask.dailyTargetValue != null && editingTask.dailyTargetValue > 0
+            dailyTargetValue = editingTask.dailyTargetValue ?: 1
             
             if (editingTask.sourceType == "TRACKS") {
                 val progress = viewModel.getProgressForTask(editingTask.id)
@@ -8015,56 +8049,74 @@ fun CreateTaskScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp)
     ) {
-        // Top Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = if (editingTask != null) Loc.getText("edit_task_title") else Loc.getText("create_task_title"),
-                fontSize = 22.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        
-        // Stepper Progress dots
-        Row(
+        // Top Header & Stepper pinned at the top
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(top = 20.dp, start = 24.dp, end = 24.dp, bottom = 8.dp)
         ) {
-            (1..4).forEach { step ->
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(
-                            color = if (currentStep == step) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                            shape = CircleShape
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (editingTask != null) Loc.getText("edit_task_title") else Loc.getText("create_task_title"),
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            
+            // Stepper Progress dots
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                (1..4).forEach { step ->
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(
+                                color = if (currentStep == step) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                shape = CircleShape
+                            )
+                            .clickable {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(step - 1)
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "$step",
+                            color = if (currentStep == step) Color.White else MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
                         )
-                        .clickable { currentStep = step },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "$step",
-                        color = if (currentStep == step) Color.White else MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
+                    }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // STEP RENDER LOGIC
-        when (currentStep) {
-            1 -> {
+        // SWIPEABLE TABS / STEPS CONTENT (HorizontalPager)
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+        ) { page ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 8.dp)
+            ) {
+                when (page) {
+                    0 -> {
                 Text(Loc.getText("step_1"), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.secondary)
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
@@ -8758,7 +8810,7 @@ fun CreateTaskScreen(
                 }
             }
 
-            2 -> {
+                    1 -> {
                 Text(Loc.getText("step_2"), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.secondary)
                 Spacer(modifier = Modifier.height(12.dp))
                 
@@ -8990,7 +9042,7 @@ fun CreateTaskScreen(
                 }
             }
 
-            3 -> {
+                    2 -> {
                 Text(Loc.getText("step_3"), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.secondary)
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(Loc.getText("select_days"), fontWeight = FontWeight.SemiBold)
@@ -9088,9 +9140,102 @@ fun CreateTaskScreen(
                 ) {
                     Text("${Loc.getText("change_time")}: $reminderTime")
                 }
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 14.dp),
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                )
+
+                // Optional Daily Mini-Goal
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { enableDailyGoal = !enableDailyGoal }
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = Loc.getText("daily_goal_title"),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = Loc.getText("daily_goal_desc"),
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                        )
+                    }
+                    Switch(
+                        checked = enableDailyGoal,
+                        onCheckedChange = { enableDailyGoal = it },
+                        modifier = Modifier.testTag("daily_goal_switch")
+                    )
+                }
+
+                if (enableDailyGoal) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(
+                                text = Loc.getText("daily_goal_plays_label"),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilledTonalIconButton(
+                                    onClick = { if (dailyTargetValue > 1) dailyTargetValue-- },
+                                    modifier = Modifier.size(36.dp).testTag("dec_daily_goal_btn")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Remove,
+                                        contentDescription = "Decrease daily goal",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "$dailyTargetValue",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 12.dp)
+                                )
+                                FilledTonalIconButton(
+                                    onClick = { dailyTargetValue++ },
+                                    modifier = Modifier.size(36.dp).testTag("inc_daily_goal_btn")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Add,
+                                        contentDescription = "Increase daily goal",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = Loc.getText("daily_goal_unit"),
+                                    fontSize = 12.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
-            4 -> {
+                    3 -> {
                 Text(Loc.getText("step_4"), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.secondary)
                 Spacer(modifier = Modifier.height(12.dp))
                 
@@ -9240,97 +9385,79 @@ fun CreateTaskScreen(
                                 fontWeight = FontWeight.Normal
                             )
                         }
+
+                        // Daily Goal Summary
+                        Row {
+                            Text(
+                                text = if (isAr) "الهدف اليومي: " else "Daily Goal: ",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = if (enableDailyGoal && dailyTargetValue > 0) {
+                                    "$dailyTargetValue ${Loc.getText("daily_goal_unit")}"
+                                } else {
+                                    Loc.getText("daily_goal_unset")
+                                },
+                                fontWeight = FontWeight.Normal
+                            )
+                        }
                     }
                 }
+            }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
             }
         }
 
-        Spacer(modifier = Modifier.height(30.dp))
-
         // Navigation Footer controls inside stepper
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            if (currentStep > 1) {
-                TextButton(onClick = { currentStep-- }) {
-                    Text(Loc.getText("prev"))
-                }
-            } else {
-                TextButton(onClick = onDismiss) {
-                    Text(Loc.getText("cancel"))
-                }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (editingTask != null && currentStep < 4) {
-                    OutlinedButton(
-                        onClick = {
-                            val rawTitle = title.trim().ifEmpty {
-                                val autoTitle = when (sourceType) {
-                                    "FOLDER" -> allFolders.find { it.id == sourceId }?.folderName
-                                    "PLAYLIST" -> allPlaylists.find { it.id == sourceId }?.name
-                                    "TRACKS" -> {
-                                        if (selectedManualTrackIds.size == 1) {
-                                            allTracks.find { it.id == selectedManualTrackIds.first() }?.getDisplayTitle()
-                                        } else if (selectedManualTrackIds.size > 1) {
-                                            Loc.getText("group_goal_task_title")
-                                        } else null
-                                    }
-                                    else -> null
-                                }
-                                autoTitle ?: (if (Loc.currentLanguage == "ar") "مهمة غير مسماة" else "Unnamed Task")
-                            }
-                            val finalTitle = Task.buildCombinedTitle(rawTitle, taskLabels.joinToString(","))
-                            viewModel.editTask(
-                                taskId = editingTask.id,
-                                title = finalTitle,
-                                targetType = targetType,
-                                targetValue = targetValue,
-                                scheduledDays = scheduledDays.joinToString(","),
-                                reminderTime = reminderTime,
-                                startDate = editingTask.startDate,
-                                endDate = editingTask.endDate,
-                                sourceType = sourceType,
-                                sourceId = sourceId,
-                                manualTrackIds = selectedManualTrackIds.toList(),
-                                customThreshold = if (useCustomThreshold) taskThresholdValue.toInt() else null,
-                                labels = taskLabels.joinToString(",")
-                            )
-                            onDismiss()
-                        },
-                        modifier = Modifier.testTag("quick_save_btn")
-                    ) {
-                        Text(Loc.getText("update_task_btn"))
-                    }
-                }
-
-                if (currentStep < 4) {
-                    Button(
-                        onClick = {
-                            currentStep++
-                        },
-                        modifier = Modifier.testTag("step_next_btn")
-                    ) {
-                        Text(Loc.getText("next"))
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 3.dp,
+            shadowElevation = 4.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (currentStep > 1) {
+                    TextButton(onClick = {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                        }
+                    }) {
+                        Text(Loc.getText("prev"))
                     }
                 } else {
-                    Button(
-                        onClick = {
-                            val rawTitle = title.trim().ifEmpty {
-                                val autoTitle = when (sourceType) {
-                                    "FOLDER" -> allFolders.find { it.id == sourceId }?.folderName
-                                    "PLAYLIST" -> allPlaylists.find { it.id == sourceId }?.name
-                                    "TRACKS" -> {
-                                        if (selectedManualTrackIds.size == 1) {
-                                            allTracks.find { it.id == selectedManualTrackIds.first() }?.getDisplayTitle()
-                                        } else if (selectedManualTrackIds.size > 1) {
-                                            Loc.getText("group_goal_task_title")
-                                        } else null
+                    TextButton(onClick = onDismiss) {
+                        Text(Loc.getText("cancel"))
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (editingTask != null && currentStep < 4) {
+                        OutlinedButton(
+                            onClick = {
+                                val rawTitle = title.trim().ifEmpty {
+                                    val autoTitle = when (sourceType) {
+                                        "FOLDER" -> allFolders.find { it.id == sourceId }?.folderName
+                                        "PLAYLIST" -> allPlaylists.find { it.id == sourceId }?.name
+                                        "TRACKS" -> {
+                                            if (selectedManualTrackIds.size == 1) {
+                                                allTracks.find { it.id == selectedManualTrackIds.first() }?.getDisplayTitle()
+                                            } else if (selectedManualTrackIds.size > 1) {
+                                                Loc.getText("group_goal_task_title")
+                                            } else null
+                                        }
+                                        else -> null
                                     }
-                                    else -> null
+                                    autoTitle ?: (if (Loc.currentLanguage == "ar") "مهمة غير مسماة" else "Unnamed Task")
                                 }
-                                autoTitle ?: (if (Loc.currentLanguage == "ar") "مهمة غير مسماة" else "Unnamed Task")
-                            }
-                            val finalTitle = Task.buildCombinedTitle(rawTitle, taskLabels.joinToString(","))
-                            if (editingTask != null) {
+                                val finalTitle = Task.buildCombinedTitle(rawTitle, taskLabels.joinToString(","))
                                 viewModel.editTask(
                                     taskId = editingTask.id,
                                     title = finalTitle,
@@ -9344,29 +9471,87 @@ fun CreateTaskScreen(
                                     sourceId = sourceId,
                                     manualTrackIds = selectedManualTrackIds.toList(),
                                     customThreshold = if (useCustomThreshold) taskThresholdValue.toInt() else null,
-                                    labels = taskLabels.joinToString(",")
+                                    labels = taskLabels.joinToString(","),
+                                    dailyTargetValue = if (enableDailyGoal && dailyTargetValue > 0) dailyTargetValue else null
                                 )
-                            } else {
-                                viewModel.createTask(
-                                    title = finalTitle,
-                                    sourceType = sourceType,
-                                    sourceId = sourceId,
-                                    targetType = targetType,
-                                    targetValue = targetValue,
-                                    scheduledDays = scheduledDays.joinToString(","),
-                                    reminderTime = reminderTime,
-                                    startDate = System.currentTimeMillis(),
-                                    endDate = null,
-                                    manualTrackIds = selectedManualTrackIds.toList(),
-                                    customThreshold = if (useCustomThreshold) taskThresholdValue.toInt() else null,
-                                    labels = taskLabels.joinToString(",")
-                                )
-                            }
-                            onDismiss()
-                        },
-                        modifier = Modifier.testTag("step_save_btn")
-                    ) {
-                        Text(if (editingTask != null) Loc.getText("update_task_btn") else Loc.getText("save_task"))
+                                onDismiss()
+                            },
+                            modifier = Modifier.testTag("quick_save_btn")
+                        ) {
+                            Text(Loc.getText("update_task_btn"))
+                        }
+                    }
+
+                    if (currentStep < 4) {
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                                }
+                            },
+                            modifier = Modifier.testTag("step_next_btn")
+                        ) {
+                            Text(Loc.getText("next"))
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                val rawTitle = title.trim().ifEmpty {
+                                    val autoTitle = when (sourceType) {
+                                        "FOLDER" -> allFolders.find { it.id == sourceId }?.folderName
+                                        "PLAYLIST" -> allPlaylists.find { it.id == sourceId }?.name
+                                        "TRACKS" -> {
+                                            if (selectedManualTrackIds.size == 1) {
+                                                allTracks.find { it.id == selectedManualTrackIds.first() }?.getDisplayTitle()
+                                            } else if (selectedManualTrackIds.size > 1) {
+                                                Loc.getText("group_goal_task_title")
+                                            } else null
+                                        }
+                                        else -> null
+                                    }
+                                    autoTitle ?: (if (Loc.currentLanguage == "ar") "مهمة غير مسماة" else "Unnamed Task")
+                                }
+                                val finalTitle = Task.buildCombinedTitle(rawTitle, taskLabels.joinToString(","))
+                                if (editingTask != null) {
+                                    viewModel.editTask(
+                                        taskId = editingTask.id,
+                                        title = finalTitle,
+                                        targetType = targetType,
+                                        targetValue = targetValue,
+                                        scheduledDays = scheduledDays.joinToString(","),
+                                        reminderTime = reminderTime,
+                                        startDate = editingTask.startDate,
+                                        endDate = editingTask.endDate,
+                                        sourceType = sourceType,
+                                        sourceId = sourceId,
+                                        manualTrackIds = selectedManualTrackIds.toList(),
+                                        customThreshold = if (useCustomThreshold) taskThresholdValue.toInt() else null,
+                                        labels = taskLabels.joinToString(","),
+                                        dailyTargetValue = if (enableDailyGoal && dailyTargetValue > 0) dailyTargetValue else null
+                                    )
+                                } else {
+                                    viewModel.createTask(
+                                        title = finalTitle,
+                                        sourceType = sourceType,
+                                        sourceId = sourceId,
+                                        targetType = targetType,
+                                        targetValue = targetValue,
+                                        scheduledDays = scheduledDays.joinToString(","),
+                                        reminderTime = reminderTime,
+                                        startDate = System.currentTimeMillis(),
+                                        endDate = null,
+                                        manualTrackIds = selectedManualTrackIds.toList(),
+                                        customThreshold = if (useCustomThreshold) taskThresholdValue.toInt() else null,
+                                        labels = taskLabels.joinToString(","),
+                                        dailyTargetValue = if (enableDailyGoal && dailyTargetValue > 0) dailyTargetValue else null
+                                    )
+                                }
+                                onDismiss()
+                            },
+                            modifier = Modifier.testTag("step_save_btn")
+                        ) {
+                            Text(if (editingTask != null) Loc.getText("update_task_btn") else Loc.getText("save_task"))
+                        }
                     }
                 }
             }
