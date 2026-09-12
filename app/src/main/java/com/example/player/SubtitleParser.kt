@@ -411,6 +411,17 @@ object SubtitleParser {
                 origin in cue.startMs..cueEnd
             }
             if (directMatch != null) return directMatch
+
+            // If origin is relative and cues have an offset (e.g. virtual scenes)
+            val minCueStart = cues.firstOrNull { it.isTimed && it.startMs >= 0L }?.startMs ?: 0L
+            if (minCueStart > 0L && origin < minCueStart) {
+                val relMatch = cues.find { cue ->
+                    val cueEnd = if (cue.endMs > cue.startMs) cue.endMs else cue.startMs + 4000L
+                    (origin + minCueStart) in cue.startMs..cueEnd
+                }
+                if (relMatch != null) return relMatch
+            }
+
             return cues.minByOrNull { Math.abs(it.startMs - origin) }
         }
 
@@ -423,6 +434,16 @@ object SubtitleParser {
         }
 
         if (spannedCues.isEmpty()) {
+            val minCueStart = cues.firstOrNull { it.isTimed && it.startMs >= 0L }?.startMs ?: 0L
+            if (minCueStart > 0L && nStart < minCueStart) {
+                val relSpanned = cues.filter { cue ->
+                    val cueEnd = if (cue.endMs > cue.startMs) cue.endMs else cue.startMs + 4000L
+                    cue.startMs < (nEnd + minCueStart) && cueEnd > (nStart + minCueStart)
+                }
+                if (relSpanned.isNotEmpty()) {
+                    return relSpanned[0]
+                }
+            }
             return cues.minByOrNull { Math.abs(it.startMs - nStart) }
         }
 

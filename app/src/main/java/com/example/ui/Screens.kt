@@ -4168,8 +4168,71 @@ fun AudioPlayerOverlay(
     }
 
     val allNotesList by viewModel.notes.collectAsStateWithLifecycle()
-    val trackNotes = remember(allNotesList, track.id) {
-        allNotesList.filter { it.trackId == track.id }
+    val allTracksList by viewModel.tracks.collectAsStateWithLifecycle()
+    val trackNotes = remember(allNotesList, allTracksList, track.id, track.isVirtualScene, track.parentTrackId, track.startOffsetMs, track.duration) {
+        if (track.isVirtualScene) {
+            val sceneStart = track.startOffsetMs
+            val sceneEnd = track.endOffsetMs ?: (track.startOffsetMs + track.duration)
+            val parentId = track.parentTrackId ?: allTracksList.find { it.filePath == track.filePath && !it.isVirtualScene }?.id
+            val parentTrack = allTracksList.find { it.id == parentId }
+            allNotesList.filter { note ->
+                if (note.trackId == track.id) {
+                    true
+                } else if (parentId != null && note.trackId == parentId) {
+                    val s = note.originStartMs ?: note.startTimestampMs
+                    val e = if (note.endTimestampMs > s) note.endTimestampMs else s
+                    (s <= sceneEnd && e >= sceneStart) || (s in 0L..track.duration)
+                } else if (note.trackName != null && (note.trackName == track.fileName || (parentTrack != null && note.trackName == parentTrack.fileName))) {
+                    val s = note.originStartMs ?: note.startTimestampMs
+                    val e = if (note.endTimestampMs > s) note.endTimestampMs else s
+                    (s <= sceneEnd && e >= sceneStart) || (s in 0L..track.duration)
+                } else {
+                    false
+                }
+            }
+        } else {
+            // Parent or regular track (audio or video)
+            val childSceneIds = allTracksList.filter {
+                (it.isVirtualScene && it.parentTrackId == track.id) ||
+                (it.isVirtualScene && it.filePath == track.filePath)
+            }.map { it.id }.toSet()
+
+            allNotesList.filter { note ->
+                note.trackId == track.id ||
+                (note.trackId != null && childSceneIds.contains(note.trackId)) ||
+                (note.trackName != null && (note.trackName == track.fileName || note.trackName == track.filePath))
+            }
+        }
+    }
+
+    val effectivePhysPos = if (track.isVirtualScene) (track.startOffsetMs + playPositionState) else playPositionState
+
+    val activeNotesForTime = remember(trackNotes, subtitlesCuesState, playPositionState, activeSubtitleCueState, effectivePhysPos) {
+        val currentActiveCue = activeSubtitleCueState ?: if (subtitlesCuesState.isNotEmpty()) {
+            subtitlesCuesState.find { cue ->
+                val cueEnd = if (cue.endMs > cue.startMs) cue.endMs else cue.startMs + 4000L
+                effectivePhysPos in cue.startMs..cueEnd
+            }
+        } else null
+
+        trackNotes.filter { note ->
+            val cueMatch = if (currentActiveCue != null && subtitlesCuesState.isNotEmpty()) {
+                SubtitleParser.findDedicatedCueForNote(note, subtitlesCuesState) == currentActiveCue
+            } else false
+
+            val rawS = note.originStartMs ?: note.startTimestampMs
+            val rawE = if (note.endTimestampMs > rawS) note.endTimestampMs else rawS + 4000L
+
+            val timeMatch = if (track.isVirtualScene) {
+                (effectivePhysPos in rawS..rawE) ||
+                (playPositionState in rawS..rawE) ||
+                (rawS >= track.startOffsetMs && playPositionState in (rawS - track.startOffsetMs)..(rawE - track.startOffsetMs))
+            } else {
+                (effectivePhysPos in rawS..rawE) || (playPositionState in rawS..rawE)
+            }
+
+            cueMatch || timeMatch
+        }
     }
 
     Surface(
@@ -4242,6 +4305,39 @@ fun AudioPlayerOverlay(
                     }
                 }
 
+                // Floating Registered Note Badge directly on Fullscreen Video
+                if (activeNotesForTime.isNotEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f),
+                        shadowElevation = 4.dp,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .statusBarsPadding()
+                            .padding(top = if (areFullScreenControlsVisible) 64.dp else 16.dp, start = 16.dp)
+                            .clickable { onOpenNotes(activeNotesForTime) }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.EditNote,
+                                contentDescription = Loc.getText("view_note"),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (activeNotesForTime.size > 1) "${Loc.getText("notes")} (${activeNotesForTime.size})" else Loc.getText("notes"),
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
                 if (!isInPipModeState) {
                 // Top Bar Overlay
                 AnimatedVisibility(
@@ -4277,6 +4373,53 @@ fun AudioPlayerOverlay(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
+                            if (activeNotesForTime.isNotEmpty()) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .clickable { onOpenNotes(activeNotesForTime) }
+                                        .padding(horizontal = 4.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.EditNote,
+                                            contentDescription = Loc.getText("view_note"),
+                                            tint = MaterialTheme.colorScheme.onPrimary,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = if (activeNotesForTime.size > 1) "${Loc.getText("notes")} (${activeNotesForTime.size})" else Loc.getText("notes"),
+                                            color = MaterialTheme.colorScheme.onPrimary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+
+                            IconButton(onClick = {
+                                val currentCue = activeSubtitleCueState
+                                val currentCueText = currentCue?.text ?: ""
+                                val startMs = currentCue?.startMs ?: effectivePhysPos
+                                val maxEndLimit = if (track.isVirtualScene) {
+                                    track.endOffsetMs ?: (track.startOffsetMs + track.duration)
+                                } else {
+                                    durationState
+                                }
+                                val endMs = currentCue?.let { if (it.endMs > it.startMs) it.endMs else (it.startMs + 5000L) } ?: (startMs + 5000L).coerceAtMost(maxEndLimit)
+                                onQuickAddNotePrompt(track.id, startMs, endMs, currentCueText)
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Filled.EditNote,
+                                    contentDescription = Loc.getText("add_note"),
+                                    tint = Color.White
+                                )
+                            }
                             IconButton(onClick = {
                                 val next = AudioPlayerManager.toggleVideoSubtitleMode()
                                 val msg = when (next) {
@@ -4348,18 +4491,50 @@ fun AudioPlayerOverlay(
                             .navigationBarsPadding()
                             .padding(horizontal = 20.dp, vertical = 14.dp)
                     ) {
-                        Slider(
-                            value = if (durationState > 0) (playPositionState.toFloat() / durationState).coerceIn(0f, 1f) else 0f,
-                            onValueChange = { frac ->
-                                val targetMs = (frac * durationState).toLong()
-                                AudioPlayerManager.seekTo(targetMs, isPhysicalTimestamp = false)
-                            },
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color.White,
-                                activeTrackColor = MaterialTheme.colorScheme.primary,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            if (durationState > 0 && trackNotes.isNotEmpty()) {
+                                Canvas(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .align(Alignment.Center)
+                                        .padding(horizontal = 8.dp)
+                                ) {
+                                    val markerWidth = 2.dp.toPx()
+                                    for (note in trackNotes) {
+                                        val noteTargetMs = note.originStartMs
+                                            ?: SubtitleParser.findDedicatedCueForNote(note, subtitlesCuesState)?.startMs
+                                            ?: note.startTimestampMs
+                                        val relTargetMs = if (track.isVirtualScene) {
+                                            if (noteTargetMs >= track.startOffsetMs) noteTargetMs - track.startOffsetMs else noteTargetMs
+                                        } else {
+                                            noteTargetMs
+                                        }
+                                        if (relTargetMs in 0L..durationState) {
+                                            val frac = (relTargetMs.toFloat() / durationState.toFloat()).coerceIn(0f, 1f)
+                                            val noteX = frac * size.width
+                                            drawRect(
+                                                color = Color.White.copy(alpha = 0.85f),
+                                                topLeft = androidx.compose.ui.geometry.Offset(x = noteX - (markerWidth / 2f), y = 0f),
+                                                size = androidx.compose.ui.geometry.Size(width = markerWidth, height = size.height)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            Slider(
+                                value = if (durationState > 0) (playPositionState.toFloat() / durationState).coerceIn(0f, 1f) else 0f,
+                                onValueChange = { frac ->
+                                    val targetMs = (frac * durationState).toLong()
+                                    AudioPlayerManager.seekTo(targetMs, isPhysicalTimestamp = false)
+                                },
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color.White,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                                    inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                                )
                             )
-                        )
+                        }
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -4678,27 +4853,6 @@ fun AudioPlayerOverlay(
                         )
 
                         // Play count & Registered Note Indicator (Steady layout without shifts)
-                        val activeNotesForTime = remember(trackNotes, subtitlesCuesState, playPositionState) {
-                            if (subtitlesCuesState.isNotEmpty()) {
-                                val currentActiveCue = subtitlesCuesState.find { cue ->
-                                    val cueEnd = if (cue.endMs > cue.startMs) cue.endMs else cue.startMs + 4000L
-                                    playPositionState in cue.startMs..cueEnd
-                                }
-                                if (currentActiveCue != null) {
-                                    trackNotes.filter { note ->
-                                        SubtitleParser.findDedicatedCueForNote(note, subtitlesCuesState) == currentActiveCue
-                                    }
-                                } else {
-                                    emptyList()
-                                }
-                            } else {
-                                trackNotes.filter { note ->
-                                    val s = note.originStartMs ?: note.startTimestampMs
-                                    val e = s + 3000L
-                                    playPositionState in s..e
-                                }
-                            }
-                        }
 
                         Row(
                             modifier = Modifier
@@ -4957,6 +5111,38 @@ fun AudioPlayerOverlay(
                                                     .height(36.dp)
                                                     .background(Color.Black, RoundedCornerShape(6.dp))
                                             )
+                                        }
+                                    }
+
+                                    // Registered Note Floating Indicator on Video Card
+                                    if (activeNotesForTime.isNotEmpty()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f),
+                                            shadowElevation = 4.dp,
+                                            modifier = Modifier
+                                                .align(Alignment.TopStart)
+                                                .padding(8.dp)
+                                                .clickable { onOpenNotes(activeNotesForTime) }
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.EditNote,
+                                                    contentDescription = Loc.getText("view_note"),
+                                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = if (activeNotesForTime.size > 1) "${Loc.getText("notes")} (${activeNotesForTime.size})" else Loc.getText("notes"),
+                                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
                                         }
                                     }
 
@@ -5272,13 +5458,20 @@ fun AudioPlayerOverlay(
                                         val noteTargetMs = note.originStartMs
                                             ?: SubtitleParser.findDedicatedCueForNote(note, subtitlesCuesState)?.startMs
                                             ?: note.startTimestampMs
-                                        val frac = (noteTargetMs.toFloat() / durationState.toFloat()).coerceIn(0f, 1f)
-                                        val noteX = frac * size.width
-                                        drawRect(
-                                            color = noteMarkerColor,
-                                            topLeft = androidx.compose.ui.geometry.Offset(x = noteX - (markerWidth / 2f), y = 0f),
-                                            size = androidx.compose.ui.geometry.Size(width = markerWidth, height = size.height)
-                                        )
+                                        val relTargetMs = if (track.isVirtualScene) {
+                                            if (noteTargetMs >= track.startOffsetMs) noteTargetMs - track.startOffsetMs else noteTargetMs
+                                        } else {
+                                            noteTargetMs
+                                        }
+                                        if (relTargetMs in 0L..durationState) {
+                                            val frac = (relTargetMs.toFloat() / durationState.toFloat()).coerceIn(0f, 1f)
+                                            val noteX = frac * size.width
+                                            drawRect(
+                                                color = noteMarkerColor,
+                                                topLeft = androidx.compose.ui.geometry.Offset(x = noteX - (markerWidth / 2f), y = 0f),
+                                                size = androidx.compose.ui.geometry.Size(width = markerWidth, height = size.height)
+                                            )
+                                        }
                                     }
                                 }
                             }
