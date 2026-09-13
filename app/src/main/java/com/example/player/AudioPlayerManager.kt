@@ -114,6 +114,18 @@ object AudioPlayerManager {
     }
     val videoSubtitleMode = MutableStateFlow(VideoSubtitleMode.SHOW)
 
+    val isVideoFullWidth = MutableStateFlow(false)
+
+    fun toggleVideoFullWidth(): Boolean {
+        val next = !isVideoFullWidth.value
+        isVideoFullWidth.value = next
+        return next
+    }
+
+    fun setVideoFullWidth(enabled: Boolean) {
+        isVideoFullWidth.value = enabled
+    }
+
     fun toggleVideoSubtitleMode(): VideoSubtitleMode {
         val next = when (videoSubtitleMode.value) {
             VideoSubtitleMode.SHOW -> VideoSubtitleMode.HIDE

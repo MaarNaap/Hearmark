@@ -4019,6 +4019,7 @@ fun AudioPlayerOverlay(
     val activeSubtitleCueState by AudioPlayerManager.activeSubtitleCue.collectAsStateWithLifecycle()
     val isSubtitlesEnabledState by AudioPlayerManager.isSubtitlesEnabled.collectAsStateWithLifecycle()
     val videoSubtitleModeState by AudioPlayerManager.videoSubtitleMode.collectAsStateWithLifecycle()
+    val isVideoFullWidthState by AudioPlayerManager.isVideoFullWidth.collectAsStateWithLifecycle()
     val subtitleOffsetMsState by AudioPlayerManager.subtitleOffsetMs.collectAsStateWithLifecycle()
     val subtitleFontSizeState by AudioPlayerManager.subtitleFontSize.collectAsStateWithLifecycle()
     val showTimestampsInSubtitlesState by AudioPlayerManager.showTimestampsInSubtitles.collectAsStateWithLifecycle()
@@ -4062,6 +4063,27 @@ fun AudioPlayerOverlay(
             true
         }
     }
+
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val screenWidthDp = configuration.screenWidthDp.toFloat()
+    val fullWidthVideoHeight = remember(screenWidthDp, videoAspectRatio) {
+        (screenWidthDp / videoAspectRatio.coerceIn(1.0f, 2.4f)).dp
+    }
+    val videoHorizontalPadding by animateDpAsState(
+        targetValue = if (isVideoFullWidthState) 0.dp else 20.dp,
+        animationSpec = tween(durationMillis = 260),
+        label = "videoHorizontalPadding"
+    )
+    val videoCornerRadius by animateDpAsState(
+        targetValue = if (isVideoFullWidthState) 0.dp else 16.dp,
+        animationSpec = tween(durationMillis = 260),
+        label = "videoCornerRadius"
+    )
+    val videoCardHeight by animateDpAsState(
+        targetValue = if (isVideoFullWidthState) fullWidthVideoHeight else 210.dp,
+        animationSpec = tween(durationMillis = 260),
+        label = "videoCardHeight"
+    )
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -4814,6 +4836,28 @@ fun AudioPlayerOverlay(
                                     showWaveformEditorDialog = true
                                 }
                             )
+                            if (isTrackVideo) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = if (isVideoFullWidthState) Icons.Filled.FitScreen else Icons.Filled.AspectRatio,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(if (isVideoFullWidthState) Loc.getText("video_standard_width_action") else Loc.getText("video_full_width_action"))
+                                        }
+                                    },
+                                    onClick = {
+                                        showPlayerMenu = false
+                                        val isNowFullWidth = AudioPlayerManager.toggleVideoFullWidth()
+                                        val msg = if (isNowFullWidth) Loc.getText("video_full_width_enabled") else Loc.getText("video_full_width_disabled")
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -4833,7 +4877,6 @@ fun AudioPlayerOverlay(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 24.dp)
                             .verticalScroll(rememberScrollState()),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -4848,7 +4891,7 @@ fun AudioPlayerOverlay(
                                 fontSize = 15.sp,
                                 textAlign = TextAlign.Center
                             ),
-                            modifier = Modifier.padding(horizontal = 16.dp),
+                            modifier = Modifier.padding(horizontal = 24.dp),
                             maxLength = 32
                         )
 
@@ -4858,7 +4901,7 @@ fun AudioPlayerOverlay(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(26.dp)
-                                .padding(horizontal = 16.dp),
+                                .padding(horizontal = 24.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             // Left balancing space to ensure play count is always rock-steady centered
@@ -4934,7 +4977,7 @@ fun AudioPlayerOverlay(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp)
+                                    .padding(horizontal = 24.dp)
                             ) {
                                 if (folderOfTrack != null || playlistsOfTrack.isNotEmpty()) {
                                     Row(
@@ -5051,10 +5094,11 @@ fun AudioPlayerOverlay(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(210.dp),
-                                shape = RoundedCornerShape(16.dp),
+                                    .padding(horizontal = videoHorizontalPadding)
+                                    .height(videoCardHeight),
+                                shape = RoundedCornerShape(videoCornerRadius),
                                 colors = CardDefaults.cardColors(containerColor = Color.Black),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                                elevation = CardDefaults.cardElevation(defaultElevation = if (isVideoFullWidthState) 0.dp else 4.dp)
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -5199,6 +5243,23 @@ fun AudioPlayerOverlay(
                                                 }
                                             }
 
+                                            IconButton(
+                                                onClick = {
+                                                    lastVideoControlsInteractionTime = System.currentTimeMillis()
+                                                    val isNowFullWidth = AudioPlayerManager.toggleVideoFullWidth()
+                                                    val msg = if (isNowFullWidth) Loc.getText("video_full_width_enabled") else Loc.getText("video_full_width_disabled")
+                                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                                },
+                                                modifier = Modifier.size(36.dp).testTag("video_full_width_toggle_button")
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (isVideoFullWidthState) Icons.Filled.FitScreen else Icons.Filled.AspectRatio,
+                                                    contentDescription = if (isVideoFullWidthState) Loc.getText("video_standard_width_action") else Loc.getText("video_full_width_action"),
+                                                    tint = if (isVideoFullWidthState) MaterialTheme.colorScheme.primary else Color.White,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+
                                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                                 IconButton(
                                                     onClick = {
@@ -5248,7 +5309,10 @@ fun AudioPlayerOverlay(
                             }
                         } else {
                             // Artwork & Radar Waves Representation
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(horizontal = 24.dp)
+                            ) {
                                 val primaryRadarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                                 Box(
                                     modifier = Modifier
