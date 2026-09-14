@@ -548,7 +548,7 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                 append("Media Title: \"$mediaTitle\"\n\n")
 
                 if (existingQuestions.isNotEmpty()) {
-                    append("TASK: Generate 4 BRAND-NEW comprehension questions. The learner already has existing questions for this audio. You MUST NOT duplicate, repeat, or closely rephrase any of the existing questions.\n\n")
+                    append("TASK: Generate 4 BRAND-NEW quiz questions. The quiz must include BOTH comprehension and vocabulary questions. The learner already has existing questions for this audio. You MUST NOT duplicate, repeat, or closely rephrase any of the existing questions.\n\n")
                     append("====================================================\n")
                     append("EXISTING QUESTIONS (DO NOT DUPLICATE OR REPHRASE):\n")
                     existingQuestions.take(50).forEachIndexed { index, existingQ ->
@@ -557,42 +557,46 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                     append("====================================================\n\n")
                     append("CRITICAL MANDATE: Carefully inspect the EXISTING QUESTIONS above. Make sure your newly generated questions cover completely DIFFERENT parts of the transcript, novel vocabulary items, other speakers, untouched dialogue lines, or different key events.\n\n")
                 } else {
-                    append("Based on the provided dialogue/audio transcript, generate a bite-sized micro-quiz consisting of exactly 4 questions to reinforce listening comprehension and vocabulary retention.\n\n")
+                    append("Based on the provided dialogue/audio transcript, generate a bite-sized micro-quiz consisting of exactly 4 questions combining listening comprehension and key vocabulary questions from the audio.\n\n")
                 }
 
                 append("QUIZ COMPOSITION REQUIREMENTS:\n")
-                append("1. Mix of Questions: Exactly 2 or 3 Multiple Choice Questions (type: \"MCQ\") and 1 or 2 True/False Questions (type: \"TRUE_FALSE\"). Total questions must be 4.\n")
+                append("1. Balanced Question Mix (Total exactly 4 questions):\n")
+                append("   - MUST include 1 or 2 KEY VOCABULARY questions testing important words, idioms, or phrases found in the audio transcript (e.g. \"What is the meaning of '[word]' in this context?\", \"In the sentence '...', the word '[word]' means:\", or \"Which word in the dialogue means ...?\").\n")
+                append("   - MUST include 2 or 3 LISTENING COMPREHENSION questions testing main ideas, speaker intentions, key events, or specific details from the dialogue.\n")
+                append("   - Format: 2 or 3 Multiple Choice Questions (type: \"MCQ\") and 1 or 2 True/False Questions (type: \"TRUE_FALSE\"). Total questions must be 4.\n")
                 if (existingQuestions.isNotEmpty()) {
                     append("2. Strictly Novel & Non-Duplicate:\n")
-                    append("   - Under NO circumstances copy, paraphrase, or ask about the exact same focal points as the EXISTING QUESTIONS above.\n")
-                    append("   - Find and test other interesting phrases, subtle intentions, idioms, or factual statements from elsewhere in the dialogue.\n")
+                    append("   - Under NO circumstances copy, paraphrase, or ask about the exact same focal points or words as the EXISTING QUESTIONS above.\n")
+                    append("   - Choose different vocabulary words and test other dialogue lines from elsewhere in the transcript.\n")
                 }
                 append("3. Multiple Choice Questions (\"MCQ\"):\n")
                 append("   - Provide exactly 4 options in \"options\" list.\n")
-                append("   - Test contextual vocabulary, idioms, speaker intent, or core statements.\n")
+                append("   - For Vocabulary Questions: Highlight the word clearly, ask for its meaning/definition in context, and provide 1 correct meaning and 3 plausible, realistic distractor meanings.\n")
+                append("   - For Comprehension Questions: Test context, reason, speaker emotion, or dialogue details.\n")
                 append("   - Make wrong options natural, plausible distractors (not silly or absurd).\n")
                 append("4. True/False Questions (\"TRUE_FALSE\"):\n")
                 append("   - Provide exactly 2 options in \"options\" list: ${if (language == "ar") "[\"صح\", \"خطأ\"]" else "[\"True\", \"False\"]"}.\n")
-                append("   - Test a specific factual statement, key detail, or common misconception from the dialogue.\n")
+                append("   - Test a specific factual statement, key detail, word usage, or common misconception from the dialogue.\n")
                 append("5. Audio Timestamp Link (\"timestampMs\"):\n")
-                append("   - MUST provide the exact start timestamp in milliseconds ('startMs' from the transcript above) where the relevant line is spoken so the learner can re-listen.\n")
+                append("   - MUST provide the exact start timestamp in milliseconds ('startMs' from the transcript above) where the relevant dialogue line (or the sentence containing the vocabulary word) is spoken so the learner can re-listen.\n")
                 append("6. Explanation (\"explanation\"):\n")
-                append("   - Provide a concise 1-2 sentence explanation ${if (language == "ar") "in Arabic" else "in English"} clarifying why the answer is correct and quoting the relevant phrase if helpful.\n")
+                append("   - Provide a concise 1-2 sentence explanation ${if (language == "ar") "in Arabic" else "in English"} clarifying why the answer is correct and quoting or defining the relevant word/phrase.\n")
                 append("7. Language:\n")
                 if (language == "ar") {
-                    append("   - Formulate the questions and explanations in Arabic, while keeping original English vocabulary/quotes in English if testing language comprehension.\n\n")
+                    append("   - Formulate the questions and explanations in Arabic, while keeping target language words, vocabulary items, or direct quotes in their original language when asking for their meaning.\n\n")
                 } else {
-                    append("   - Formulate all questions and explanations clearly in English.\n\n")
+                    append("   - Formulate all questions, options, and explanations clearly in English.\n\n")
                 }
                 append("Strict JSON Output Schema:\n")
                 append("{\n")
                 append("  \"questions\": [\n")
                 append("    {\n")
                 append("      \"type\": \"MCQ\",\n")
-                append("      \"question\": \"Question text here?\",\n")
+                append("      \"question\": \"In the sentence '...', what is the meaning of the word '...'?\",\n")
                 append("      \"options\": [\"Choice A\", \"Choice B\", \"Choice C\", \"Choice D\"],\n")
                 append("      \"correctIndex\": 1,\n")
-                append("      \"explanation\": \"One-line explanation why B is correct.\",\n")
+                append("      \"explanation\": \"In this context, '...' means ..., as used when the speaker describes ...\",\n")
                 append("      \"timestampMs\": 14500\n")
                 append("    },\n")
                 append("    {\n")
@@ -610,9 +614,9 @@ Take for granted: To fail to properly appreciate someone or something, especiall
             }
 
             val systemInstruction = if (existingQuestions.isNotEmpty()) {
-                "You are an expert audio learning quiz creator. You generate interactive comprehension micro-quizzes from dialogue transcripts. You must strictly avoid repeating, rephrasing, or duplicating any of the existing questions provided and craft completely new questions. Output strict valid JSON only matching the schema."
+                "You are an expert audio & language learning quiz creator. You generate interactive micro-quizzes combining listening comprehension and key vocabulary questions from dialogue transcripts. You must strictly avoid repeating, rephrasing, or duplicating any of the existing questions provided and craft completely new questions. Output strict valid JSON only matching the schema."
             } else {
-                "You are an expert audio learning quiz creator. You generate interactive comprehension micro-quizzes from dialogue transcripts. Output strict valid JSON only matching the schema."
+                "You are an expert audio & language learning quiz creator. You generate interactive micro-quizzes combining listening comprehension and key vocabulary questions from dialogue transcripts. Output strict valid JSON only matching the schema."
             }
 
             val rootJson = JSONObject().apply {
@@ -649,7 +653,8 @@ Take for granted: To fail to properly appreciate someone or something, especiall
 
             if (!response.isSuccessful) {
                 Log.e(TAG, "Gemini Quiz Generation failed: ${response.code} -> $responseBody")
-                return@withContext Result.failure(Exception("HTTP ${response.code}: $responseBody"))
+                val cleanErrorMsg = parseGeminiErrorMessage(response.code, responseBody, language)
+                return@withContext Result.failure(Exception(cleanErrorMsg))
             }
 
             val respJson = JSONObject(responseBody)
@@ -743,7 +748,52 @@ Take for granted: To fail to properly appreciate someone or something, especiall
             Result.success(resultList)
         } catch (e: Exception) {
             Log.e(TAG, "Exception during generateQuizQuestions", e)
-            Result.failure(e)
+            val friendlyMsg = when (e) {
+                is java.net.SocketTimeoutException -> {
+                    if (language == "ar") "انتهت مهلة الاتصال بالذكاء الاصطناعي. يرجى إعادة المحاولة."
+                    else "Connection timed out waiting for AI. Please try again."
+                }
+                is java.net.UnknownHostException -> {
+                    if (language == "ar") "تعذر الاتصال بالإنترنت. يرجى التحقق من اتصال الشبكة."
+                    else "No internet connection. Please check your network and try again."
+                }
+                else -> e.message ?: "Failed to generate questions"
+            }
+            Result.failure(Exception(friendlyMsg))
+        }
+    }
+
+    private fun parseGeminiErrorMessage(code: Int, body: String, language: String): String {
+        try {
+            if (body.isNotBlank()) {
+                val json = JSONObject(body)
+                val errorObj = json.optJSONObject("error")
+                val msg = errorObj?.optString("message", "") ?: ""
+                val status = errorObj?.optString("status", "") ?: ""
+
+                if (code == 503 || status == "UNAVAILABLE" || msg.contains("overloaded", ignoreCase = true) || msg.contains("busy", ignoreCase = true)) {
+                    return if (language == "ar") "نموذج الذكاء الاصطناعي مشغول حالياً. يرجى المحاولة مرة أخرى بعد قليل."
+                           else "The AI model is currently busy or overloaded. Please try again in a few moments."
+                }
+                if (code == 429 || status == "RESOURCE_EXHAUSTED" || msg.contains("quota", ignoreCase = true) || msg.contains("exhausted", ignoreCase = true)) {
+                    return if (language == "ar") "تم الوصول إلى الحد الأقصى لطلبات الذكاء الاصطناعي مؤقتاً. يرجى الانتظار قليلاً ثم إعادة المحاولة."
+                           else "AI quota or rate limit reached. Please wait a moment before trying again."
+                }
+                if (code == 400 || code == 403 || msg.contains("API_KEY", ignoreCase = true) || msg.contains("API key", ignoreCase = true)) {
+                    return if (language == "ar") "مفتاح Gemini API غير صالح أو غير موجود. يرجى التحقق من المفتاح في الإعدادات."
+                           else "Gemini API key is invalid or missing. Please check your API key in Settings."
+                }
+                if (msg.isNotBlank()) {
+                    return msg
+                }
+            }
+        } catch (_: Exception) {}
+
+        return when (code) {
+            503 -> if (language == "ar") "نموذج الذكاء الاصطناعي مشغول حالياً. يرجى المحاولة بعد قليل." else "The AI model is currently busy. Please try again shortly."
+            429 -> if (language == "ar") "تم الوصول إلى الحد الأقصى لطلبات الذكاء الاصطناعي. يرجى الانتظار قليلاً ثم المحاولة." else "AI request rate limit reached. Please wait a moment and try again."
+            400, 401, 403 -> if (language == "ar") "يرجى التحقق من صلاحية مفتاح Gemini API في الإعدادات." else "Please verify your Gemini API key in Settings."
+            else -> if (language == "ar") "فشل توليد الأسئلة ($code). يرجى المحاولة مرة أخرى." else "Failed to generate questions (HTTP $code). Please try again."
         }
     }
 

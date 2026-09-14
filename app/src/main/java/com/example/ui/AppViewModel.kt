@@ -220,12 +220,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val isQuizSheetOpen = MutableStateFlow(false)
     val isGeneratingQuiz = MutableStateFlow(false)
     val quizGenerationError = MutableStateFlow<String?>(null)
+    val quizGenerationSuccessMessage = MutableStateFlow<String?>(null)
     val activeQuizTargetTrack = MutableStateFlow<AudioTrack?>(null)
     val currentTrackQuizQuestions = MutableStateFlow<List<QuizQuestion>>(emptyList())
 
     fun openQuizForTrack(track: AudioTrack) {
         activeQuizTargetTrack.value = track
         quizGenerationError.value = null
+        quizGenerationSuccessMessage.value = null
         viewModelScope.launch {
             loadQuizQuestionsForTrack(track.id)
             isQuizSheetOpen.value = true
@@ -239,6 +241,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeQuizSheet() {
         isQuizSheetOpen.value = false
+        quizGenerationError.value = null
+        quizGenerationSuccessMessage.value = null
+    }
+
+    fun clearQuizGenerationFeedback() {
+        quizGenerationError.value = null
+        quizGenerationSuccessMessage.value = null
     }
 
     fun loadQuizQuestionsForTrack(trackId: Long) {
@@ -251,13 +260,29 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun generateQuizForTrack(track: AudioTrack) {
         if (isGeneratingQuiz.value) return
 
-        val currentCues = AudioPlayerManager.subtitlesCues.value
-        val cuesToUse = if (currentCues.isNotEmpty()) {
-            currentCues
-        } else if (!track.subtitleContent.isNullOrBlank()) {
-            com.example.player.SubtitleParser.parseContent(track.subtitleContent ?: "", track.subtitleOffsetMs)
-        } else {
-            emptyList()
+        quizGenerationError.value = null
+        quizGenerationSuccessMessage.value = null
+
+        val cuesToUse = when {
+            AudioPlayerManager.currentTrack.value?.id == track.id && AudioPlayerManager.subtitlesCues.value.isNotEmpty() -> {
+                AudioPlayerManager.subtitlesCues.value
+            }
+            !track.subtitleContent.isNullOrBlank() -> {
+                com.example.player.SubtitleParser.parseContent(track.subtitleContent ?: "", track.subtitleOffsetMs)
+            }
+            !track.subtitlePath.isNullOrBlank() && java.io.File(track.subtitlePath).exists() -> {
+                com.example.player.SubtitleParser.parseFile(java.io.File(track.subtitlePath), track.subtitleOffsetMs)
+            }
+            else -> {
+                val matching = com.example.player.SubtitleParser.findMatchingSubtitleFile(track.filePath)
+                if (matching != null && matching.exists()) {
+                    com.example.player.SubtitleParser.parseFile(matching, track.subtitleOffsetMs)
+                } else if (AudioPlayerManager.subtitlesCues.value.isNotEmpty()) {
+                    AudioPlayerManager.subtitlesCues.value
+                } else {
+                    emptyList()
+                }
+            }
         }
 
         if (cuesToUse.isEmpty()) {
@@ -266,50 +291,56 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         isGeneratingQuiz.value = true
-        quizGenerationError.value = null
 
         viewModelScope.launch {
-            // Fetch any existing questions already in the bank for this track to avoid duplicates
-            val existingQuestions = repository.getQuestionsForTrackDirect(track.id)
-            val existingQuestionTexts = existingQuestions.map { it.question.trim() }.filter { it.isNotBlank() }
+            try {
+                // Fetch any existing questions already in the bank for this track to avoid duplicates
+                val existingQuestions = repository.getQuestionsForTrackDirect(track.id)
+                val existingQuestionTexts = existingQuestions.map { it.question.trim() }.filter { it.isNotBlank() }
 
-            val result = GeminiService.generateQuizQuestions(
-                mediaTitle = track.getDisplayTitle(),
-                transcriptCues = cuesToUse,
-                existingQuestions = existingQuestionTexts,
-                customApiKey = customGeminiApiKey,
-                language = Loc.currentLanguage
-            )
+                val result = GeminiService.generateQuizQuestions(
+                    mediaTitle = track.getDisplayTitle(),
+                    transcriptCues = cuesToUse,
+                    existingQuestions = existingQuestionTexts,
+                    customApiKey = customGeminiApiKey,
+                    language = Loc.currentLanguage
+                )
 
-            result.onSuccess { generatedItems ->
-                // Filter out any duplicate questions on the client side as a safeguard
-                val existingNormalized = existingQuestionTexts.map { it.lowercase() }.toSet()
-                val uniqueGenerated = generatedItems.filter { item ->
-                    item.question.trim().lowercase() !in existingNormalized
-                }.ifEmpty { generatedItems }
+                result.onSuccess { generatedItems ->
+                    // Filter out any duplicate questions on the client side as a safeguard
+                    val existingNormalized = existingQuestionTexts.map { it.lowercase() }.toSet()
+                    val uniqueGenerated = generatedItems.filter { item ->
+                        item.question.trim().lowercase() !in existingNormalized
+                    }.ifEmpty { generatedItems }
 
-                val entities = uniqueGenerated.map { item ->
-                    val optionsJson = org.json.JSONArray(item.options).toString()
-                    QuizQuestion(
-                        trackId = track.id,
-                        questionType = item.questionType,
-                        question = item.question,
-                        optionsJson = optionsJson,
-                        correctIndex = item.correctIndex,
-                        explanation = item.explanation,
-                        timestampMs = item.timestampMs
-                    )
+                    val entities = uniqueGenerated.map { item ->
+                        val optionsJson = org.json.JSONArray(item.options).toString()
+                        QuizQuestion(
+                            trackId = track.id,
+                            questionType = item.questionType,
+                            question = item.question,
+                            optionsJson = optionsJson,
+                            correctIndex = item.correctIndex,
+                            explanation = item.explanation,
+                            timestampMs = item.timestampMs
+                        )
+                    }
+                    repository.insertQuizQuestions(entities)
+                    loadQuizQuestionsForTrack(track.id)
+                    isGeneratingQuiz.value = false
+                    quizGenerationSuccessMessage.value = String.format(Loc.getText("quiz_generated_success"), entities.size)
+                }.onFailure { err ->
+                    isGeneratingQuiz.value = false
+                    val msg = err.message ?: ""
+                    quizGenerationError.value = when {
+                        msg == "MISSING_API_KEY" -> Loc.getText("missing_api_key_prompt")
+                        msg.isNotBlank() -> msg
+                        else -> Loc.getText("quiz_error_generic")
+                    }
                 }
-                repository.insertQuizQuestions(entities)
-                loadQuizQuestionsForTrack(track.id)
+            } catch (e: Exception) {
                 isGeneratingQuiz.value = false
-            }.onFailure { err ->
-                isGeneratingQuiz.value = false
-                quizGenerationError.value = if (err.message == "MISSING_API_KEY") {
-                    Loc.getText("missing_api_key_prompt")
-                } else {
-                    err.message ?: "Failed to generate quiz"
-                }
+                quizGenerationError.value = e.localizedMessage ?: Loc.getText("quiz_error_generic")
             }
         }
     }

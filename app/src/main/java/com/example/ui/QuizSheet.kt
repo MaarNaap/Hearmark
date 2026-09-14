@@ -45,6 +45,7 @@ fun QuizSheet(
     val targetTrack by viewModel.activeQuizTargetTrack.collectAsStateWithLifecycle()
     val isGenerating by viewModel.isGeneratingQuiz.collectAsStateWithLifecycle()
     val generationError by viewModel.quizGenerationError.collectAsStateWithLifecycle()
+    val generationSuccess by viewModel.quizGenerationSuccessMessage.collectAsStateWithLifecycle()
     val quizBank by viewModel.currentTrackQuizQuestions.collectAsStateWithLifecycle()
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -55,6 +56,19 @@ fun QuizSheet(
     var currentQuestionIndex by remember { mutableIntStateOf(0) }
     var selectedAnswers by remember { mutableStateOf<Map<Int, Int>>(emptyMap()) } // questionIndex -> selectedOptionIndex
     var isQuizFinished by remember { mutableStateOf(false) }
+
+    // Instant Toast feedback on generation outcomes
+    LaunchedEffect(generationError) {
+        generationError?.let { err ->
+            Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    LaunchedEffect(generationSuccess) {
+        generationSuccess?.let { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Audio Playback Toggle State
     val isPlayingAudio by AudioPlayerManager.isPlaying.collectAsStateWithLifecycle()
@@ -233,6 +247,9 @@ fun QuizSheet(
                     quizBank = quizBank,
                     targetTrack = targetTrack,
                     isGenerating = isGenerating,
+                    generationError = generationError,
+                    generationSuccessMessage = generationSuccess,
+                    onClearFeedback = { viewModel.clearQuizGenerationFeedback() },
                     onStartPractice = { startQuizSession(quizBank) },
                     onGenerateNew = {
                         targetTrack?.let { viewModel.generateQuizForTrack(it) }
@@ -974,6 +991,9 @@ private fun QuizBankTabContent(
     quizBank: List<QuizQuestion>,
     targetTrack: AudioTrack?,
     isGenerating: Boolean,
+    generationError: String?,
+    generationSuccessMessage: String?,
+    onClearFeedback: () -> Unit,
     onStartPractice: () -> Unit,
     onGenerateNew: () -> Unit,
     onDeleteQuestion: (Long) -> Unit,
@@ -1069,29 +1089,134 @@ private fun QuizBankTabContent(
             }
         }
 
+        // Active Generation Progress Banner
         if (isGenerating) {
             Card(
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
                 ),
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(10.dp),
+                    modifier = Modifier.padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(18.dp),
                         strokeWidth = 2.dp,
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
                         text = Loc.getText("quiz_generating_more_status"),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontWeight = FontWeight.Medium
                     )
+                }
+            }
+        }
+
+        // Error Feedback Banner with Retry and Dismiss
+        if (generationError != null) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.9f)
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.ErrorOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = generationError,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = onClearFeedback,
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = Loc.getText("quiz_dismiss"),
+                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        FilledTonalButton(
+                            onClick = onGenerateNew,
+                            enabled = !isGenerating,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(Loc.getText("retry"), style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Success Feedback Banner
+        if (generationSuccessMessage != null) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = generationSuccessMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.weight(1f),
+                        fontWeight = FontWeight.Medium
+                    )
+                    IconButton(
+                        onClick = onClearFeedback,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = Loc.getText("quiz_dismiss"),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
         }
@@ -1116,13 +1241,28 @@ private fun QuizBankTabContent(
                     .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = Loc.getText("quiz_empty_bank_prompt"),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.padding(24.dp)
-                )
+                ) {
+                    Text(
+                        text = Loc.getText("quiz_empty_bank_prompt"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                    if (!isGenerating) {
+                        Button(
+                            onClick = onGenerateNew,
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(imageVector = Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(Loc.getText("quiz_generate_with_ai"))
+                        }
+                    }
+                }
             }
         } else {
             LazyColumn(
