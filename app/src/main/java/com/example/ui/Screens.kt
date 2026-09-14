@@ -730,6 +730,15 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                     )
                 }
 
+                // AI COMPREHENSION QUIZ SHEET
+                val isQuizSheetOpen by viewModel.isQuizSheetOpen.collectAsStateWithLifecycle()
+                if (isQuizSheetOpen) {
+                    QuizSheet(
+                        viewModel = viewModel,
+                        onDismiss = { viewModel.closeQuizSheet() }
+                    )
+                }
+
                 // AI SCENE DETECTION PROGRESS DIALOG
                 val isDetectingScenes by viewModel.isDetectingScenes.collectAsStateWithLifecycle()
                 val detectingTrackName by viewModel.detectingTrackName.collectAsStateWithLifecycle()
@@ -4719,6 +4728,17 @@ fun AudioPlayerOverlay(
                         )
                     }
 
+                    IconButton(
+                        onClick = { viewModel.openQuizForTrack(track) },
+                        modifier = Modifier.testTag("player_ai_quiz_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Quiz,
+                            contentDescription = Loc.getText("ai_quiz_action"),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
                     IconButton(onClick = {
                         val currentCue = activeSubtitleCueState
                         val currentCueText = currentCue?.text ?: ""
@@ -4762,6 +4782,24 @@ fun AudioPlayerOverlay(
                             expanded = showPlayerMenu,
                             onDismissRequest = { showPlayerMenu = false }
                         ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Quiz,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(Loc.getText("ai_quiz_action"))
+                                    }
+                                },
+                                onClick = {
+                                    showPlayerMenu = false
+                                    viewModel.openQuizForTrack(track)
+                                }
+                            )
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {

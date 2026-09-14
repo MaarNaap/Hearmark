@@ -378,6 +378,46 @@ data class TaskDailyProgress(
     val completedPlayCount: Int = 0
 )
 
+@Entity(
+    tableName = "quiz_questions",
+    foreignKeys = [
+        ForeignKey(
+            entity = AudioTrack::class,
+            parentColumns = ["id"],
+            childColumns = ["trackId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["trackId"])]
+)
+data class QuizQuestion(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val trackId: Long,
+    val questionType: String, // "MCQ" or "TRUE_FALSE"
+    val question: String,
+    val optionsJson: String, // JSON array string e.g. ["Choice A", "Choice B", "Choice C", "Choice D"]
+    val correctIndex: Int,
+    val explanation: String,
+    val timestampMs: Long? = null,
+    val timesAnswered: Int = 0,
+    val timesCorrect: Int = 0,
+    val lastAnsweredAt: Long? = null,
+    val createdAt: Long = System.currentTimeMillis()
+) {
+    fun getOptions(): List<String> {
+        return try {
+            val arr = org.json.JSONArray(optionsJson)
+            val list = mutableListOf<String>()
+            for (i in 0 until arr.length()) {
+                list.add(arr.getString(i))
+            }
+            list
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+}
+
 // --- DAOs ---
 
 @Dao
@@ -669,6 +709,34 @@ interface AppDao {
 
     @Query("DELETE FROM task_labels")
     suspend fun deleteAllTaskLabels()
+
+    // Quiz Questions
+    @Query("SELECT * FROM quiz_questions WHERE trackId = :trackId ORDER BY createdAt ASC")
+    fun getQuestionsForTrackFlow(trackId: Long): Flow<List<QuizQuestion>>
+
+    @Query("SELECT * FROM quiz_questions WHERE trackId = :trackId ORDER BY createdAt ASC")
+    suspend fun getQuestionsForTrackDirect(trackId: Long): List<QuizQuestion>
+
+    @Query("SELECT COUNT(*) FROM quiz_questions WHERE trackId = :trackId")
+    suspend fun getQuestionCountForTrack(trackId: Long): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertQuizQuestions(questions: List<QuizQuestion>): List<Long>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertQuizQuestion(question: QuizQuestion): Long
+
+    @Update
+    suspend fun updateQuizQuestion(question: QuizQuestion)
+
+    @Query("UPDATE quiz_questions SET timesAnswered = timesAnswered + 1, timesCorrect = timesCorrect + :correctIncrement, lastAnsweredAt = :now WHERE id = :id")
+    suspend fun recordQuestionAnswer(id: Long, correctIncrement: Int, now: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM quiz_questions WHERE id = :id")
+    suspend fun deleteQuizQuestionById(id: Long)
+
+    @Query("DELETE FROM quiz_questions WHERE trackId = :trackId")
+    suspend fun deleteQuizQuestionsForTrack(trackId: Long)
 }
 
 // --- DATABASE ---
@@ -685,9 +753,10 @@ interface AppDao {
         Note::class,
         NoteTag::class,
         TaskLabel::class,
-        TaskDailyProgress::class
+        TaskDailyProgress::class,
+        QuizQuestion::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -814,6 +883,29 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `quiz_questions` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `trackId` INTEGER NOT NULL,
+                        `questionType` TEXT NOT NULL,
+                        `question` TEXT NOT NULL,
+                        `optionsJson` TEXT NOT NULL,
+                        `correctIndex` INTEGER NOT NULL,
+                        `explanation` TEXT NOT NULL,
+                        `timestampMs` INTEGER,
+                        `timesAnswered` INTEGER NOT NULL DEFAULT 0,
+                        `timesCorrect` INTEGER NOT NULL DEFAULT 0,
+                        `lastAnsweredAt` INTEGER,
+                        `createdAt` INTEGER NOT NULL,
+                        FOREIGN KEY(`trackId`) REFERENCES `audio_tracks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_questions_trackId` ON `quiz_questions` (`trackId`)")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -821,7 +913,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smart_audio_tasks_db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                     .fallbackToDestructiveMigrationOnDowngrade(true)
                     .build()
                 INSTANCE = instance
@@ -1282,4 +1374,15 @@ class AppRepository(val dao: AppDao) {
             }
         }
     }
+
+    // Quiz Questions repository operations
+    fun getQuestionsForTrackFlow(trackId: Long): Flow<List<QuizQuestion>> = dao.getQuestionsForTrackFlow(trackId)
+    suspend fun getQuestionsForTrackDirect(trackId: Long): List<QuizQuestion> = dao.getQuestionsForTrackDirect(trackId)
+    suspend fun getQuestionCountForTrack(trackId: Long): Int = dao.getQuestionCountForTrack(trackId)
+    suspend fun insertQuizQuestions(questions: List<QuizQuestion>): List<Long> = dao.insertQuizQuestions(questions)
+    suspend fun insertQuizQuestion(question: QuizQuestion): Long = dao.insertQuizQuestion(question)
+    suspend fun updateQuizQuestion(question: QuizQuestion) = dao.updateQuizQuestion(question)
+    suspend fun recordQuestionAnswer(id: Long, isCorrect: Boolean) = dao.recordQuestionAnswer(id, if (isCorrect) 1 else 0)
+    suspend fun deleteQuizQuestionById(id: Long) = dao.deleteQuizQuestionById(id)
+    suspend fun deleteQuizQuestionsForTrack(trackId: Long) = dao.deleteQuizQuestionsForTrack(trackId)
 }

@@ -41,6 +41,15 @@ data class AudioContextSummary(
     val totalDurationMs: Long? = null
 )
 
+data class GeneratedQuizItem(
+    val questionType: String, // "MCQ" or "TRUE_FALSE"
+    val question: String,
+    val options: List<String>,
+    val correctIndex: Int,
+    val explanation: String,
+    val timestampMs: Long? = null
+)
+
 object GeminiService {
     private const val TAG = "GeminiService"
     private const val DEFAULT_MODEL = "gemini-3.5-flash"
@@ -502,6 +511,215 @@ Take for granted: To fail to properly appreciate someone or something, especiall
             Result.success(validatedList)
         } catch (e: Exception) {
             Log.e(TAG, "Exception during detectScenes", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun generateQuizQuestions(
+        mediaTitle: String,
+        transcriptCues: List<SubtitleCue>,
+        customApiKey: String? = null,
+        language: String = "en",
+        modelName: String = DEFAULT_MODEL
+    ): Result<List<GeneratedQuizItem>> = withContext(Dispatchers.IO) {
+        try {
+            val resolvedApiKey = resolveApiKey(customApiKey)
+            if (resolvedApiKey.isBlank()) {
+                return@withContext Result.failure(IllegalStateException("MISSING_API_KEY"))
+            }
+
+            if (transcriptCues.isEmpty()) {
+                return@withContext Result.failure(IllegalArgumentException("No transcript or subtitles available for this track."))
+            }
+
+            // Format transcript cues compactly with index, timestamp, and text
+            val transcriptBuilder = StringBuilder()
+            transcriptCues.take(250).forEachIndexed { index, cue ->
+                if (cue.isTimed && cue.startMs >= 0) {
+                    val startFmt = formatTimestamp(cue.startMs)
+                    transcriptBuilder.append("[${index + 1}] $startFmt (startMs:${cue.startMs}): ${cue.text.replace("\n", " ").trim()}\n")
+                } else {
+                    transcriptBuilder.append("[${index + 1}]: ${cue.text.replace("\n", " ").trim()}\n")
+                }
+            }
+
+            val prompt = buildString {
+                append("Media Title: \"$mediaTitle\"\n\n")
+                append("Based on the provided dialogue/audio transcript, generate a bite-sized micro-quiz consisting of exactly 4 questions to reinforce listening comprehension and vocabulary retention.\n\n")
+                append("QUIZ COMPOSITION REQUIREMENTS:\n")
+                append("1. Mix of Questions: Exactly 2 or 3 Multiple Choice Questions (type: \"MCQ\") and 1 or 2 True/False Questions (type: \"TRUE_FALSE\"). Total questions must be 4.\n")
+                append("2. Multiple Choice Questions (\"MCQ\"):\n")
+                append("   - Provide exactly 4 options in \"options\" list.\n")
+                append("   - Test contextual vocabulary, idioms, speaker intent, or core statements.\n")
+                append("   - Make wrong options natural, plausible distractors (not silly or absurd).\n")
+                append("3. True/False Questions (\"TRUE_FALSE\"):\n")
+                append("   - Provide exactly 2 options in \"options\" list: ${if (language == "ar") "[\"صح\", \"خطأ\"]" else "[\"True\", \"False\"]"}.\n")
+                append("   - Test a specific factual statement, key detail, or common misconception from the dialogue.\n")
+                append("4. Audio Timestamp Link (\"timestampMs\"):\n")
+                append("   - MUST provide the exact start timestamp in milliseconds ('startMs' from the transcript above) where the relevant line is spoken so the learner can re-listen.\n")
+                append("5. Explanation (\"explanation\"):\n")
+                append("   - Provide a concise 1-2 sentence explanation ${if (language == "ar") "in Arabic" else "in English"} clarifying why the answer is correct and quoting the relevant phrase if helpful.\n")
+                append("6. Language:\n")
+                if (language == "ar") {
+                    append("   - Formulate the questions and explanations in Arabic, while keeping original English vocabulary/quotes in English if testing language comprehension.\n\n")
+                } else {
+                    append("   - Formulate all questions and explanations clearly in English.\n\n")
+                }
+                append("Strict JSON Output Schema:\n")
+                append("{\n")
+                append("  \"questions\": [\n")
+                append("    {\n")
+                append("      \"type\": \"MCQ\",\n")
+                append("      \"question\": \"Question text here?\",\n")
+                append("      \"options\": [\"Choice A\", \"Choice B\", \"Choice C\", \"Choice D\"],\n")
+                append("      \"correctIndex\": 1,\n")
+                append("      \"explanation\": \"One-line explanation why B is correct.\",\n")
+                append("      \"timestampMs\": 14500\n")
+                append("    },\n")
+                append("    {\n")
+                append("      \"type\": \"TRUE_FALSE\",\n")
+                append("      \"question\": \"Factual statement to evaluate.\",\n")
+                append("      \"options\": [\"${if (language == "ar") "صح" else "True"}\", \"${if (language == "ar") "خطأ" else "False"}\"],\n")
+                append("      \"correctIndex\": 0,\n")
+                append("      \"explanation\": \"One-line explanation why this is true.\",\n")
+                append("      \"timestampMs\": 42000\n")
+                append("    }\n")
+                append("  ]\n")
+                append("}\n\n")
+                append("TRANSCRIPT:\n")
+                append(transcriptBuilder.toString())
+            }
+
+            val systemInstruction = "You are an expert audio learning quiz creator. You generate interactive comprehension micro-quizzes from dialogue transcripts. Output strict valid JSON only matching the schema."
+
+            val rootJson = JSONObject().apply {
+                put("systemInstruction", JSONObject().apply {
+                    put("parts", JSONArray().apply {
+                        put(JSONObject().apply { put("text", systemInstruction) })
+                    })
+                })
+                put("contents", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("role", "user")
+                        put("parts", JSONArray().apply {
+                            put(JSONObject().apply { put("text", prompt) })
+                        })
+                    })
+                })
+                put("generationConfig", JSONObject().apply {
+                    put("responseMimeType", "application/json")
+                    put("temperature", 0.3)
+                })
+            }
+
+            val requestUrl = "$BASE_URL/$modelName:generateContent?key=$resolvedApiKey"
+            val mediaType = "application/json; charset=utf-8".toMediaType()
+            val requestBody = rootJson.toString().toRequestBody(mediaType)
+
+            val request = Request.Builder()
+                .url(requestUrl)
+                .post(requestBody)
+                .build()
+
+            val response = okHttpClient.newCall(request).execute()
+            val responseBody = response.body?.string() ?: ""
+
+            if (!response.isSuccessful) {
+                Log.e(TAG, "Gemini Quiz Generation failed: ${response.code} -> $responseBody")
+                return@withContext Result.failure(Exception("HTTP ${response.code}: $responseBody"))
+            }
+
+            val respJson = JSONObject(responseBody)
+            val candidates = respJson.optJSONArray("candidates")
+            if (candidates == null || candidates.length() == 0) {
+                return@withContext Result.failure(Exception("No candidate returned by Gemini."))
+            }
+
+            val firstCandidate = candidates.getJSONObject(0)
+            val content = firstCandidate.optJSONObject("content")
+            val parts = content?.optJSONArray("parts")
+            val firstPart = parts?.optJSONObject(0)
+            var rawText = firstPart?.optString("text") ?: ""
+
+            if (rawText.isBlank()) {
+                return@withContext Result.failure(Exception("Empty text response for quiz."))
+            }
+
+            // Strip any markdown code blocks
+            rawText = rawText.trim()
+            if (rawText.startsWith("```json")) {
+                rawText = rawText.removePrefix("```json").trim()
+            }
+            if (rawText.startsWith("```")) {
+                rawText = rawText.removePrefix("```").trim()
+            }
+            if (rawText.endsWith("```")) {
+                rawText = rawText.removeSuffix("```").trim()
+            }
+
+            val questionsJsonArray: JSONArray = if (rawText.startsWith("{")) {
+                val jsonObj = JSONObject(rawText)
+                jsonObj.optJSONArray("questions") ?: JSONArray()
+            } else if (rawText.startsWith("[")) {
+                JSONArray(rawText)
+            } else {
+                return@withContext Result.failure(Exception("Unexpected response format from AI."))
+            }
+
+            val resultList = mutableListOf<GeneratedQuizItem>()
+            for (i in 0 until questionsJsonArray.length()) {
+                val qObj = questionsJsonArray.getJSONObject(i)
+                val typeRaw = qObj.optString("type", qObj.optString("questionType", "MCQ")).uppercase()
+                val qType = if (typeRaw.contains("TRUE") || typeRaw.contains("FALSE")) "TRUE_FALSE" else "MCQ"
+                val questionText = qObj.optString("question", "").trim()
+                if (questionText.isBlank()) continue
+
+                val optionsArr = qObj.optJSONArray("options")
+                val optionsList = mutableListOf<String>()
+                if (optionsArr != null) {
+                    for (j in 0 until optionsArr.length()) {
+                        val opt = optionsArr.optString(j, "").trim()
+                        if (opt.isNotBlank()) optionsList.add(opt)
+                    }
+                }
+
+                // Fallbacks for options if not provided
+                if (qType == "TRUE_FALSE" && optionsList.size < 2) {
+                    optionsList.clear()
+                    if (language == "ar") {
+                        optionsList.add("صح")
+                        optionsList.add("خطأ")
+                    } else {
+                        optionsList.add("True")
+                        optionsList.add("False")
+                    }
+                } else if (qType == "MCQ" && optionsList.isEmpty()) {
+                    continue
+                }
+
+                val correctIdx = qObj.optInt("correctIndex", 0).coerceIn(0, maxOf(0, optionsList.size - 1))
+                val explanation = qObj.optString("explanation", "").trim()
+                val timestampMs = qObj.optLong("timestampMs", -1L).takeIf { it >= 0 }
+
+                resultList.add(
+                    GeneratedQuizItem(
+                        questionType = qType,
+                        question = questionText,
+                        options = optionsList,
+                        correctIndex = correctIdx,
+                        explanation = explanation,
+                        timestampMs = timestampMs
+                    )
+                )
+            }
+
+            if (resultList.isEmpty()) {
+                return@withContext Result.failure(Exception("AI did not generate any quiz questions."))
+            }
+
+            Result.success(resultList)
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception during generateQuizQuestions", e)
             Result.failure(e)
         }
     }

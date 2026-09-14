@@ -216,6 +216,114 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _chatMessages.value = emptyList()
     }
 
+    // AI Quiz & Practice Bank State
+    val isQuizSheetOpen = MutableStateFlow(false)
+    val isGeneratingQuiz = MutableStateFlow(false)
+    val quizGenerationError = MutableStateFlow<String?>(null)
+    val activeQuizTargetTrack = MutableStateFlow<AudioTrack?>(null)
+    val currentTrackQuizQuestions = MutableStateFlow<List<QuizQuestion>>(emptyList())
+
+    fun openQuizForTrack(track: AudioTrack) {
+        activeQuizTargetTrack.value = track
+        quizGenerationError.value = null
+        viewModelScope.launch {
+            loadQuizQuestionsForTrack(track.id)
+            isQuizSheetOpen.value = true
+        }
+    }
+
+    fun openQuizForCurrentTrack() {
+        val current = AudioPlayerManager.currentTrack.value ?: return
+        openQuizForTrack(current)
+    }
+
+    fun closeQuizSheet() {
+        isQuizSheetOpen.value = false
+    }
+
+    fun loadQuizQuestionsForTrack(trackId: Long) {
+        viewModelScope.launch {
+            val questions = repository.getQuestionsForTrackDirect(trackId)
+            currentTrackQuizQuestions.value = questions
+        }
+    }
+
+    fun generateQuizForTrack(track: AudioTrack) {
+        if (isGeneratingQuiz.value) return
+
+        val currentCues = AudioPlayerManager.subtitlesCues.value
+        val cuesToUse = if (currentCues.isNotEmpty()) {
+            currentCues
+        } else if (!track.subtitleContent.isNullOrBlank()) {
+            com.example.player.SubtitleParser.parseContent(track.subtitleContent ?: "", track.subtitleOffsetMs)
+        } else {
+            emptyList()
+        }
+
+        if (cuesToUse.isEmpty()) {
+            quizGenerationError.value = Loc.getText("quiz_no_transcript_error")
+            return
+        }
+
+        isGeneratingQuiz.value = true
+        quizGenerationError.value = null
+
+        viewModelScope.launch {
+            val result = GeminiService.generateQuizQuestions(
+                mediaTitle = track.getDisplayTitle(),
+                transcriptCues = cuesToUse,
+                customApiKey = customGeminiApiKey,
+                language = Loc.currentLanguage
+            )
+
+            result.onSuccess { generatedItems ->
+                val entities = generatedItems.map { item ->
+                    val optionsJson = org.json.JSONArray(item.options).toString()
+                    QuizQuestion(
+                        trackId = track.id,
+                        questionType = item.questionType,
+                        question = item.question,
+                        optionsJson = optionsJson,
+                        correctIndex = item.correctIndex,
+                        explanation = item.explanation,
+                        timestampMs = item.timestampMs
+                    )
+                }
+                repository.insertQuizQuestions(entities)
+                loadQuizQuestionsForTrack(track.id)
+                isGeneratingQuiz.value = false
+            }.onFailure { err ->
+                isGeneratingQuiz.value = false
+                quizGenerationError.value = if (err.message == "MISSING_API_KEY") {
+                    Loc.getText("missing_api_key_prompt")
+                } else {
+                    err.message ?: "Failed to generate quiz"
+                }
+            }
+        }
+    }
+
+    fun recordQuizAnswer(question: QuizQuestion, isCorrect: Boolean) {
+        viewModelScope.launch {
+            repository.recordQuestionAnswer(question.id, isCorrect)
+            activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
+        }
+    }
+
+    fun clearQuizBankForTrack(trackId: Long) {
+        viewModelScope.launch {
+            repository.deleteQuizQuestionsForTrack(trackId)
+            loadQuizQuestionsForTrack(trackId)
+        }
+    }
+
+    fun deleteQuizQuestion(questionId: Long) {
+        viewModelScope.launch {
+            repository.deleteQuizQuestionById(questionId)
+            activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
+        }
+    }
+
     data class SavedApiKey(
         val id: String = UUID.randomUUID().toString(),
         val name: String,
