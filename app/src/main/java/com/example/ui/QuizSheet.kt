@@ -204,7 +204,12 @@ fun QuizSheet(
             ) {
                 FilterChip(
                     selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
+                    onClick = {
+                        selectedTab = 0
+                        if (activeQuizQuestions.isEmpty() && quizBank.isNotEmpty()) {
+                            startQuizSession(quizBank)
+                        }
+                    },
                     label = { Text(Loc.getText("quiz_start_practice")) },
                     leadingIcon = {
                         Icon(
@@ -267,130 +272,131 @@ fun QuizSheet(
             } else {
                 // ACTIVE QUIZ SESSION VIEW
                 when {
-                    isGenerating -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
-                                modifier = Modifier.padding(24.dp)
-                            ) {
-                                CircularProgressIndicator(
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(48.dp)
-                                )
-                                Text(
-                                    text = if (quizBank.isNotEmpty())
-                                        Loc.getText("quiz_generating_more_status")
-                                    else
-                                        Loc.getText("quiz_generating_status"),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    }
-
-                    generationError != null -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Card(
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
-                                ),
-                                shape = RoundedCornerShape(16.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
+                    quizBank.isEmpty() -> {
+                        when {
+                            isGenerating -> {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .weight(1f),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.ErrorOutline,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(36.dp)
-                                    )
-                                    Text(
-                                        text = generationError ?: "",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onErrorContainer,
-                                        textAlign = TextAlign.Center
-                                    )
-                                    Button(
-                                        onClick = {
-                                            targetTrack?.let { viewModel.generateQuizForTrack(it) }
-                                        },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.error
-                                        )
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                                        modifier = Modifier.padding(24.dp)
                                     ) {
-                                        Text(Loc.getText("quiz_generate_with_ai"))
+                                        CircularProgressIndicator(
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(48.dp)
+                                        )
+                                        Text(
+                                            text = Loc.getText("quiz_generating_status"),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            textAlign = TextAlign.Center
+                                        )
                                     }
                                 }
                             }
-                        }
-                    }
 
-                    quizBank.isEmpty() -> {
-                        // Empty State - Generate Questions
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Card(
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                ),
-                                shape = RoundedCornerShape(16.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(20.dp),
-                                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
+                            generationError != null -> {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .weight(1f),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.School,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(44.dp)
-                                    )
-                                    Text(
-                                        text = Loc.getText("quiz_empty_bank_prompt"),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        textAlign = TextAlign.Center
-                                    )
-                                    Button(
-                                        onClick = {
-                                            targetTrack?.let { viewModel.generateQuizForTrack(it) }
-                                        },
-                                        modifier = Modifier.testTag("generate_first_quiz_button")
+                                    Card(
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
+                                        ),
+                                        shape = RoundedCornerShape(16.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.AutoAwesome,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(Loc.getText("quiz_generate_new_batch"))
+                                        Column(
+                                            modifier = Modifier.padding(16.dp),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.ErrorOutline,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(36.dp)
+                                            )
+                                            Text(
+                                                text = generationError ?: "",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Button(
+                                                onClick = {
+                                                    targetTrack?.let { viewModel.generateQuizForTrack(it) }
+                                                },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = MaterialTheme.colorScheme.error
+                                                )
+                                            ) {
+                                                Text(Loc.getText("quiz_generate_with_ai"))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            else -> {
+                                // Empty State - Generate Questions
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .weight(1f),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Card(
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                        ),
+                                        shape = RoundedCornerShape(16.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(20.dp),
+                                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.School,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(44.dp)
+                                            )
+                                            Text(
+                                                text = Loc.getText("quiz_empty_bank_prompt"),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Button(
+                                                onClick = {
+                                                    targetTrack?.let { viewModel.generateQuizForTrack(it) }
+                                                },
+                                                modifier = Modifier.testTag("generate_first_quiz_button")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.AutoAwesome,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(Loc.getText("quiz_generate_new_batch"))
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -445,6 +451,23 @@ fun QuizSheet(
                                 onTogglePlayAudio = togglePlayAudio,
                                 isAudioPlayingForThis = isPlayingAudio && currentlyPlayingTimestamp == currentQuestion.timestampMs,
                                 modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    else -> {
+                        LaunchedEffect(quizBank) {
+                            startQuizSession(quizBank)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(36.dp)
                             )
                         }
                     }
