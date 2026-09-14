@@ -269,15 +269,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         quizGenerationError.value = null
 
         viewModelScope.launch {
+            // Fetch any existing questions already in the bank for this track to avoid duplicates
+            val existingQuestions = repository.getQuestionsForTrackDirect(track.id)
+            val existingQuestionTexts = existingQuestions.map { it.question.trim() }.filter { it.isNotBlank() }
+
             val result = GeminiService.generateQuizQuestions(
                 mediaTitle = track.getDisplayTitle(),
                 transcriptCues = cuesToUse,
+                existingQuestions = existingQuestionTexts,
                 customApiKey = customGeminiApiKey,
                 language = Loc.currentLanguage
             )
 
             result.onSuccess { generatedItems ->
-                val entities = generatedItems.map { item ->
+                // Filter out any duplicate questions on the client side as a safeguard
+                val existingNormalized = existingQuestionTexts.map { it.lowercase() }.toSet()
+                val uniqueGenerated = generatedItems.filter { item ->
+                    item.question.trim().lowercase() !in existingNormalized
+                }.ifEmpty { generatedItems }
+
+                val entities = uniqueGenerated.map { item ->
                     val optionsJson = org.json.JSONArray(item.options).toString()
                     QuizQuestion(
                         trackId = track.id,

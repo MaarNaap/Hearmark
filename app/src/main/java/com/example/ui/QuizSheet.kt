@@ -56,6 +56,27 @@ fun QuizSheet(
     var selectedAnswers by remember { mutableStateOf<Map<Int, Int>>(emptyMap()) } // questionIndex -> selectedOptionIndex
     var isQuizFinished by remember { mutableStateOf(false) }
 
+    // Audio Playback Toggle State
+    val isPlayingAudio by AudioPlayerManager.isPlaying.collectAsStateWithLifecycle()
+    var currentlyPlayingTimestamp by remember { mutableStateOf<Long?>(null) }
+
+    LaunchedEffect(isPlayingAudio) {
+        if (!isPlayingAudio) {
+            currentlyPlayingTimestamp = null
+        }
+    }
+
+    val togglePlayAudio: (Long) -> Unit = { ts ->
+        if (isPlayingAudio && currentlyPlayingTimestamp == ts) {
+            AudioPlayerManager.pause()
+            currentlyPlayingTimestamp = null
+        } else {
+            AudioPlayerManager.seekTo(ts)
+            AudioPlayerManager.resume()
+            currentlyPlayingTimestamp = ts
+        }
+    }
+
     // Start or restart a quiz session from available bank
     val startQuizSession: (List<QuizQuestion>) -> Unit = { questions ->
         if (questions.isNotEmpty()) {
@@ -67,11 +88,21 @@ fun QuizSheet(
         }
     }
 
-    // Automatically initialize active session if questions become available and not initialized
+    var previousBankSize by remember { mutableIntStateOf(quizBank.size) }
+
+    // Automatically initialize active session if questions become available or new batch is generated
     LaunchedEffect(quizBank) {
-        if (activeQuizQuestions.isEmpty() && quizBank.isNotEmpty() && !isQuizFinished) {
-            startQuizSession(quizBank)
+        if (quizBank.isNotEmpty()) {
+            if (activeQuizQuestions.isEmpty() && !isQuizFinished) {
+                startQuizSession(quizBank)
+            } else if (isQuizFinished && quizBank.size > previousBankSize) {
+                // When new questions are generated after finishing a quiz, immediately start with the new questions
+                val newlyAddedCount = quizBank.size - previousBankSize
+                val newlyAdded = quizBank.takeLast(newlyAddedCount)
+                startQuizSession(if (newlyAdded.isNotEmpty()) newlyAdded else quizBank)
+            }
         }
+        previousBankSize = quizBank.size
     }
 
     ModalBottomSheet(
@@ -212,13 +243,9 @@ fun QuizSheet(
                     onClearBank = {
                         targetTrack?.let { viewModel.clearQuizBankForTrack(it.id) }
                     },
-                    onJumpToTimestamp = { ts ->
-                        AudioPlayerManager.seekTo(ts)
-                        if (!AudioPlayerManager.isPlaying.value) {
-                            AudioPlayerManager.resume()
-                        }
-                        Toast.makeText(context, "🎧 " + formatTimestampDisplay(ts), Toast.LENGTH_SHORT).show()
-                    }
+                    onTogglePlayAudio = togglePlayAudio,
+                    currentlyPlayingTimestamp = currentlyPlayingTimestamp,
+                    isAudioPlaying = isPlayingAudio
                 )
             } else {
                 // ACTIVE QUIZ SESSION VIEW
@@ -240,7 +267,10 @@ fun QuizSheet(
                                     modifier = Modifier.size(48.dp)
                                 )
                                 Text(
-                                    text = Loc.getText("quiz_generating_status"),
+                                    text = if (quizBank.isNotEmpty())
+                                        Loc.getText("quiz_generating_more_status")
+                                    else
+                                        Loc.getText("quiz_generating_status"),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center
@@ -360,13 +390,9 @@ fun QuizSheet(
                                 targetTrack?.let { viewModel.generateQuizForTrack(it) }
                             },
                             onViewBank = { selectedTab = 1 },
-                            onJumpToTimestamp = { ts ->
-                                AudioPlayerManager.seekTo(ts)
-                                if (!AudioPlayerManager.isPlaying.value) {
-                                    AudioPlayerManager.resume()
-                                }
-                                Toast.makeText(context, "🎧 " + formatTimestampDisplay(ts), Toast.LENGTH_SHORT).show()
-                            },
+                            onTogglePlayAudio = togglePlayAudio,
+                            currentlyPlayingTimestamp = currentlyPlayingTimestamp,
+                            isAudioPlaying = isPlayingAudio,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -399,13 +425,8 @@ fun QuizSheet(
                                         currentQuestionIndex--
                                     }
                                 },
-                                onJumpToAudio = { ts ->
-                                    AudioPlayerManager.seekTo(ts)
-                                    if (!AudioPlayerManager.isPlaying.value) {
-                                        AudioPlayerManager.resume()
-                                    }
-                                    Toast.makeText(context, "🎧 " + formatTimestampDisplay(ts), Toast.LENGTH_SHORT).show()
-                                },
+                                onTogglePlayAudio = togglePlayAudio,
+                                isAudioPlayingForThis = isPlayingAudio && currentlyPlayingTimestamp == currentQuestion.timestampMs,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -425,7 +446,8 @@ private fun ActiveQuizQuestionCard(
     onSelectOption: (Int) -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
-    onJumpToAudio: (Long) -> Unit,
+    onTogglePlayAudio: (Long) -> Unit,
+    isAudioPlayingForThis: Boolean,
     modifier: Modifier = Modifier
 ) {
     val options = remember(question) { question.getOptions() }
@@ -456,8 +478,7 @@ private fun ActiveQuizQuestionCard(
             // Progress Bar & Counter
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = String.format(Loc.getText("quiz_question_counter"), questionIndex + 1, totalQuestions),
@@ -465,29 +486,6 @@ private fun ActiveQuizQuestionCard(
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold
                 )
-
-                // Question Type Badge
-                Surface(
-                    color = if (question.questionType == "TRUE_FALSE")
-                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f)
-                    else
-                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(
-                        text = if (question.questionType == "TRUE_FALSE")
-                            Loc.getText("quiz_type_true_false")
-                        else
-                            Loc.getText("quiz_type_mcq"),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (question.questionType == "TRUE_FALSE")
-                            MaterialTheme.colorScheme.onTertiaryContainer
-                        else
-                            MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        fontWeight = FontWeight.Medium
-                    )
-                }
             }
 
             LinearProgressIndicator(
@@ -684,31 +682,45 @@ private fun ActiveQuizQuestionCard(
                             )
                         }
 
-                        // Audio Timestamp Link Button
+                        // Audio Timestamp Link Button (Play / Pause Toggle)
                         if (question.timestampMs != null && question.timestampMs >= 0) {
                             OutlinedButton(
-                                onClick = { onJumpToAudio(question.timestampMs) },
+                                onClick = { onTogglePlayAudio(question.timestampMs) },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(38.dp)
                                     .testTag("quiz_jump_audio_button"),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.primary
-                                ),
+                                colors = if (isAudioPlayingForThis) {
+                                    ButtonDefaults.outlinedButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                                        contentColor = MaterialTheme.colorScheme.primary
+                                    )
+                                } else {
+                                    ButtonDefaults.outlinedButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.primary
+                                    )
+                                },
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.Headphones,
+                                    imageVector = if (isAudioPlayingForThis) Icons.Filled.Pause else Icons.Filled.Headphones,
                                     contentDescription = null,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = String.format(
-                                        Loc.getText("quiz_jump_and_listen"),
-                                        formatTimestampDisplay(question.timestampMs)
-                                    ),
+                                    text = if (isAudioPlayingForThis) {
+                                        String.format(
+                                            Loc.getText("quiz_pause_line"),
+                                            formatTimestampDisplay(question.timestampMs)
+                                        )
+                                    } else {
+                                        String.format(
+                                            Loc.getText("quiz_jump_and_listen"),
+                                            formatTimestampDisplay(question.timestampMs)
+                                        )
+                                    },
                                     style = MaterialTheme.typography.labelSmall
                                 )
                             }
@@ -780,7 +792,9 @@ private fun QuizResultsSummaryView(
     onRetake: () -> Unit,
     onGenerateFresh: () -> Unit,
     onViewBank: () -> Unit,
-    onJumpToTimestamp: (Long) -> Unit,
+    onTogglePlayAudio: (Long) -> Unit,
+    currentlyPlayingTimestamp: Long?,
+    isAudioPlaying: Boolean,
     modifier: Modifier = Modifier
 ) {
     val total = questions.size
@@ -932,14 +946,19 @@ private fun QuizResultsSummaryView(
                     }
 
                     if (q.timestampMs != null && q.timestampMs >= 0) {
+                        val isThisPlaying = isAudioPlaying && currentlyPlayingTimestamp == q.timestampMs
                         TextButton(
-                            onClick = { onJumpToTimestamp(q.timestampMs) },
+                            onClick = { onTogglePlayAudio(q.timestampMs) },
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                         ) {
-                            Icon(imageVector = Icons.Filled.Headphones, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Icon(
+                                imageVector = if (isThisPlaying) Icons.Filled.Pause else Icons.Filled.Headphones,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "🎧 Listen: ${formatTimestampDisplay(q.timestampMs)}",
+                                text = if (isThisPlaying) Loc.getText("pause") else String.format(Loc.getText("quiz_listen_at"), formatTimestampDisplay(q.timestampMs)),
                                 style = MaterialTheme.typography.labelSmall
                             )
                         }
@@ -959,7 +978,9 @@ private fun QuizBankTabContent(
     onGenerateNew: () -> Unit,
     onDeleteQuestion: (Long) -> Unit,
     onClearBank: () -> Unit,
-    onJumpToTimestamp: (Long) -> Unit
+    onTogglePlayAudio: (Long) -> Unit,
+    currentlyPlayingTimestamp: Long?,
+    isAudioPlaying: Boolean
 ) {
     var showClearDialog by remember { mutableStateOf(false) }
 
@@ -1033,9 +1054,44 @@ private fun QuizBankTabContent(
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                 ) {
-                    Icon(imageVector = Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                    if (isGenerating) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Icon(imageVector = Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                    }
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(Loc.getText("add"), style = MaterialTheme.typography.labelSmall)
+                    Text(Loc.getText("quiz_generate_more_button"), style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+
+        if (isGenerating) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                ),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = Loc.getText("quiz_generating_more_status"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
                 }
             }
         }
@@ -1147,14 +1203,19 @@ private fun QuizBankTabContent(
                             }
 
                             if (q.timestampMs != null && q.timestampMs >= 0) {
+                                val isThisPlaying = isAudioPlaying && currentlyPlayingTimestamp == q.timestampMs
                                 TextButton(
-                                    onClick = { onJumpToTimestamp(q.timestampMs) },
+                                    onClick = { onTogglePlayAudio(q.timestampMs) },
                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
-                                    Icon(imageVector = Icons.Filled.Headphones, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Icon(
+                                        imageVector = if (isThisPlaying) Icons.Filled.Pause else Icons.Filled.Headphones,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "🎧 ${formatTimestampDisplay(q.timestampMs)}",
+                                        text = if (isThisPlaying) Loc.getText("pause") else formatTimestampDisplay(q.timestampMs),
                                         style = MaterialTheme.typography.labelSmall
                                     )
                                 }
