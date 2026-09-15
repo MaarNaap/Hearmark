@@ -4609,7 +4609,7 @@ fun AudioPlayerOverlay(
                 label = "bgGradientBottom"
             )
 
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
@@ -4619,6 +4619,9 @@ fun AudioPlayerOverlay(
                     )
                     .navigationBarsPadding()
             ) {
+                Column(
+                    modifier = Modifier.fillMaxSize()
+                ) {
             androidx.compose.animation.AnimatedVisibility(
                 visible = !isDistractionFree,
                 enter = fadeIn(tween(250)) + expandVertically(tween(250)),
@@ -5504,8 +5507,9 @@ fun AudioPlayerOverlay(
             }
 
             // FIXED BOTTOM CONTROLLER & UTILITIES AREA (Always visible)
+            val arePlaybackButtonsActive = !isDistractionFree || areVideoControlsVisible
             val bottomPlaybackAlpha by animateFloatAsState(
-                targetValue = if (!isDistractionFree || areVideoControlsVisible) 1f else 0f,
+                targetValue = if (arePlaybackButtonsActive) 1f else 0f,
                 animationSpec = tween(durationMillis = 300),
                 label = "bottomPlaybackAlpha"
             )
@@ -5636,6 +5640,7 @@ fun AudioPlayerOverlay(
 
                         Slider(
                             value = safeNeedlePercent,
+                            enabled = arePlaybackButtonsActive,
                             onValueChange = { percent ->
                                 isDraggingState = true
                                 dragPercentState = percent
@@ -5755,6 +5760,7 @@ fun AudioPlayerOverlay(
                 ) {
                     IconButton(
                         onClick = { AudioPlayerManager.playPreviousTrack() },
+                        enabled = arePlaybackButtonsActive,
                         modifier = Modifier.size(48.dp)
                     ) {
                         Icon(
@@ -5766,7 +5772,10 @@ fun AudioPlayerOverlay(
                     }
 
                     Box(contentAlignment = Alignment.Center) {
-                        IconButton(onClick = { AudioPlayerManager.skipBackward() }) {
+                        IconButton(
+                            onClick = { AudioPlayerManager.skipBackward() },
+                            enabled = arePlaybackButtonsActive
+                        ) {
                             Icon(
                                 imageVector = Icons.Filled.FastRewind,
                                 contentDescription = "Rewind",
@@ -5787,6 +5796,7 @@ fun AudioPlayerOverlay(
                         onClick = {
                             if (isPlayingState) AudioPlayerManager.pause() else AudioPlayerManager.resume()
                         },
+                        enabled = arePlaybackButtonsActive,
                         modifier = Modifier
                             .size(64.dp)
                             .background(MaterialTheme.colorScheme.primary, CircleShape)
@@ -5800,7 +5810,10 @@ fun AudioPlayerOverlay(
                     }
 
                     Box(contentAlignment = Alignment.Center) {
-                        IconButton(onClick = { AudioPlayerManager.skipForward() }) {
+                        IconButton(
+                            onClick = { AudioPlayerManager.skipForward() },
+                            enabled = arePlaybackButtonsActive
+                        ) {
                             Icon(
                                 imageVector = Icons.Filled.FastForward,
                                 contentDescription = "ForwardFast",
@@ -5819,6 +5832,7 @@ fun AudioPlayerOverlay(
 
                     IconButton(
                         onClick = { AudioPlayerManager.playNextTrack() },
+                        enabled = arePlaybackButtonsActive,
                         modifier = Modifier.size(48.dp)
                     ) {
                         Icon(
@@ -6729,9 +6743,32 @@ fun AudioPlayerOverlay(
                     }
                 )
             }
+                }
+
+                // When in No-Distraction Mode and controls are hidden, tapping ANY part of the screen reveals controls
+                if (isDistractionFree && !areVideoControlsVisible) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onDoubleTap = {
+                                        lastVideoControlsInteractionTime = System.currentTimeMillis()
+                                        val isNowFocus = AudioPlayerManager.toggleVideoFocusMode()
+                                        val msg = if (isNowFocus) Loc.getText("video_focus_mode_on") else Loc.getText("video_focus_mode_off")
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    },
+                                    onTap = {
+                                        areVideoControlsVisible = true
+                                        lastVideoControlsInteractionTime = System.currentTimeMillis()
+                                    }
+                                )
+                            }
+                    )
+                }
+            }
         }
     }
-}
 }
 
 
