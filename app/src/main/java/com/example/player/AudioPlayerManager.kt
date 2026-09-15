@@ -116,6 +116,18 @@ object AudioPlayerManager {
 
     val isVideoFullWidth = MutableStateFlow(true)
 
+    val isVideoFocusMode = MutableStateFlow(false)
+
+    fun toggleVideoFocusMode(): Boolean {
+        val next = !isVideoFocusMode.value
+        isVideoFocusMode.value = next
+        return next
+    }
+
+    fun setVideoFocusMode(enabled: Boolean) {
+        isVideoFocusMode.value = enabled
+    }
+
     fun toggleVideoFullWidth(): Boolean {
         isVideoFullWidth.value = true
         return true

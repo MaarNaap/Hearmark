@@ -4005,13 +4005,6 @@ fun AudioPlayerOverlay(
 ) {
     var isFullScreenVideo by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = true) {
-        if (isFullScreenVideo) {
-            isFullScreenVideo = false
-        } else {
-            dismiss()
-        }
-    }
     val durationState by AudioPlayerManager.duration.collectAsStateWithLifecycle()
     val isPlayingState by AudioPlayerManager.isPlaying.collectAsStateWithLifecycle()
     val playPositionState by AudioPlayerManager.currentPosition.collectAsStateWithLifecycle()
@@ -4043,6 +4036,24 @@ fun AudioPlayerOverlay(
     val isVideoTrackState by AudioPlayerManager.isVideoTrack.collectAsStateWithLifecycle()
     val isTrackVideo = remember(track.filePath, isVideoTrackState) {
         SubtitleParser.isVideoFile(track.filePath) || isVideoTrackState
+    }
+    val isVideoFocusModeState by AudioPlayerManager.isVideoFocusMode.collectAsStateWithLifecycle()
+    val isDistractionFree = isTrackVideo && isVideoFocusModeState
+
+    BackHandler(enabled = true) {
+        if (isFullScreenVideo) {
+            isFullScreenVideo = false
+        } else if (isDistractionFree) {
+            AudioPlayerManager.setVideoFocusMode(false)
+        } else {
+            dismiss()
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            AudioPlayerManager.setVideoFocusMode(false)
+        }
     }
     val isInPipModeState by AudioPlayerManager.isInPipMode.collectAsStateWithLifecycle()
 
@@ -4587,24 +4598,38 @@ fun AudioPlayerOverlay(
             }
                 }
         } else {
+            val bgGradientTop by animateColorAsState(
+                targetValue = if (isDistractionFree) Color.Black else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                animationSpec = tween(durationMillis = 300),
+                label = "bgGradientTop"
+            )
+            val bgGradientBottom by animateColorAsState(
+                targetValue = if (isDistractionFree) Color.Black else MaterialTheme.colorScheme.surface,
+                animationSpec = tween(durationMillis = 300),
+                label = "bgGradientBottom"
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
                         brush = Brush.verticalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                MaterialTheme.colorScheme.surface
-                            )
+                            colors = listOf(bgGradientTop, bgGradientBottom)
                         )
                     )
                     .navigationBarsPadding()
             ) {
-            // iOS drag handle that detects swiping down to minimize
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .pointerInput(Unit) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !isDistractionFree,
+                enter = fadeIn(tween(250)) + expandVertically(tween(250)),
+                exit = fadeOut(tween(250)) + shrinkVertically(tween(250))
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // iOS drag handle that detects swiping down to minimize
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pointerInput(Unit) {
                         detectVerticalDragGestures(
                             onVerticalDrag = { _, dragAmount ->
                                 if (dragAmount > 25f) {
@@ -4858,12 +4883,36 @@ fun AudioPlayerOverlay(
                                     showWaveformEditorDialog = true
                                 }
                             )
+                            if (isTrackVideo) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = if (isVideoFocusModeState) Icons.Filled.CenterFocusStrong else Icons.Filled.FilterCenterFocus,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(Loc.getText("video_focus_mode_title"))
+                                        }
+                                    },
+                                    onClick = {
+                                        showPlayerMenu = false
+                                        val isNowFocus = AudioPlayerManager.toggleVideoFocusMode()
+                                        val msg = if (isNowFocus) Loc.getText("video_focus_mode_on") else Loc.getText("video_focus_mode_off")
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            }
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
+            }
 
             // MIDDLE SWIPEABLE TAB CONTENT (HorizontalPager)
             HorizontalPager(
@@ -4879,10 +4928,20 @@ fun AudioPlayerOverlay(
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState()),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                        verticalArrangement = if (isDistractionFree) Arrangement.Center else Arrangement.spacedBy(16.dp)
                     ) {
-                        // Title of active track
-                        SmartFileNameText(
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = !isDistractionFree,
+                            enter = fadeIn(tween(250)) + expandVertically(tween(250)),
+                            exit = fadeOut(tween(250)) + shrinkVertically(tween(250))
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                // Title of active track
+                                SmartFileNameText(
                             text = track.getDisplayTitle(),
                             isActive = true,
                             style = MaterialTheme.typography.bodyMedium.copy(
@@ -5088,6 +5147,8 @@ fun AudioPlayerOverlay(
                                 }
                             }
                         }
+                            }
+                        }
 
                         // Video Player Screen or Audio Artwork Representation
                         if (isTrackVideo) {
@@ -5102,12 +5163,19 @@ fun AudioPlayerOverlay(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .clickable(
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            indication = null
-                                        ) {
-                                            areVideoControlsVisible = !areVideoControlsVisible
-                                            lastVideoControlsInteractionTime = System.currentTimeMillis()
+                                        .pointerInput(Unit) {
+                                            detectTapGestures(
+                                                onDoubleTap = {
+                                                    lastVideoControlsInteractionTime = System.currentTimeMillis()
+                                                    val isNowFocus = AudioPlayerManager.toggleVideoFocusMode()
+                                                    val msg = if (isNowFocus) Loc.getText("video_focus_mode_on") else Loc.getText("video_focus_mode_off")
+                                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                                },
+                                                onTap = {
+                                                    areVideoControlsVisible = !areVideoControlsVisible
+                                                    lastVideoControlsInteractionTime = System.currentTimeMillis()
+                                                }
+                                            )
                                         },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -5274,6 +5342,22 @@ fun AudioPlayerOverlay(
                                             IconButton(
                                                 onClick = {
                                                     lastVideoControlsInteractionTime = System.currentTimeMillis()
+                                                    val isNowFocus = AudioPlayerManager.toggleVideoFocusMode()
+                                                    val msg = if (isNowFocus) Loc.getText("video_focus_mode_on") else Loc.getText("video_focus_mode_off")
+                                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                                },
+                                                modifier = Modifier.size(36.dp).testTag("video_focus_mode_button")
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (isVideoFocusModeState) Icons.Filled.CenterFocusStrong else Icons.Filled.FilterCenterFocus,
+                                                    contentDescription = Loc.getText("video_focus_mode_title"),
+                                                    tint = if (isVideoFocusModeState) MaterialTheme.colorScheme.primary else Color.White,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    lastVideoControlsInteractionTime = System.currentTimeMillis()
                                                     isFullScreenVideo = true
                                                 },
                                                 modifier = Modifier.size(36.dp)
@@ -5420,12 +5504,23 @@ fun AudioPlayerOverlay(
             }
 
             // FIXED BOTTOM CONTROLLER & UTILITIES AREA (Always visible)
+            val bottomPlaybackAlpha by animateFloatAsState(
+                targetValue = if (!isDistractionFree || areVideoControlsVisible) 1f else 0f,
+                animationSpec = tween(durationMillis = 300),
+                label = "bottomPlaybackAlpha"
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
             ) {
-                // PROGRESS SLIDER & TIMESTAMPS
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer { alpha = bottomPlaybackAlpha }
+                ) {
+                    // PROGRESS SLIDER & TIMESTAMPS
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(
@@ -5734,13 +5829,19 @@ fun AudioPlayerOverlay(
                         )
                     }
                 }
+                }
 
                 // GLASSMORPHIC FOOTER UTILITIES CONTAINER
                 var showQueueSheet by remember { mutableStateOf(false) }
                 var selectedQueueIndices by remember { mutableStateOf(setOf<Int>()) }
                 val currentQueueState by AudioPlayerManager.currentQueueFlow.collectAsStateWithLifecycle()
 
-                Card(
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = !isDistractionFree,
+                    enter = fadeIn(tween(250)) + expandVertically(tween(250)),
+                    exit = fadeOut(tween(250)) + shrinkVertically(tween(250))
+                ) {
+                    Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 6.dp),
@@ -6301,6 +6402,7 @@ fun AudioPlayerOverlay(
                             }
                         }
                     }
+                }
                 }
             }
 
