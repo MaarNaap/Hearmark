@@ -4028,7 +4028,6 @@ fun AudioPlayerOverlay(
     val activeSubtitleCueState by AudioPlayerManager.activeSubtitleCue.collectAsStateWithLifecycle()
     val isSubtitlesEnabledState by AudioPlayerManager.isSubtitlesEnabled.collectAsStateWithLifecycle()
     val videoSubtitleModeState by AudioPlayerManager.videoSubtitleMode.collectAsStateWithLifecycle()
-    val isVideoFullWidthState by AudioPlayerManager.isVideoFullWidth.collectAsStateWithLifecycle()
     val subtitleOffsetMsState by AudioPlayerManager.subtitleOffsetMs.collectAsStateWithLifecycle()
     val subtitleFontSizeState by AudioPlayerManager.subtitleFontSize.collectAsStateWithLifecycle()
     val showTimestampsInSubtitlesState by AudioPlayerManager.showTimestampsInSubtitles.collectAsStateWithLifecycle()
@@ -4078,21 +4077,6 @@ fun AudioPlayerOverlay(
     val fullWidthVideoHeight = remember(screenWidthDp, videoAspectRatio) {
         (screenWidthDp / videoAspectRatio.coerceIn(1.0f, 2.4f)).dp
     }
-    val videoHorizontalPadding by animateDpAsState(
-        targetValue = if (isVideoFullWidthState) 0.dp else 20.dp,
-        animationSpec = tween(durationMillis = 260),
-        label = "videoHorizontalPadding"
-    )
-    val videoCornerRadius by animateDpAsState(
-        targetValue = if (isVideoFullWidthState) 0.dp else 16.dp,
-        animationSpec = tween(durationMillis = 260),
-        label = "videoCornerRadius"
-    )
-    val videoCardHeight by animateDpAsState(
-        targetValue = if (isVideoFullWidthState) fullWidthVideoHeight else 210.dp,
-        animationSpec = tween(durationMillis = 260),
-        label = "videoCardHeight"
-    )
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -4874,28 +4858,6 @@ fun AudioPlayerOverlay(
                                     showWaveformEditorDialog = true
                                 }
                             )
-                            if (isTrackVideo) {
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = if (isVideoFullWidthState) Icons.Filled.FitScreen else Icons.Filled.AspectRatio,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(18.dp),
-                                                tint = MaterialTheme.colorScheme.primary
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text(if (isVideoFullWidthState) Loc.getText("video_standard_width_action") else Loc.getText("video_full_width_action"))
-                                        }
-                                    },
-                                    onClick = {
-                                        showPlayerMenu = false
-                                        val isNowFullWidth = AudioPlayerManager.toggleVideoFullWidth()
-                                        val msg = if (isNowFullWidth) Loc.getText("video_full_width_enabled") else Loc.getText("video_full_width_disabled")
-                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                    }
-                                )
-                            }
                         }
                     }
                 }
@@ -5132,11 +5094,10 @@ fun AudioPlayerOverlay(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = videoHorizontalPadding)
-                                    .height(videoCardHeight),
-                                shape = RoundedCornerShape(videoCornerRadius),
+                                    .height(fullWidthVideoHeight),
+                                shape = RoundedCornerShape(0.dp),
                                 colors = CardDefaults.cardColors(containerColor = Color.Black),
-                                elevation = CardDefaults.cardElevation(defaultElevation = if (isVideoFullWidthState) 0.dp else 4.dp)
+                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -5279,23 +5240,6 @@ fun AudioPlayerOverlay(
                                                         )
                                                     }
                                                 }
-                                            }
-
-                                            IconButton(
-                                                onClick = {
-                                                    lastVideoControlsInteractionTime = System.currentTimeMillis()
-                                                    val isNowFullWidth = AudioPlayerManager.toggleVideoFullWidth()
-                                                    val msg = if (isNowFullWidth) Loc.getText("video_full_width_enabled") else Loc.getText("video_full_width_disabled")
-                                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                                },
-                                                modifier = Modifier.size(36.dp).testTag("video_full_width_toggle_button")
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (isVideoFullWidthState) Icons.Filled.FitScreen else Icons.Filled.AspectRatio,
-                                                    contentDescription = if (isVideoFullWidthState) Loc.getText("video_standard_width_action") else Loc.getText("video_full_width_action"),
-                                                    tint = if (isVideoFullWidthState) MaterialTheme.colorScheme.primary else Color.White,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
                                             }
 
                                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
