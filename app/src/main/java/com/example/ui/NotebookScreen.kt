@@ -55,7 +55,8 @@ fun NotebookScreen(
     onEditNoteClicked: (Note) -> Unit,
     onNavigateToFolder: (Long) -> Unit = {},
     onNavigateToTrack: (AudioTrack) -> Unit = {},
-    onPlayTrackInMainPlayer: (AudioTrack, Long) -> Unit = { _, _ -> }
+    onPlayTrackInMainPlayer: (AudioTrack, Long) -> Unit = { _, _ -> },
+    onOpenVocabularyReview: () -> Unit = {}
 ) {
     val notes by viewModel.notes.collectAsStateWithLifecycle()
     val tags by viewModel.noteTags.collectAsStateWithLifecycle()
@@ -74,6 +75,9 @@ fun NotebookScreen(
     var selectedTrackId by remember { mutableStateOf<Long?>(null) }
     var noteToDelete by remember { mutableStateOf<Note?>(null) }
     var viewingNoteTarget by remember { mutableStateOf<Note?>(null) }
+    var showQuizGeneratorSheet by remember { mutableStateOf(false) }
+    var singleNoteForQuiz by remember { mutableStateOf<Note?>(null) }
+    val isNotebookQuizSheetOpen by viewModel.isNotebookQuizSheetOpen.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
 
@@ -284,6 +288,39 @@ fun NotebookScreen(
                             }
                         }
 
+                        // Vocabulary Review Action Button
+                        IconButton(
+                            onClick = onOpenVocabularyReview,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .testTag("notebook_vocab_review_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Spellcheck,
+                                contentDescription = Loc.getText("vocab_review_title"),
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        // Create Vocab Quiz from Notebook Action Button
+                        IconButton(
+                            onClick = {
+                                singleNoteForQuiz = null
+                                showQuizGeneratorSheet = true
+                            },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .testTag("notebook_quiz_generate_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.AutoAwesome,
+                                contentDescription = Loc.getText("notebook_quiz_generate_btn"),
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
                         // Single Add Note Icon Button
                         FilledTonalIconButton(
                             onClick = onAddNoteClicked,
@@ -458,6 +495,10 @@ fun NotebookScreen(
                                 val clip = ClipData.newPlainText("Hearmark Note", clipText)
                                 clipboard.setPrimaryClip(clip)
                                 Toast.makeText(context, Loc.getText("note_copied"), Toast.LENGTH_SHORT).show()
+                            },
+                            onCreateQuizQuestion = {
+                                singleNoteForQuiz = note
+                                showQuizGeneratorSheet = true
                             }
                         )
                     }
@@ -529,6 +570,12 @@ fun NotebookScreen(
                 val clip = ClipData.newPlainText("Hearmark Note", clipText)
                 clipboard.setPrimaryClip(clip)
                 Toast.makeText(context, Loc.getText("note_copied"), Toast.LENGTH_SHORT).show()
+            },
+            onCreateQuizQuestion = {
+                val noteForQuiz = liveNote
+                viewingNoteTarget = null
+                singleNoteForQuiz = noteForQuiz
+                showQuizGeneratorSheet = true
             },
             onDismiss = { viewingNoteTarget = null }
         )
@@ -1021,6 +1068,20 @@ fun NotebookScreen(
             }
         )
     }
+
+    if (showQuizGeneratorSheet || isNotebookQuizSheetOpen) {
+        NotebookQuizGeneratorSheet(
+            viewModel = viewModel,
+            allNotes = notes,
+            initialSelectedNotes = singleNoteForQuiz?.let { listOf(it) },
+            onDismiss = {
+                showQuizGeneratorSheet = false
+                singleNoteForQuiz = null
+                viewModel.closeNotebookQuizSheet()
+            },
+            onOpenVocabularyReview = onOpenVocabularyReview
+        )
+    }
 }
 
 @Composable
@@ -1033,7 +1094,8 @@ fun NoteCard(
     onView: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onCopy: () -> Unit
+    onCopy: () -> Unit,
+    onCreateQuizQuestion: (() -> Unit)? = null
 ) {
     val favTag = Loc.getText("favorite_tag_name")
     val isFavorite = remember(note.tags, favTag) {
@@ -1173,6 +1235,23 @@ fun NoteCard(
                             modifier = Modifier.size(18.dp),
                             tint = if (isFavorite) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
+                    }
+
+                    // Quick AI Quiz Generation from Note Button
+                    if (onCreateQuizQuestion != null) {
+                        IconButton(
+                            onClick = onCreateQuizQuestion,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("note_quiz_btn_${note.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.AutoAwesome,
+                                contentDescription = Loc.getText("notebook_quiz_single_note_btn"),
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
 
@@ -1419,6 +1498,7 @@ fun ViewNoteDetailsModal(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onCopy: () -> Unit,
+    onCreateQuizQuestion: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val favTag = Loc.getText("favorite_tag_name")
@@ -1444,7 +1524,7 @@ fun ViewNoteDetailsModal(
                 .padding(bottom = 32.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            // Header Row: Title & Close Button
+            // Header Row: Title & Action Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1467,8 +1547,21 @@ fun ViewNoteDetailsModal(
                     )
                 }
 
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onCreateQuizQuestion,
+                        modifier = Modifier.testTag("view_note_quiz_header_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AutoAwesome,
+                            contentDescription = Loc.getText("notebook_quiz_single_note_btn"),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, contentDescription = "Close")
+                    }
                 }
             }
 
@@ -1800,6 +1893,21 @@ fun ViewNoteDetailsModal(
                     Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(Loc.getText("edit_note"), fontWeight = FontWeight.Bold)
+                }
+
+                // Extract / Generate Quiz Button
+                FilledTonalIconButton(
+                    onClick = onCreateQuizQuestion,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .testTag("view_note_quiz_bottom_btn"),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = Loc.getText("notebook_quiz_single_note_btn"),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
 
                 // Favorite Button

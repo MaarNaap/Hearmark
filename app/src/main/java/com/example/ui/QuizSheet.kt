@@ -39,7 +39,8 @@ import com.example.player.AudioPlayerManager
 @Composable
 fun QuizSheet(
     viewModel: AppViewModel,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onOpenVocabularyReview: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val targetTrack by viewModel.activeQuizTargetTrack.collectAsStateWithLifecycle()
@@ -183,15 +184,29 @@ fun QuizSheet(
                     }
                 }
 
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.testTag("close_quiz_sheet_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = "Close",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (onOpenVocabularyReview != null) {
+                        IconButton(
+                            onClick = onOpenVocabularyReview,
+                            modifier = Modifier.testTag("quiz_sheet_to_vocab_review")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Spellcheck,
+                                contentDescription = Loc.getText("vocab_review_title"),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.testTag("close_quiz_sheet_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 

@@ -388,12 +388,18 @@ data class TaskDailyProgress(
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index(value = ["trackId"])]
+    indices = [
+        Index(value = ["trackId"]),
+        Index(value = ["category"]),
+        Index(value = ["noteId"])
+    ]
 )
 data class QuizQuestion(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val trackId: Long,
+    val trackId: Long? = null,
+    val noteId: Long? = null,
     val questionType: String, // "MCQ" or "TRUE_FALSE"
+    val category: String = "COMPREHENSION", // "VOCABULARY" or "COMPREHENSION"
     val question: String,
     val optionsJson: String, // JSON array string e.g. ["Choice A", "Choice B", "Choice C", "Choice D"]
     val correctIndex: Int,
@@ -737,6 +743,30 @@ interface AppDao {
 
     @Query("DELETE FROM quiz_questions WHERE trackId = :trackId")
     suspend fun deleteQuizQuestionsForTrack(trackId: Long)
+
+    @Query("SELECT * FROM quiz_questions WHERE category = :category ORDER BY createdAt DESC")
+    fun getQuestionsByCategoryFlow(category: String): Flow<List<QuizQuestion>>
+
+    @Query("SELECT * FROM quiz_questions WHERE category = 'VOCABULARY' OR (category = 'COMPREHENSION' AND (question LIKE '%meaning%' OR question LIKE '%means%' OR question LIKE '%word%' OR question LIKE '%definition%' OR question LIKE '%phrase%' OR question LIKE '%idiom%' OR question LIKE '%معنى%' OR question LIKE '%مرادف%')) ORDER BY createdAt DESC")
+    fun getAllVocabularyQuestionsFlow(): Flow<List<QuizQuestion>>
+
+    @Query("SELECT * FROM quiz_questions WHERE category = 'VOCABULARY' OR (category = 'COMPREHENSION' AND (question LIKE '%meaning%' OR question LIKE '%means%' OR question LIKE '%word%' OR question LIKE '%definition%' OR question LIKE '%phrase%' OR question LIKE '%idiom%' OR question LIKE '%معنى%' OR question LIKE '%مرادف%')) ORDER BY createdAt DESC")
+    suspend fun getAllVocabularyQuestionsDirect(): List<QuizQuestion>
+
+    @Query("SELECT * FROM quiz_questions WHERE trackId = :trackId AND category = :category ORDER BY createdAt ASC")
+    fun getQuestionsForTrackAndCategoryFlow(trackId: Long, category: String): Flow<List<QuizQuestion>>
+
+    @Query("SELECT * FROM quiz_questions WHERE noteId = :noteId ORDER BY createdAt DESC")
+    fun getQuestionsForNoteFlow(noteId: Long): Flow<List<QuizQuestion>>
+
+    @Query("SELECT * FROM quiz_questions WHERE noteId = :noteId ORDER BY createdAt DESC")
+    suspend fun getQuestionsForNoteDirect(noteId: Long): List<QuizQuestion>
+
+    @Query("SELECT * FROM quiz_questions WHERE noteId IS NOT NULL ORDER BY createdAt DESC")
+    fun getNotebookVocabularyQuestionsFlow(): Flow<List<QuizQuestion>>
+
+    @Query("SELECT * FROM quiz_questions WHERE noteId IS NOT NULL ORDER BY createdAt DESC")
+    suspend fun getNotebookVocabularyQuestionsDirect(): List<QuizQuestion>
 }
 
 // --- DATABASE ---
@@ -756,7 +786,7 @@ interface AppDao {
         TaskDailyProgress::class,
         QuizQuestion::class
     ],
-    version = 14,
+    version = 16,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -906,6 +936,48 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE quiz_questions ADD COLUMN category TEXT NOT NULL DEFAULT 'COMPREHENSION'")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_questions_category` ON `quiz_questions` (`category`)")
+            }
+        }
+
+        private val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `quiz_questions_temp` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `trackId` INTEGER,
+                        `noteId` INTEGER,
+                        `questionType` TEXT NOT NULL,
+                        `category` TEXT NOT NULL DEFAULT 'COMPREHENSION',
+                        `question` TEXT NOT NULL,
+                        `optionsJson` TEXT NOT NULL,
+                        `correctIndex` INTEGER NOT NULL,
+                        `explanation` TEXT NOT NULL,
+                        `timestampMs` INTEGER,
+                        `timesAnswered` INTEGER NOT NULL DEFAULT 0,
+                        `timesCorrect` INTEGER NOT NULL DEFAULT 0,
+                        `lastAnsweredAt` INTEGER,
+                        `createdAt` INTEGER NOT NULL,
+                        FOREIGN KEY(`trackId`) REFERENCES `audio_tracks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    INSERT INTO `quiz_questions_temp` 
+                    (`id`, `trackId`, `noteId`, `questionType`, `category`, `question`, `optionsJson`, `correctIndex`, `explanation`, `timestampMs`, `timesAnswered`, `timesCorrect`, `lastAnsweredAt`, `createdAt`)
+                    SELECT `id`, `trackId`, NULL, `questionType`, `category`, `question`, `optionsJson`, `correctIndex`, `explanation`, `timestampMs`, `timesAnswered`, `timesCorrect`, `lastAnsweredAt`, `createdAt`
+                    FROM `quiz_questions`
+                """.trimIndent())
+                db.execSQL("DROP TABLE `quiz_questions`")
+                db.execSQL("ALTER TABLE `quiz_questions_temp` RENAME TO `quiz_questions`")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_questions_trackId` ON `quiz_questions` (`trackId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_questions_category` ON `quiz_questions` (`category`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_questions_noteId` ON `quiz_questions` (`noteId`)")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -913,7 +985,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smart_audio_tasks_db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
                     .fallbackToDestructiveMigrationOnDowngrade(true)
                     .build()
                 INSTANCE = instance
@@ -1379,10 +1451,18 @@ class AppRepository(val dao: AppDao) {
     fun getQuestionsForTrackFlow(trackId: Long): Flow<List<QuizQuestion>> = dao.getQuestionsForTrackFlow(trackId)
     suspend fun getQuestionsForTrackDirect(trackId: Long): List<QuizQuestion> = dao.getQuestionsForTrackDirect(trackId)
     suspend fun getQuestionCountForTrack(trackId: Long): Int = dao.getQuestionCountForTrack(trackId)
+    fun getQuestionsByCategoryFlow(category: String): Flow<List<QuizQuestion>> = dao.getQuestionsByCategoryFlow(category)
+    fun getAllVocabularyQuestionsFlow(): Flow<List<QuizQuestion>> = dao.getAllVocabularyQuestionsFlow()
+    suspend fun getAllVocabularyQuestionsDirect(): List<QuizQuestion> = dao.getAllVocabularyQuestionsDirect()
+    fun getQuestionsForTrackAndCategoryFlow(trackId: Long, category: String): Flow<List<QuizQuestion>> = dao.getQuestionsForTrackAndCategoryFlow(trackId, category)
     suspend fun insertQuizQuestions(questions: List<QuizQuestion>): List<Long> = dao.insertQuizQuestions(questions)
     suspend fun insertQuizQuestion(question: QuizQuestion): Long = dao.insertQuizQuestion(question)
     suspend fun updateQuizQuestion(question: QuizQuestion) = dao.updateQuizQuestion(question)
     suspend fun recordQuestionAnswer(id: Long, isCorrect: Boolean) = dao.recordQuestionAnswer(id, if (isCorrect) 1 else 0)
     suspend fun deleteQuizQuestionById(id: Long) = dao.deleteQuizQuestionById(id)
     suspend fun deleteQuizQuestionsForTrack(trackId: Long) = dao.deleteQuizQuestionsForTrack(trackId)
+    fun getQuestionsForNoteFlow(noteId: Long): Flow<List<QuizQuestion>> = dao.getQuestionsForNoteFlow(noteId)
+    suspend fun getQuestionsForNoteDirect(noteId: Long): List<QuizQuestion> = dao.getQuestionsForNoteDirect(noteId)
+    fun getNotebookVocabularyQuestionsFlow(): Flow<List<QuizQuestion>> = dao.getNotebookVocabularyQuestionsFlow()
+    suspend fun getNotebookVocabularyQuestionsDirect(): List<QuizQuestion> = dao.getNotebookVocabularyQuestionsDirect()
 }

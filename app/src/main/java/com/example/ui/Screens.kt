@@ -497,7 +497,8 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                                 onLibraryShortcutClicked = { currentScreen = "library" },
                                 onCreateTask = { isCreatingTask = true },
                                 onTaskDetailsRequested = { activeTaskForDetails = it },
-                                onSettingsClicked = { currentScreen = "settings" }
+                                onSettingsClicked = { currentScreen = "settings" },
+                                onVocabularyReviewClicked = { currentScreen = "vocab_review" }
                             )
                         }
                         screen == "library" -> {
@@ -553,7 +554,8 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                                     if (startMs > 0) {
                                         AudioPlayerManager.seekTo(startMs, isPhysicalTimestamp = true)
                                     }
-                                }
+                                },
+                                onOpenVocabularyReview = { currentScreen = "vocab_review" }
                             )
                         }
                         screen == "stats" -> {
@@ -563,6 +565,13 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                             SettingsView(
                                 viewModel = viewModel,
                                 onBack = { currentScreen = "home" }
+                            )
+                        }
+                        screen == "vocab_review" -> {
+                            VocabularyReviewScreen(
+                                viewModel = viewModel,
+                                onBack = { currentScreen = "home" },
+                                onNavigateToLibrary = { currentScreen = "library" }
                             )
                         }
                     }
@@ -735,7 +744,11 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                 if (isQuizSheetOpen) {
                     QuizSheet(
                         viewModel = viewModel,
-                        onDismiss = { viewModel.closeQuizSheet() }
+                        onDismiss = { viewModel.closeQuizSheet() },
+                        onOpenVocabularyReview = {
+                            viewModel.closeQuizSheet()
+                            currentScreen = "vocab_review"
+                        }
                     )
                 }
 
@@ -1735,13 +1748,15 @@ fun HomeView(
     onLibraryShortcutClicked: () -> Unit,
     onCreateTask: () -> Unit,
     onTaskDetailsRequested: (Task) -> Unit,
-    onSettingsClicked: () -> Unit
+    onSettingsClicked: () -> Unit,
+    onVocabularyReviewClicked: () -> Unit = {}
 ) {
     val tracks by viewModel.tracks.collectAsStateWithLifecycle()
     val activeTasks by viewModel.activeTasks.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val allTaskProgress by viewModel.allTaskProgress.collectAsStateWithLifecycle()
     val todayDailyProgressList by viewModel.todayDailyProgress.collectAsStateWithLifecycle()
+    val allVocabQuestions by viewModel.allVocabularyQuestions.collectAsStateWithLifecycle()
 
     val dayOfWeekToday = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
     val todayStr = when (dayOfWeekToday) {
@@ -1869,16 +1884,29 @@ fun HomeView(
                     }
                 }
 
-                IconButton(
-                    onClick = onSettingsClicked,
-                    modifier = Modifier.testTag("btn_home_settings")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Settings,
-                        contentDescription = "Settings",
-                        tint = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.size(28.dp)
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onVocabularyReviewClicked,
+                        modifier = Modifier.testTag("btn_home_vocab_review")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Spellcheck,
+                            contentDescription = Loc.getText("vocab_review_title"),
+                            tint = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onSettingsClicked,
+                        modifier = Modifier.testTag("btn_home_settings")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
                 }
             }
         }
@@ -2130,6 +2158,7 @@ fun HomeView(
                 }
             }
         }
+
 
         // TODAY'S SCHEDULED SMART TASKS
         item {

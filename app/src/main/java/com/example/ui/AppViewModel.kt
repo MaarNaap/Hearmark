@@ -223,6 +223,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val quizGenerationSuccessMessage = MutableStateFlow<String?>(null)
     val activeQuizTargetTrack = MutableStateFlow<AudioTrack?>(null)
     val currentTrackQuizQuestions = MutableStateFlow<List<QuizQuestion>>(emptyList())
+    val allVocabularyQuestions: StateFlow<List<QuizQuestion>> = repository.getAllVocabularyQuestionsFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun openQuizForTrack(track: AudioTrack) {
         activeQuizTargetTrack.value = track
@@ -318,6 +320,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         QuizQuestion(
                             trackId = track.id,
                             questionType = item.questionType,
+                            category = item.category,
                             question = item.question,
                             optionsJson = optionsJson,
                             correctIndex = item.correctIndex,
@@ -363,6 +366,172 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.deleteQuizQuestionById(questionId)
             activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
+        }
+    }
+
+    // --- NOTEBOOK VOCABULARY QUIZ GENERATION ---
+    val isNotebookQuizSheetOpen = MutableStateFlow(false)
+    val isGeneratingNotebookQuiz = MutableStateFlow(false)
+    val notebookQuizError = MutableStateFlow<String?>(null)
+    val notebookQuizGeneratedQuestions = MutableStateFlow<List<com.example.ai.GeneratedNoteQuizItem>>(emptyList())
+    val notebookQuizSuccessMessage = MutableStateFlow<String?>(null)
+    val notebookVocabularyQuestions: StateFlow<List<QuizQuestion>> = repository.getNotebookVocabularyQuestionsFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun openNotebookQuizSheet() {
+        notebookQuizError.value = null
+        notebookQuizGeneratedQuestions.value = emptyList()
+        notebookQuizSuccessMessage.value = null
+        isNotebookQuizSheetOpen.value = true
+    }
+
+    fun closeNotebookQuizSheet() {
+        isNotebookQuizSheetOpen.value = false
+        notebookQuizError.value = null
+        notebookQuizGeneratedQuestions.value = emptyList()
+        notebookQuizSuccessMessage.value = null
+    }
+
+    fun clearNotebookQuizFeedback() {
+        notebookQuizError.value = null
+        notebookQuizSuccessMessage.value = null
+    }
+
+    fun generateQuizFromNotes(
+        notes: List<Note>,
+        maxQuestions: Int = 10,
+        onSuccess: (() -> Unit)? = null
+    ) {
+        if (isGeneratingNotebookQuiz.value) return
+        notebookQuizError.value = null
+        notebookQuizSuccessMessage.value = null
+        isGeneratingNotebookQuiz.value = true
+
+        viewModelScope.launch {
+            try {
+                val inputList = notes.map { n ->
+                    com.example.ai.NoteInputForQuiz(
+                        id = n.id,
+                        text = n.text,
+                        comment = n.comment,
+                        tags = n.getTagsList(),
+                        trackId = n.trackId,
+                        trackName = n.trackName,
+                        startTimestampMs = n.startTimestampMs
+                    )
+                }
+
+                val result = com.example.ai.GeminiService.generateQuizFromNotebookNotes(
+                    notes = inputList,
+                    maxQuestions = maxQuestions,
+                    customApiKey = customGeminiApiKey,
+                    language = Loc.currentLanguage
+                )
+
+                result.onSuccess { generated ->
+                    notebookQuizGeneratedQuestions.value = generated
+                    isGeneratingNotebookQuiz.value = false
+                    onSuccess?.invoke()
+                }.onFailure { err ->
+                    isGeneratingNotebookQuiz.value = false
+                    val msg = err.message ?: ""
+                    notebookQuizError.value = when {
+                        msg == "MISSING_API_KEY" -> Loc.getText("missing_api_key_prompt")
+                        msg.isNotBlank() -> msg
+                        else -> Loc.getText("quiz_error_generic")
+                    }
+                }
+            } catch (e: Exception) {
+                isGeneratingNotebookQuiz.value = false
+                notebookQuizError.value = e.localizedMessage ?: Loc.getText("quiz_error_generic")
+            }
+        }
+    }
+
+    fun saveNotebookQuizQuestions(
+        items: List<com.example.ai.GeneratedNoteQuizItem>,
+        notesMap: Map<Long, Note> = emptyMap(),
+        onSuccess: (Int) -> Unit = {}
+    ) {
+        if (items.isEmpty()) return
+        viewModelScope.launch {
+            val entities = items.map { item ->
+                val sourceNote = notesMap[item.sourceNoteId]
+                QuizQuestion(
+                    trackId = item.trackId ?: sourceNote?.trackId,
+                    noteId = item.sourceNoteId,
+                    questionType = item.questionType,
+                    category = "VOCABULARY",
+                    question = item.question,
+                    optionsJson = org.json.JSONArray(item.options).toString(),
+                    correctIndex = item.correctIndex,
+                    explanation = item.explanation,
+                    timestampMs = item.timestampMs ?: sourceNote?.startTimestampMs
+                )
+            }
+            repository.insertQuizQuestions(entities)
+            activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
+            notebookQuizSuccessMessage.value = String.format(Loc.getText("notebook_quiz_saved_success"), entities.size)
+            onSuccess(entities.size)
+        }
+    }
+
+    fun generateQuizForSingleNote(
+        note: Note,
+        onSuccess: (QuizQuestion) -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            try {
+                val input = listOf(
+                    com.example.ai.NoteInputForQuiz(
+                        id = note.id,
+                        text = note.text,
+                        comment = note.comment,
+                        tags = note.getTagsList(),
+                        trackId = note.trackId,
+                        trackName = note.trackName,
+                        startTimestampMs = note.startTimestampMs
+                    )
+                )
+                val result = com.example.ai.GeminiService.generateQuizFromNotebookNotes(
+                    notes = input,
+                    maxQuestions = 1,
+                    customApiKey = customGeminiApiKey,
+                    language = Loc.currentLanguage
+                )
+                result.onSuccess { generatedList ->
+                    val first = generatedList.firstOrNull()
+                    if (first != null) {
+                        val entity = QuizQuestion(
+                            trackId = first.trackId ?: note.trackId,
+                            noteId = note.id,
+                            questionType = first.questionType,
+                            category = "VOCABULARY",
+                            question = first.question,
+                            optionsJson = org.json.JSONArray(first.options).toString(),
+                            correctIndex = first.correctIndex,
+                            explanation = first.explanation,
+                            timestampMs = first.timestampMs ?: note.startTimestampMs
+                        )
+                        val insertedId = repository.insertQuizQuestion(entity)
+                        activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
+                        onSuccess(entity.copy(id = insertedId))
+                    } else {
+                        onError(Loc.getText("notebook_quiz_no_vocab_found"))
+                    }
+                }.onFailure { err ->
+                    val msg = err.message ?: ""
+                    val errText = when {
+                        msg == "MISSING_API_KEY" -> Loc.getText("missing_api_key_prompt")
+                        msg.isNotBlank() -> msg
+                        else -> Loc.getText("quiz_error_generic")
+                    }
+                    onError(errText)
+                }
+            } catch (e: Exception) {
+                onError(e.localizedMessage ?: Loc.getText("quiz_error_generic"))
+            }
         }
     }
 

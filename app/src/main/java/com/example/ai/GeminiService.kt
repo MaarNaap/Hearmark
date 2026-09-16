@@ -47,7 +47,31 @@ data class GeneratedQuizItem(
     val options: List<String>,
     val correctIndex: Int,
     val explanation: String,
-    val timestampMs: Long? = null
+    val timestampMs: Long? = null,
+    val category: String = "COMPREHENSION" // "VOCABULARY" or "COMPREHENSION"
+)
+
+data class NoteInputForQuiz(
+    val id: Long,
+    val text: String,
+    val comment: String = "",
+    val tags: List<String> = emptyList(),
+    val trackId: Long? = null,
+    val trackName: String? = null,
+    val startTimestampMs: Long = 0L
+)
+
+data class GeneratedNoteQuizItem(
+    val sourceNoteId: Long,
+    val targetWord: String,
+    val questionType: String = "MCQ",
+    val question: String,
+    val options: List<String>,
+    val correctIndex: Int,
+    val explanation: String,
+    val timestampMs: Long? = null,
+    val trackId: Long? = null,
+    val category: String = "VOCABULARY"
 )
 
 object GeminiService {
@@ -57,7 +81,7 @@ object GeminiService {
 
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(90, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
@@ -548,7 +572,7 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                 append("Media Title: \"$mediaTitle\"\n\n")
 
                 if (existingQuestions.isNotEmpty()) {
-                    append("TASK: Generate 4 BRAND-NEW quiz questions. The quiz must include BOTH comprehension and vocabulary questions. The learner already has existing questions for this audio. You MUST NOT duplicate, repeat, or closely rephrase any of the existing questions.\n\n")
+                    append("TASK: Generate 8 BRAND-NEW quiz questions: exactly 4 KEY VOCABULARY questions and 4 LISTENING COMPREHENSION questions. The learner already has existing questions for this audio. You MUST NOT duplicate, repeat, or closely rephrase any of the existing questions.\n\n")
                     append("====================================================\n")
                     append("EXISTING QUESTIONS (DO NOT DUPLICATE OR REPHRASE):\n")
                     existingQuestions.take(50).forEachIndexed { index, existingQ ->
@@ -557,14 +581,14 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                     append("====================================================\n\n")
                     append("CRITICAL MANDATE: Carefully inspect the EXISTING QUESTIONS above. Make sure your newly generated questions cover completely DIFFERENT parts of the transcript, novel vocabulary items, other speakers, untouched dialogue lines, or different key events.\n\n")
                 } else {
-                    append("Based on the provided dialogue/audio transcript, generate a bite-sized micro-quiz consisting of exactly 4 questions combining listening comprehension and key vocabulary questions from the audio.\n\n")
+                    append("Based on the provided dialogue/audio transcript, generate a well-rounded quiz consisting of exactly 8 questions: 4 KEY VOCABULARY questions and 4 LISTENING COMPREHENSION questions from the audio.\n\n")
                 }
 
                 append("QUIZ COMPOSITION REQUIREMENTS:\n")
-                append("1. Balanced Question Mix (Total exactly 4 questions):\n")
-                append("   - MUST include 1 or 2 KEY VOCABULARY questions testing important words, idioms, or phrases found in the audio transcript (e.g. \"What is the meaning of '[word]' in this context?\", \"In the sentence '...', the word '[word]' means:\", or \"Which word in the dialogue means ...?\").\n")
-                append("   - MUST include 2 or 3 LISTENING COMPREHENSION questions testing main ideas, speaker intentions, key events, or specific details from the dialogue.\n")
-                append("   - Format: 2 or 3 Multiple Choice Questions (type: \"MCQ\") and 1 or 2 True/False Questions (type: \"TRUE_FALSE\"). Total questions must be 4.\n")
+                append("1. Balanced Question Mix (Total exactly 8 questions):\n")
+                append("   - EXACTLY 4 KEY VOCABULARY questions (set \"category\": \"VOCABULARY\"): test important words, idioms, phrases, or collocations found in the audio transcript (e.g. \"What is the meaning of '[word]' in this context?\", \"In the sentence '...', the word '[word]' means:\", or \"Which word in the dialogue means ...?\").\n")
+                append("   - EXACTLY 4 LISTENING COMPREHENSION questions (set \"category\": \"COMPREHENSION\"): test main ideas, speaker intentions, key events, cause/effect, or specific details from the dialogue.\n")
+                append("   - Question Formats: Use Multiple Choice Questions (type: \"MCQ\") and True/False Questions (type: \"TRUE_FALSE\"). Total questions must be exactly 8.\n")
                 if (existingQuestions.isNotEmpty()) {
                     append("2. Strictly Novel & Non-Duplicate:\n")
                     append("   - Under NO circumstances copy, paraphrase, or ask about the exact same focal points or words as the EXISTING QUESTIONS above.\n")
@@ -592,6 +616,7 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                 append("{\n")
                 append("  \"questions\": [\n")
                 append("    {\n")
+                append("      \"category\": \"VOCABULARY\",\n")
                 append("      \"type\": \"MCQ\",\n")
                 append("      \"question\": \"In the sentence '...', what is the meaning of the word '...'?\",\n")
                 append("      \"options\": [\"Choice A\", \"Choice B\", \"Choice C\", \"Choice D\"],\n")
@@ -600,6 +625,7 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                 append("      \"timestampMs\": 14500\n")
                 append("    },\n")
                 append("    {\n")
+                append("      \"category\": \"COMPREHENSION\",\n")
                 append("      \"type\": \"TRUE_FALSE\",\n")
                 append("      \"question\": \"Factual statement to evaluate.\",\n")
                 append("      \"options\": [\"${if (language == "ar") "صح" else "True"}\", \"${if (language == "ar") "خطأ" else "False"}\"],\n")
@@ -614,9 +640,9 @@ Take for granted: To fail to properly appreciate someone or something, especiall
             }
 
             val systemInstruction = if (existingQuestions.isNotEmpty()) {
-                "You are an expert audio & language learning quiz creator. You generate interactive micro-quizzes combining listening comprehension and key vocabulary questions from dialogue transcripts. You must strictly avoid repeating, rephrasing, or duplicating any of the existing questions provided and craft completely new questions. Output strict valid JSON only matching the schema."
+                "You are an expert audio & language learning quiz creator. You generate interactive micro-quizzes of 8 questions (4 key vocabulary and 4 listening comprehension) from dialogue transcripts. You must strictly avoid repeating, rephrasing, or duplicating any of the existing questions provided and craft completely new questions. Output strict valid JSON only matching the schema."
             } else {
-                "You are an expert audio & language learning quiz creator. You generate interactive micro-quizzes combining listening comprehension and key vocabulary questions from dialogue transcripts. Output strict valid JSON only matching the schema."
+                "You are an expert audio & language learning quiz creator. You generate interactive micro-quizzes of 8 questions (4 key vocabulary and 4 listening comprehension) from dialogue transcripts. Output strict valid JSON only matching the schema."
             }
 
             val rootJson = JSONObject().apply {
@@ -729,6 +755,23 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                 val explanation = qObj.optString("explanation", "").trim()
                 val timestampMs = qObj.optLong("timestampMs", -1L).takeIf { it >= 0 }
 
+                val rawCategory = qObj.optString("category", "").uppercase()
+                val category = when {
+                    rawCategory.contains("VOCAB") -> "VOCABULARY"
+                    rawCategory.contains("COMPREHENSION") -> "COMPREHENSION"
+                    // Heuristic fallback if model omitted category tag:
+                    questionText.contains("meaning", ignoreCase = true) ||
+                    questionText.contains("means", ignoreCase = true) ||
+                    questionText.contains("word", ignoreCase = true) ||
+                    questionText.contains("definition", ignoreCase = true) ||
+                    questionText.contains("phrase", ignoreCase = true) ||
+                    questionText.contains("idiom", ignoreCase = true) ||
+                    questionText.contains("معنى") ||
+                    questionText.contains("مرادف") ||
+                    questionText.contains("كلمة") -> "VOCABULARY"
+                    else -> "COMPREHENSION"
+                }
+
                 resultList.add(
                     GeneratedQuizItem(
                         questionType = qType,
@@ -736,7 +779,8 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                         options = optionsList,
                         correctIndex = correctIdx,
                         explanation = explanation,
-                        timestampMs = timestampMs
+                        timestampMs = timestampMs,
+                        category = category
                     )
                 )
             }
@@ -758,6 +802,225 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                     else "No internet connection. Please check your network and try again."
                 }
                 else -> e.message ?: "Failed to generate questions"
+            }
+            Result.failure(Exception(friendlyMsg))
+        }
+    }
+
+    suspend fun generateQuizFromNotebookNotes(
+        notes: List<NoteInputForQuiz>,
+        maxQuestions: Int = 10,
+        customApiKey: String? = null,
+        language: String = "en",
+        modelName: String = DEFAULT_MODEL
+    ): Result<List<GeneratedNoteQuizItem>> = withContext(Dispatchers.IO) {
+        try {
+            val resolvedApiKey = resolveApiKey(customApiKey)
+            if (resolvedApiKey.isBlank()) {
+                return@withContext Result.failure(IllegalStateException("MISSING_API_KEY"))
+            }
+
+            if (notes.isEmpty()) {
+                val emptyMsg = if (language == "ar") "لا توجد ملاحظات محددة لتوليد الأسئلة." else "No notes provided to generate quiz questions."
+                return@withContext Result.failure(IllegalArgumentException(emptyMsg))
+            }
+
+            val notesMap = notes.associateBy { it.id }
+
+            // Build a structured, easily parseable notes inventory for Gemini
+            val notesInventory = StringBuilder()
+            notes.forEachIndexed { index, note ->
+                notesInventory.append("[Note ${index + 1} | ID:${note.id}]\n")
+                notesInventory.append("Text: \"${note.text.replace("\n", " ").trim()}\"\n")
+                if (note.comment.isNotBlank()) {
+                    notesInventory.append("Comment/Meaning: \"${note.comment.replace("\n", " ").trim()}\"\n")
+                }
+                if (note.tags.isNotEmpty()) {
+                    notesInventory.append("Tags: [${note.tags.joinToString(", ")}]\n")
+                }
+                if (!note.trackName.isNullOrBlank()) {
+                    notesInventory.append("Source Lesson: \"${note.trackName}\"\n")
+                }
+                notesInventory.append("\n")
+            }
+
+            val prompt = buildString {
+                append("ROLE: You are an expert language teacher, lexicographer, and quiz curriculum designer.\n\n")
+                append("CONTEXT: A language learner has collected the following study notes in their notebook over multiple study sessions.\n\n")
+                append("====================================================\n")
+                append("LEARNER'S NOTEBOOK ENTRIES:\n")
+                append(notesInventory.toString())
+                append("====================================================\n\n")
+                append("CRITICAL FILTERING MANDATE (ESSENTIAL):\n")
+                append("The learner's notebook contains a mixture of different note types. You MUST STRICTLY CLASSIFY AND FILTER THEM before generating any questions:\n\n")
+                append("1. EXCLUDE & REJECT PERSONAL NOTES: Any notes about personal reminders, study schedules, homework, meta reflections, or to-dos (e.g., 'ask teacher', 'review chapter 3 tomorrow', 'homework due Friday', 'my note'). DO NOT create any questions about these.\n")
+                append("2. EXCLUDE & REJECT PRONUNCIATION-ONLY NOTES: Any notes that focus solely on phonetics, sound patterns, syllable stress, or accent tips (e.g., 'stress on second syllable', 'silent b', 'sounds like /eɪ/', 'intonation drops at end'). DO NOT create questions testing how to pronounce something.\n")
+                append("3. SELECT ONLY GENUINE VOCABULARY ITEMS: Target vocabulary words, phrasal verbs, idioms, fixed expressions, collocations, jargon, and words with defined contextual meanings.\n")
+                append("4. If a note contains a vocabulary word accompanied by a personal comment or pronunciation note, FOCUS EXCLUSIVELY ON THE VOCABULARY WORD AND ITS MEANING.\n\n")
+                append("TASK:\n")
+                append("From the approved VOCABULARY notes only, generate up to $maxQuestions high-quality, pedagogically effective multiple-choice vocabulary quiz questions.\n")
+                append("If there are fewer vocabulary items than $maxQuestions, generate questions only for the valid vocabulary items available. If NONE of the notes are vocabulary items, return an empty array [] for \"questions\".\n\n")
+                append("QUESTION TYPES (Vary among these for good pedagogy):\n")
+                append("- Meaning & Definition: 'What is the meaning of [target word]?' or 'Which of the following best defines the idiom [phrase]?'\n")
+                append("- Contextual Usage / Cloze sentence: 'Which word best completes the following sentence: \"The author was _______ in documenting every historical source.\"' (Options include target word and 3 distractors).\n")
+                append("- Collocation & Synonym: 'Which phrase is closest in meaning to [target word] in this context?' or 'Which word naturally pairs with [word]?'\n\n")
+                append("DISTRACTOR & FORMATTING MANDATES:\n")
+                append("- Exactly 4 options per question in the 'options' array.\n")
+                append("- All 4 options must be plausible, authentic, and share the same grammatical form (same part of speech).\n")
+                append("- Exactly 1 correct answer indicated by 0-based integer 'correctIndex' (0, 1, 2, or 3).\n")
+                append("- Instructive, friendly 'explanation' defining the word and explaining why the correct choice fits.\n")
+                append("- 'sourceNoteId': The exact numerical ID of the note from which this question was created.\n")
+                append("- 'targetWord': The specific vocabulary word, phrasal verb, or idiom being tested.\n\n")
+                append("OUTPUT FORMAT: Return STRICTLY valid JSON with a single key \"questions\":\n")
+                append("{\n")
+                append("  \"questions\": [\n")
+                append("    {\n")
+                append("      \"sourceNoteId\": 101,\n")
+                append("      \"targetWord\": \"meticulous\",\n")
+                append("      \"questionType\": \"MCQ\",\n")
+                append("      \"question\": \"What does the word 'meticulous' mean?\",\n")
+                append("      \"options\": [\"Showing great attention to detail\", \"Quick to make decisions\", \"Careless and unstructured\", \"Reluctant to speak publicly\"],\n")
+                append("      \"correctIndex\": 0,\n")
+                append("      \"explanation\": \"'Meticulous' means taking or showing extreme care about minute details; precise and thorough.\"\n")
+                append("    }\n")
+                append("  ]\n")
+                append("}")
+            }
+
+            val rootJson = JSONObject().apply {
+                val contentsArray = JSONArray()
+                val userContent = JSONObject().apply {
+                    put("role", "user")
+                    val partsArray = JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("text", prompt)
+                        })
+                    }
+                    put("parts", partsArray)
+                }
+                contentsArray.put(userContent)
+                put("contents", contentsArray)
+
+                put("generationConfig", JSONObject().apply {
+                    put("responseMimeType", "application/json")
+                    put("temperature", 0.35)
+                })
+            }
+
+            val requestUrl = "$BASE_URL/$modelName:generateContent?key=$resolvedApiKey"
+            val mediaType = "application/json; charset=utf-8".toMediaType()
+            val requestBody = rootJson.toString().toRequestBody(mediaType)
+
+            val request = Request.Builder()
+                .url(requestUrl)
+                .post(requestBody)
+                .build()
+
+            val response = okHttpClient.newCall(request).execute()
+            val responseBody = response.body?.string() ?: ""
+
+            if (!response.isSuccessful) {
+                Log.e(TAG, "Gemini Notebook Quiz failed: ${response.code} -> $responseBody")
+                val cleanErrorMsg = parseGeminiErrorMessage(response.code, responseBody, language)
+                return@withContext Result.failure(Exception(cleanErrorMsg))
+            }
+
+            val respJson = JSONObject(responseBody)
+            val candidates = respJson.optJSONArray("candidates")
+            if (candidates == null || candidates.length() == 0) {
+                return@withContext Result.failure(Exception("No candidate returned by Gemini."))
+            }
+
+            val firstCandidate = candidates.getJSONObject(0)
+            val content = firstCandidate.optJSONObject("content")
+            val parts = content?.optJSONArray("parts")
+            val firstPart = parts?.optJSONObject(0)
+            var rawText = firstPart?.optString("text") ?: ""
+
+            if (rawText.isBlank()) {
+                return@withContext Result.failure(Exception("Empty text response from AI."))
+            }
+
+            rawText = rawText.trim()
+            if (rawText.startsWith("```json")) {
+                rawText = rawText.removePrefix("```json").trim()
+            }
+            if (rawText.startsWith("```")) {
+                rawText = rawText.removePrefix("```").trim()
+            }
+            if (rawText.endsWith("```")) {
+                rawText = rawText.removeSuffix("```").trim()
+            }
+
+            val questionsJsonArray: JSONArray = if (rawText.startsWith("{")) {
+                val jsonObj = JSONObject(rawText)
+                jsonObj.optJSONArray("questions") ?: JSONArray()
+            } else if (rawText.startsWith("[")) {
+                JSONArray(rawText)
+            } else {
+                return@withContext Result.failure(Exception("Unexpected response format from AI."))
+            }
+
+            val resultList = mutableListOf<GeneratedNoteQuizItem>()
+            for (i in 0 until questionsJsonArray.length()) {
+                val qObj = questionsJsonArray.getJSONObject(i)
+                val sourceNoteId = qObj.optLong("sourceNoteId", -1L)
+                val targetWord = qObj.optString("targetWord", "").trim()
+                val questionText = qObj.optString("question", "").trim()
+                if (questionText.isBlank()) continue
+
+                val optionsArr = qObj.optJSONArray("options")
+                val optionsList = mutableListOf<String>()
+                if (optionsArr != null) {
+                    for (j in 0 until optionsArr.length()) {
+                        val opt = optionsArr.optString(j, "").trim()
+                        if (opt.isNotBlank()) optionsList.add(opt)
+                    }
+                }
+                if (optionsList.size < 2) continue
+
+                val correctIdx = qObj.optInt("correctIndex", 0).coerceIn(0, optionsList.size - 1)
+                val explanation = qObj.optString("explanation", "").trim()
+                val sourceNote = if (sourceNoteId > 0) notesMap[sourceNoteId] else null
+
+                resultList.add(
+                    GeneratedNoteQuizItem(
+                        sourceNoteId = sourceNoteId.takeIf { it > 0 } ?: (notes.firstOrNull()?.id ?: 0L),
+                        targetWord = targetWord.ifBlank { sourceNote?.text?.trim() ?: "Vocabulary" },
+                        questionType = "MCQ",
+                        question = questionText,
+                        options = optionsList,
+                        correctIndex = correctIdx,
+                        explanation = explanation,
+                        timestampMs = sourceNote?.startTimestampMs?.takeIf { it > 0 },
+                        trackId = sourceNote?.trackId,
+                        category = "VOCABULARY"
+                    )
+                )
+            }
+
+            if (resultList.isEmpty()) {
+                val noVocabMsg = if (language == "ar") {
+                    "لم يتم العثور على مفردات صالحة لتوليد الأسئلة في الملاحظات المحددة. تأكد من احتواء الملاحظات على كلمات أو تعابير لغوية."
+                } else {
+                    "No valid vocabulary items were found in the selected notes. Ensure your notes contain words, idioms, or definitions."
+                }
+                return@withContext Result.failure(Exception(noVocabMsg))
+            }
+
+            Result.success(resultList)
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception during generateQuizFromNotebookNotes", e)
+            val friendlyMsg = when (e) {
+                is java.net.SocketTimeoutException -> {
+                    if (language == "ar") "انتهت مهلة الاتصال بالذكاء الاصطناعي. يرجى إعادة المحاولة."
+                    else "Connection timed out waiting for AI. Please try again."
+                }
+                is java.net.UnknownHostException -> {
+                    if (language == "ar") "تعذر الاتصال بالإنترنت. يرجى التحقق من اتصال الشبكة."
+                    else "No internet connection. Please check your network and try again."
+                }
+                else -> e.message ?: "Failed to generate vocabulary questions"
             }
             Result.failure(Exception(friendlyMsg))
         }
