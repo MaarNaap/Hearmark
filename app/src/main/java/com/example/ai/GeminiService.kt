@@ -71,7 +71,8 @@ data class GeneratedNoteQuizItem(
     val explanation: String,
     val timestampMs: Long? = null,
     val trackId: Long? = null,
-    val category: String = "VOCABULARY"
+    val category: String = "VOCABULARY",
+    val savedQuestionId: Long? = null
 )
 
 object GeminiService {
@@ -858,16 +859,31 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                 append("3. SELECT ONLY GENUINE VOCABULARY ITEMS: Target vocabulary words, phrasal verbs, idioms, fixed expressions, collocations, jargon, and words with defined contextual meanings.\n")
                 append("4. If a note contains a vocabulary word accompanied by a personal comment or pronunciation note, FOCUS EXCLUSIVELY ON THE VOCABULARY WORD AND ITS MEANING.\n\n")
                 append("TASK:\n")
-                append("From the approved VOCABULARY notes only, generate up to $maxQuestions high-quality, pedagogically effective multiple-choice vocabulary quiz questions.\n")
-                append("If there are fewer vocabulary items than $maxQuestions, generate questions only for the valid vocabulary items available. If NONE of the notes are vocabulary items, return an empty array [] for \"questions\".\n\n")
-                append("QUESTION TYPES (Vary among these for good pedagogy):\n")
-                append("- Meaning & Definition: 'What is the meaning of [target word]?' or 'Which of the following best defines the idiom [phrase]?'\n")
-                append("- Contextual Usage / Cloze sentence: 'Which word best completes the following sentence: \"The author was _______ in documenting every historical source.\"' (Options include target word and 3 distractors).\n")
-                append("- Collocation & Synonym: 'Which phrase is closest in meaning to [target word] in this context?' or 'Which word naturally pairs with [word]?'\n\n")
+                append("Generate EXACTLY $maxQuestions high-quality, pedagogically effective multiple-choice vocabulary quiz questions based on the approved vocabulary note(s).\n\n")
+                append("CRITICAL QUESTION COUNT & DIVERSITY MANDATE:\n")
+                append("- You MUST output EXACTLY $maxQuestions questions in total in the JSON \"questions\" array.\n")
+                if (notes.size == 1) {
+                    val singleNote = notes.first()
+                    append("- IMPORTANT: The user provided ONE specific vocabulary note (ID: ${singleNote.id}, Word/Text: \"${singleNote.text}\").\n")
+                    append("- You MUST generate ALL $maxQuestions questions for this single vocabulary item!\n")
+                    append("- DO NOT stop at 1 question! You must generate $maxQuestions distinct, varied questions, each testing this vocabulary word from a DIFFERENT perspective or context:\n")
+                    append("   1) Meaning & Definition: Clear definition in standard English.\n")
+                    append("   2) Contextual Usage / Cloze sentence: Complete a realistic sentence (business, conversational, or academic) where this word fits.\n")
+                    append("   3) Collocation or Phrasal Partner: What preposition, verb, or noun naturally pairs with this word?\n")
+                    append("   4) Synonyms, Nuance, or Antonym: Choosing the word or phrase closest or opposite in meaning, or distinguishing it from near-synonyms in context.\n")
+                    append("   5) Practical Application: Dialogue completion or sentence restructuring using the word correctly.\n")
+                    append("- NEVER duplicate sentences or questions. Every question must feel fresh and test a different facet of the word.\n")
+                    append("- For every question, set 'sourceNoteId': ${singleNote.id} and 'targetWord': \"${singleNote.text.replace("\"", "").trim()}\".\n\n")
+                } else {
+                    append("- The user provided ${notes.size} notes and requested $maxQuestions questions.\n")
+                    append("- If $maxQuestions > ${notes.size}, generate MULTIPLE distinct questions per vocabulary note (varying definitions, cloze sentences, collocations, synonyms) so that the total number of questions equals EXACTLY $maxQuestions!\n")
+                    append("- Distribute the questions evenly across the provided vocabulary notes.\n")
+                    append("- For each question, specify the exact numerical 'sourceNoteId' of the note it was derived from.\n\n")
+                }
                 append("DISTRACTOR & FORMATTING MANDATES:\n")
                 append("- Exactly 4 options per question in the 'options' array.\n")
                 append("- All 4 options must be plausible, authentic, and share the same grammatical form (same part of speech).\n")
-                append("- Exactly 1 correct answer indicated by 0-based integer 'correctIndex' (0, 1, 2, or 3).\n")
+                append("- Exactly 1 correct answer indicated by 0-based integer 'correctIndex' (0, 1, 2, or 3). Randomize correctIndex across the questions.\n")
                 append("- Instructive, friendly 'explanation' defining the word and explaining why the correct choice fits.\n")
                 append("- 'sourceNoteId': The exact numerical ID of the note from which this question was created.\n")
                 append("- 'targetWord': The specific vocabulary word, phrasal verb, or idiom being tested.\n\n")
@@ -875,7 +891,7 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                 append("{\n")
                 append("  \"questions\": [\n")
                 append("    {\n")
-                append("      \"sourceNoteId\": 101,\n")
+                append("      \"sourceNoteId\": ${notes.first().id},\n")
                 append("      \"targetWord\": \"meticulous\",\n")
                 append("      \"questionType\": \"MCQ\",\n")
                 append("      \"question\": \"What does the word 'meticulous' mean?\",\n")
@@ -903,7 +919,7 @@ Take for granted: To fail to properly appreciate someone or something, especiall
 
                 put("generationConfig", JSONObject().apply {
                     put("responseMimeType", "application/json")
-                    put("temperature", 0.35)
+                    put("temperature", 0.4)
                 })
             }
 

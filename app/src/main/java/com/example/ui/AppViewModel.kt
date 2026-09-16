@@ -379,27 +379,43 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun openNotebookQuizSheet() {
+        // Do not wipe existing generated questions or progress so user never loses work on accidental swipe
         notebookQuizError.value = null
-        notebookQuizGeneratedQuestions.value = emptyList()
-        notebookQuizSuccessMessage.value = null
         isNotebookQuizSheetOpen.value = true
     }
 
     fun closeNotebookQuizSheet() {
+        // Only hide the sheet; keep state so reopening restores generated results or in-progress status
         isNotebookQuizSheetOpen.value = false
-        notebookQuizError.value = null
+    }
+
+    fun resetNotebookQuiz() {
         notebookQuizGeneratedQuestions.value = emptyList()
+        notebookQuizError.value = null
         notebookQuizSuccessMessage.value = null
     }
 
     fun clearNotebookQuizFeedback() {
         notebookQuizError.value = null
-        notebookQuizSuccessMessage.value = null
+    }
+
+    fun deleteNotebookQuizQuestion(item: com.example.ai.GeneratedNoteQuizItem) {
+        viewModelScope.launch {
+            val qId = item.savedQuestionId
+            if (qId != null && qId > 0) {
+                repository.deleteQuizQuestionById(qId)
+                activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
+            }
+            notebookQuizGeneratedQuestions.value = notebookQuizGeneratedQuestions.value.filter { it != item }
+            if (notebookQuizGeneratedQuestions.value.isEmpty()) {
+                notebookQuizSuccessMessage.value = null
+            }
+        }
     }
 
     fun generateQuizFromNotes(
         notes: List<Note>,
-        maxQuestions: Int = 10,
+        maxQuestions: Int = 4,
         onSuccess: (() -> Unit)? = null
     ) {
         if (isGeneratingNotebookQuiz.value) return
@@ -420,6 +436,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         startTimestampMs = n.startTimestampMs
                     )
                 }
+                val notesMap = notes.associateBy { it.id }
 
                 val result = com.example.ai.GeminiService.generateQuizFromNotebookNotes(
                     notes = inputList,
@@ -429,9 +446,45 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 )
 
                 result.onSuccess { generated ->
-                    notebookQuizGeneratedQuestions.value = generated
                     isGeneratingNotebookQuiz.value = false
-                    onSuccess?.invoke()
+                    if (generated.isNotEmpty()) {
+                        // AUTO-SAVE IMMEDIATELY TO GLOBAL QUIZ BANK WITHOUT WAITING OR REQUIRING MANUAL REVIEW
+                        val entities = generated.map { item ->
+                            val sourceNote = notesMap[item.sourceNoteId]
+                            QuizQuestion(
+                                trackId = item.trackId ?: sourceNote?.trackId,
+                                noteId = item.sourceNoteId,
+                                questionType = item.questionType,
+                                category = "VOCABULARY",
+                                question = item.question,
+                                optionsJson = org.json.JSONArray(item.options).toString(),
+                                correctIndex = item.correctIndex,
+                                explanation = item.explanation,
+                                timestampMs = item.timestampMs ?: sourceNote?.startTimestampMs
+                            )
+                        }
+
+                        viewModelScope.launch(Dispatchers.IO) {
+                            val insertedIds = repository.insertQuizQuestions(entities)
+                            activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
+
+                            val itemsWithIds = generated.mapIndexed { idx, item ->
+                                val id = insertedIds.getOrNull(idx)
+                                item.copy(savedQuestionId = id)
+                            }
+
+                            withContext(Dispatchers.Main) {
+                                notebookQuizGeneratedQuestions.value = itemsWithIds
+                                notebookQuizSuccessMessage.value = String.format(
+                                    Loc.getText("notebook_quiz_saved_success"),
+                                    entities.size
+                                )
+                                onSuccess?.invoke()
+                            }
+                        }
+                    } else {
+                        notebookQuizError.value = Loc.getText("notebook_quiz_no_vocab_found")
+                    }
                 }.onFailure { err ->
                     isGeneratingNotebookQuiz.value = false
                     val msg = err.message ?: ""

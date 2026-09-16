@@ -870,6 +870,15 @@ object Loc {
         "notebook_quiz_select_notes_prompt" to mapOf("en" to "Choose notes to extract vocabulary from:", "ar" to "اختر الملاحظات لاستخراج المفردات منها:"),
         "notebook_quiz_select_all" to mapOf("en" to "Select All", "ar" to "تحديد الكل"),
         "notebook_quiz_deselect_all" to mapOf("en" to "Deselect All", "ar" to "إلغاء تحديد الكل"),
-        "notebook_quiz_filter_notebook_chip" to mapOf("en" to "Notebook Notes", "ar" to "ملاحظات الدفتر")
+        "notebook_quiz_filter_notebook_chip" to mapOf("en" to "Notebook Notes", "ar" to "ملاحظات الدفتر"),
+        "notebook_quiz_filter_by_tag" to mapOf("en" to "Filter by Tag", "ar" to "تصفية حسب الوسم"),
+        "notebook_quiz_all_tags" to mapOf("en" to "All Tags", "ar" to "كل الوسوم"),
+        "notebook_quiz_select_tag_notes" to mapOf("en" to "Select all #%s notes", "ar" to "تحديد كل ملاحظات #%s"),
+        "notebook_quiz_auto_saved_badge" to mapOf("en" to "Auto-saved to Quiz Bank", "ar" to "تم الحفظ تلقائياً في بنك الاختبارات"),
+        "notebook_quiz_auto_saved_desc" to mapOf("en" to "All generated questions have been automatically saved directly to your Quiz Bank. You can practice them immediately.", "ar" to "تم حفظ جميع الأسئلة المُولدة تلقائياً في بنك الاختبارات. يمكنك التدرب عليها الآن مباشرة."),
+        "notebook_quiz_generate_more" to mapOf("en" to "Create Another Quiz", "ar" to "إنشاء اختبار آخر"),
+        "notebook_quiz_target_single_note" to mapOf("en" to "Selected Target Note", "ar" to "الملاحظة المختارة"),
+        "notebook_quiz_multi_q_single_note_hint" to mapOf("en" to "Will generate %d distinct questions testing this vocabulary from different angles (definitions, cloze sentences, collocations)", "ar" to "سيتم إنشاء %d أسئلة متنوعة لاختبار هذه المفردة من زوايا وسياقات مختلفة"),
+        "notebook_quiz_delete_question" to mapOf("en" to "Delete Question", "ar" to "حذف السؤال")
     )
 }
