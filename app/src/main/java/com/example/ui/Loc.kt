@@ -879,6 +879,7 @@ object Loc {
         "notebook_quiz_generate_more" to mapOf("en" to "Create Another Quiz", "ar" to "إنشاء اختبار آخر"),
         "notebook_quiz_target_single_note" to mapOf("en" to "Selected Target Note", "ar" to "الملاحظة المختارة"),
         "notebook_quiz_multi_q_single_note_hint" to mapOf("en" to "Will generate %d distinct questions testing this vocabulary from different angles (definitions, cloze sentences, collocations)", "ar" to "سيتم إنشاء %d أسئلة متنوعة لاختبار هذه المفردة من زوايا وسياقات مختلفة"),
-        "notebook_quiz_delete_question" to mapOf("en" to "Delete Question", "ar" to "حذف السؤال")
+        "notebook_quiz_delete_question" to mapOf("en" to "Delete Question", "ar" to "حذف السؤال"),
+        "notebook_quiz_count_range_hint" to mapOf("en" to "From 1 to 20 questions (Default: 4)", "ar" to "من 1 إلى 20 سؤالاً (الافتراضي: 4)")
     )
 }

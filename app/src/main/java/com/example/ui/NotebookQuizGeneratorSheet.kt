@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -22,8 +24,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,6 +51,7 @@ fun NotebookQuizGeneratorSheet(
     val generationError by viewModel.notebookQuizError.collectAsStateWithLifecycle()
     val generatedQuestions by viewModel.notebookQuizGeneratedQuestions.collectAsStateWithLifecycle()
     val saveSuccessMessage by viewModel.notebookQuizSuccessMessage.collectAsStateWithLifecycle()
+    val focusManager = LocalFocusManager.current
 
     // Prevent accidental swipe-down dismissal while generating
     val sheetState = rememberModalBottomSheetState(
@@ -87,6 +93,7 @@ fun NotebookQuizGeneratorSheet(
         mutableStateOf(initialSelectedNotes.isNullOrEmpty())
     }
     var requestedQuestionCount by remember { mutableIntStateOf(4) }
+    var countInputText by remember { mutableStateOf("4") }
 
     // Map for fast note lookup
     val noteMap = remember(allNotes) { allNotes.associateBy { it.id } }
@@ -642,42 +649,51 @@ fun NotebookQuizGeneratorSheet(
                                     )
                                 }
 
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    // Select All
-                                    FilledTonalButton(
-                                        onClick = {
-                                            selectedNoteIds = if (selectedTagFilter != null) {
-                                                selectedNoteIds + filteredNotes.map { it.id }.toSet()
-                                            } else {
-                                                allNotes.map { it.id }.toSet()
-                                            }
-                                        },
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.height(32.dp)
-                                    ) {
-                                        Icon(Icons.Filled.SelectAll, contentDescription = null, modifier = Modifier.size(14.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(Loc.getText("notebook_quiz_select_all"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                    }
+                                val areAllSelected = if (selectedTagFilter != null) {
+                                    filteredNotes.isNotEmpty() && filteredNotes.all { selectedNoteIds.contains(it.id) }
+                                } else {
+                                    allNotes.isNotEmpty() && selectedNoteIds.size >= allNotes.size
+                                }
 
-                                    // Deselect All
-                                    OutlinedButton(
-                                        onClick = {
+                                FilledTonalButton(
+                                    onClick = {
+                                        if (areAllSelected) {
                                             selectedNoteIds = if (selectedTagFilter != null) {
                                                 selectedNoteIds - filteredNotes.map { it.id }.toSet()
                                             } else {
                                                 emptySet()
                                             }
-                                        },
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.height(32.dp)
-                                    ) {
-                                        Icon(Icons.Filled.Deselect, contentDescription = null, modifier = Modifier.size(14.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(Loc.getText("notebook_quiz_deselect_all"), fontSize = 11.sp)
-                                    }
+                                        } else {
+                                            selectedNoteIds = if (selectedTagFilter != null) {
+                                                selectedNoteIds + filteredNotes.map { it.id }.toSet()
+                                            } else {
+                                                allNotes.map { it.id }.toSet()
+                                            }
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = if (areAllSelected) MaterialTheme.colorScheme.secondaryContainer
+                                        else MaterialTheme.colorScheme.primaryContainer,
+                                        contentColor = if (areAllSelected) MaterialTheme.colorScheme.onSecondaryContainer
+                                        else MaterialTheme.colorScheme.onPrimaryContainer
+                                    ),
+                                    modifier = Modifier
+                                        .height(32.dp)
+                                        .testTag("notebook_quiz_select_toggle_btn")
+                                ) {
+                                    Icon(
+                                        imageVector = if (areAllSelected) Icons.Filled.Deselect else Icons.Filled.SelectAll,
+                                        contentDescription = if (areAllSelected) Loc.getText("notebook_quiz_deselect_all") else Loc.getText("notebook_quiz_select_all"),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        text = if (areAllSelected) Loc.getText("notebook_quiz_deselect_all") else Loc.getText("notebook_quiz_select_all"),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
 
@@ -818,73 +834,155 @@ fun NotebookQuizGeneratorSheet(
                     }
                 }
 
-                // QUESTION COUNT SELECTOR
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // QUESTION COUNT SELECTOR (Minimalist Stepper + Keyboard Input, 1 to 20, default 4)
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = Loc.getText("notebook_quiz_question_count"),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "$requestedQuestionCount Questions",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text(
+                                text = Loc.getText("notebook_quiz_question_count"),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = Loc.getText("notebook_quiz_count_range_hint"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp
+                            )
+                        }
 
-                    // Informational Hint on Multi-Question Variety
-                    if (selectedNoteIds.size == 1) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
-                            modifier = Modifier.fillMaxWidth()
+                        // Stepper: [-] [ Input ] [+]
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            // Minus Button
+                            FilledTonalIconButton(
+                                onClick = {
+                                    if (requestedQuestionCount > 1) {
+                                        requestedQuestionCount--
+                                        countInputText = requestedQuestionCount.toString()
+                                        focusManager.clearFocus()
+                                    }
+                                },
+                                enabled = requestedQuestionCount > 1 && !isGenerating,
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .testTag("notebook_quiz_count_minus_btn"),
+                                shape = RoundedCornerShape(10.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.Lightbulb,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.size(16.dp)
+                                    imageVector = Icons.Filled.Remove,
+                                    contentDescription = "Decrease questions",
+                                    modifier = Modifier.size(18.dp)
                                 )
-                                Text(
-                                    text = String.format(Loc.getText("notebook_quiz_multi_q_single_note_hint"), requestedQuestionCount),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    fontSize = 12.sp,
-                                    lineHeight = 16.sp
+                            }
+
+                            // Editable Number Field
+                            OutlinedTextField(
+                                value = countInputText,
+                                onValueChange = { input ->
+                                    val digits = input.filter { it.isDigit() }.take(2)
+                                    countInputText = digits
+                                    val num = digits.toIntOrNull()
+                                    if (num != null) {
+                                        requestedQuestionCount = num.coerceIn(1, 20)
+                                    }
+                                },
+                                textStyle = MaterialTheme.typography.titleMedium.copy(
+                                    textAlign = TextAlign.Center,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Done
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onDone = {
+                                        val finalVal = countInputText.toIntOrNull()?.coerceIn(1, 20) ?: requestedQuestionCount
+                                        requestedQuestionCount = finalVal
+                                        countInputText = finalVal.toString()
+                                        focusManager.clearFocus()
+                                    }
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                                ),
+                                modifier = Modifier
+                                    .width(58.dp)
+                                    .height(48.dp)
+                                    .testTag("notebook_quiz_count_input_field")
+                            )
+
+                            // Plus Button
+                            FilledTonalIconButton(
+                                onClick = {
+                                    if (requestedQuestionCount < 20) {
+                                        requestedQuestionCount++
+                                        countInputText = requestedQuestionCount.toString()
+                                        focusManager.clearFocus()
+                                    }
+                                },
+                                enabled = requestedQuestionCount < 20 && !isGenerating,
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .testTag("notebook_quiz_count_plus_btn"),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Add,
+                                    contentDescription = "Increase questions",
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
                     }
+                }
 
-                    // Chips for Question Count: 1, 2, 3, 4, 6, 8, 12
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // Informational Hint on Multi-Question Variety
+                if (selectedNoteIds.size == 1) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        listOf(1, 2, 3, 4, 6, 8, 12).forEach { count ->
-                            val isSelected = requestedQuestionCount == count
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { requestedQuestionCount = count },
-                                label = { Text("$count Qs") },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                                )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Lightbulb,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = String.format(Loc.getText("notebook_quiz_multi_q_single_note_hint"), requestedQuestionCount),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
                             )
                         }
                     }
@@ -895,13 +993,18 @@ fun NotebookQuizGeneratorSheet(
                 // PRIMARY GENERATE & AUTO-SAVE ACTION BUTTON
                 Button(
                     onClick = {
+                        val finalCount = countInputText.toIntOrNull()?.coerceIn(1, 20) ?: requestedQuestionCount
+                        requestedQuestionCount = finalCount
+                        countInputText = finalCount.toString()
+                        focusManager.clearFocus()
+
                         val notesToProcess = allNotes.filter { selectedNoteIds.contains(it.id) }
                         if (notesToProcess.isEmpty()) {
                             Toast.makeText(context, "Please select at least one note.", Toast.LENGTH_SHORT).show()
                         } else {
                             viewModel.generateQuizFromNotes(
                                 notes = notesToProcess,
-                                maxQuestions = requestedQuestionCount
+                                maxQuestions = finalCount
                             )
                         }
                     },
