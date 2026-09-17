@@ -48,7 +48,10 @@ data class GeneratedQuizItem(
     val correctIndex: Int,
     val explanation: String,
     val timestampMs: Long? = null,
-    val category: String = "COMPREHENSION" // "VOCABULARY" or "COMPREHENSION"
+    val category: String = "COMPREHENSION", // "VOCABULARY" or "COMPREHENSION"
+    val targetWord: String? = null,
+    val meaning: String? = null,
+    val contextSentence: String? = null
 )
 
 data class NoteInputForQuiz(
@@ -58,12 +61,17 @@ data class NoteInputForQuiz(
     val tags: List<String> = emptyList(),
     val trackId: Long? = null,
     val trackName: String? = null,
-    val startTimestampMs: Long = 0L
+    val startTimestampMs: Long = 0L,
+    val targetWord: String? = null,
+    val meaning: String? = null,
+    val contextSentence: String? = null
 )
 
 data class GeneratedNoteQuizItem(
     val sourceNoteId: Long,
     val targetWord: String,
+    val meaning: String = "",
+    val contextSentence: String = "",
     val questionType: String = "MCQ",
     val question: String,
     val options: List<String>,
@@ -773,6 +781,20 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                     else -> "COMPREHENSION"
                 }
 
+                var targetWord = qObj.optString("targetWord", "").trim().takeIf { it.isNotBlank() }
+                var meaning = qObj.optString("meaning", "").trim().takeIf { it.isNotBlank() }
+                var contextSentence = qObj.optString("contextSentence", "").trim().takeIf { it.isNotBlank() }
+
+                if (category == "VOCABULARY" && targetWord == null) {
+                    val quoted = Regex("['\"]([^'\"]+)['\"]").find(questionText)?.groupValues?.get(1)?.trim()
+                    if (!quoted.isNullOrBlank() && quoted.length in 2..30) {
+                        targetWord = quoted
+                    }
+                }
+                if (category == "VOCABULARY" && meaning == null) {
+                    meaning = optionsList.getOrNull(correctIdx) ?: explanation.takeIf { it.isNotBlank() }
+                }
+
                 resultList.add(
                     GeneratedQuizItem(
                         questionType = qType,
@@ -781,7 +803,10 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                         correctIndex = correctIdx,
                         explanation = explanation,
                         timestampMs = timestampMs,
-                        category = category
+                        category = category,
+                        targetWord = targetWord,
+                        meaning = meaning,
+                        contextSentence = contextSentence
                     )
                 )
             }
@@ -832,6 +857,15 @@ Take for granted: To fail to properly appreciate someone or something, especiall
             val notesInventory = StringBuilder()
             notes.forEachIndexed { index, note ->
                 notesInventory.append("[Note ${index + 1} | ID:${note.id}]\n")
+                if (!note.targetWord.isNullOrBlank()) {
+                    notesInventory.append("Target Word/Phrase: \"${note.targetWord.trim()}\"\n")
+                }
+                if (!note.meaning.isNullOrBlank()) {
+                    notesInventory.append("Meaning/Definition: \"${note.meaning.trim()}\"\n")
+                }
+                if (!note.contextSentence.isNullOrBlank()) {
+                    notesInventory.append("Context Sentence: \"${note.contextSentence.trim()}\"\n")
+                }
                 notesInventory.append("Text: \"${note.text.replace("\n", " ").trim()}\"\n")
                 if (note.comment.isNotBlank()) {
                     notesInventory.append("Comment/Meaning: \"${note.comment.replace("\n", " ").trim()}\"\n")
@@ -864,7 +898,8 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                 append("- You MUST output EXACTLY $maxQuestions questions in total in the JSON \"questions\" array.\n")
                 if (notes.size == 1) {
                     val singleNote = notes.first()
-                    append("- IMPORTANT: The user provided ONE specific vocabulary note (ID: ${singleNote.id}, Word/Text: \"${singleNote.text}\").\n")
+                    val targetRef = singleNote.targetWord?.ifBlank { null } ?: singleNote.text.replace("\"", "").trim()
+                    append("- IMPORTANT: The user provided ONE specific vocabulary note (ID: ${singleNote.id}, Word/Text: \"$targetRef\").\n")
                     append("- You MUST generate ALL $maxQuestions questions for this single vocabulary item!\n")
                     append("- DO NOT stop at 1 question! You must generate $maxQuestions distinct, varied questions, each testing this vocabulary word from a DIFFERENT perspective or context:\n")
                     append("   1) Meaning & Definition: Clear definition in standard English.\n")
@@ -873,7 +908,7 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                     append("   4) Synonyms, Nuance, or Antonym: Choosing the word or phrase closest or opposite in meaning, or distinguishing it from near-synonyms in context.\n")
                     append("   5) Practical Application: Dialogue completion or sentence restructuring using the word correctly.\n")
                     append("- NEVER duplicate sentences or questions. Every question must feel fresh and test a different facet of the word.\n")
-                    append("- For every question, set 'sourceNoteId': ${singleNote.id} and 'targetWord': \"${singleNote.text.replace("\"", "").trim()}\".\n\n")
+                    append("- For every question, set 'sourceNoteId': ${singleNote.id} and 'targetWord': \"$targetRef\".\n\n")
                 } else {
                     append("- The user provided ${notes.size} notes and requested $maxQuestions questions.\n")
                     append("- If $maxQuestions > ${notes.size}, generate MULTIPLE distinct questions per vocabulary note (varying definitions, cloze sentences, collocations, synonyms) so that the total number of questions equals EXACTLY $maxQuestions!\n")
@@ -886,13 +921,17 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                 append("- Exactly 1 correct answer indicated by 0-based integer 'correctIndex' (0, 1, 2, or 3). Randomize correctIndex across the questions.\n")
                 append("- Instructive, friendly 'explanation' defining the word and explaining why the correct choice fits.\n")
                 append("- 'sourceNoteId': The exact numerical ID of the note from which this question was created.\n")
-                append("- 'targetWord': The specific vocabulary word, phrasal verb, or idiom being tested.\n\n")
+                append("- 'targetWord': The isolated vocabulary word, phrasal verb, or idiom being tested.\n")
+                append("- 'meaning': The isolated, clear 1-sentence dictionary meaning/definition of the target word.\n")
+                append("- 'contextSentence': An isolated, authentic context sentence illustrating the target word in action.\n\n")
                 append("OUTPUT FORMAT: Return STRICTLY valid JSON with a single key \"questions\":\n")
                 append("{\n")
                 append("  \"questions\": [\n")
                 append("    {\n")
                 append("      \"sourceNoteId\": ${notes.first().id},\n")
                 append("      \"targetWord\": \"meticulous\",\n")
+                append("      \"meaning\": \"Showing great attention to detail; very careful and precise.\",\n")
+                append("      \"contextSentence\": \"The researcher kept meticulous records of every laboratory test.\",\n")
                 append("      \"questionType\": \"MCQ\",\n")
                 append("      \"question\": \"What does the word 'meticulous' mean?\",\n")
                 append("      \"options\": [\"Showing great attention to detail\", \"Quick to make decisions\", \"Careless and unstructured\", \"Reluctant to speak publicly\"],\n")
@@ -981,7 +1020,9 @@ Take for granted: To fail to properly appreciate someone or something, especiall
             for (i in 0 until questionsJsonArray.length()) {
                 val qObj = questionsJsonArray.getJSONObject(i)
                 val sourceNoteId = qObj.optLong("sourceNoteId", -1L)
-                val targetWord = qObj.optString("targetWord", "").trim()
+                val rawTargetWord = qObj.optString("targetWord", "").trim()
+                val rawMeaning = qObj.optString("meaning", "").trim()
+                val rawContextSentence = qObj.optString("contextSentence", "").trim()
                 val questionText = qObj.optString("question", "").trim()
                 if (questionText.isBlank()) continue
 
@@ -999,10 +1040,30 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                 val explanation = qObj.optString("explanation", "").trim()
                 val sourceNote = if (sourceNoteId > 0) notesMap[sourceNoteId] else null
 
+                val finalWord = rawTargetWord.ifBlank {
+                    sourceNote?.targetWord?.ifBlank { null }
+                        ?: sourceNote?.text?.trim()
+                        ?: "Vocabulary"
+                }
+
+                val finalMeaning = rawMeaning.ifBlank {
+                    sourceNote?.meaning?.ifBlank { null }
+                        ?: optionsList.getOrNull(correctIdx)
+                        ?: explanation
+                }
+
+                val finalContext = rawContextSentence.ifBlank {
+                    sourceNote?.contextSentence?.ifBlank { null }
+                        ?: sourceNote?.text?.trim()
+                        ?: ""
+                }
+
                 resultList.add(
                     GeneratedNoteQuizItem(
                         sourceNoteId = sourceNoteId.takeIf { it > 0 } ?: (notes.firstOrNull()?.id ?: 0L),
-                        targetWord = targetWord.ifBlank { sourceNote?.text?.trim() ?: "Vocabulary" },
+                        targetWord = finalWord,
+                        meaning = finalMeaning,
+                        contextSentence = finalContext,
                         questionType = "MCQ",
                         question = questionText,
                         options = optionsList,

@@ -1029,6 +1029,8 @@ fun VocabBankBrowserView(
         allQuestions.filter { q ->
             val matchesQuery = searchQuery.isBlank() ||
                     q.question.contains(searchQuery, ignoreCase = true) ||
+                    (q.targetWord?.contains(searchQuery, ignoreCase = true) == true) ||
+                    (q.meaning?.contains(searchQuery, ignoreCase = true) == true) ||
                     q.getOptions().any { it.contains(searchQuery, ignoreCase = true) } ||
                     q.explanation.contains(searchQuery, ignoreCase = true)
 
@@ -1172,6 +1174,21 @@ fun VocabBankBrowserView(
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
+                                }
+                            }
+
+                            if (!q.targetWord.isNullOrBlank()) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = "Target Word: ${q.targetWord}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
                                 }
                             }
 

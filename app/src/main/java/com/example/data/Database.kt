@@ -345,11 +345,51 @@ data class Note(
     val originStartMs: Long? = null, // The specific cue start timestamp this note is dedicated to
     val tags: String = "", // Comma-separated tags
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val targetWord: String? = null, // Isolated target vocabulary word/phrase
+    val meaning: String? = null, // Isolated definition/meaning
+    val contextSentence: String? = null // Isolated context sentence
 ) {
     fun getTagsList(): List<String> {
         if (tags.isBlank()) return emptyList()
         return tags.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    }
+
+    fun getIsolatedTargetWord(): String {
+        if (!targetWord.isNullOrBlank()) return targetWord.trim()
+        val match = Regex("""^([^:\n]+):""").find(comment)
+        if (match != null) {
+            val candidate = match.groupValues[1].replace("[", "").replace("]", "").trim()
+            if (candidate.isNotBlank() && candidate.length < 50 && !candidate.contains("•")) {
+                return candidate
+            }
+        }
+        val trimmed = text.trim()
+        val words = trimmed.split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (words.size in 1..3 && trimmed.length < 35 && !trimmed.endsWith(".")) {
+            return trimmed
+        }
+        return ""
+    }
+
+    fun getIsolatedMeaning(): String {
+        if (!meaning.isNullOrBlank()) return meaning.trim()
+        val match = Regex("""^[^:\n]+:\s*(.*?)(?=\n•|\n\n|$)""", RegexOption.DOT_MATCHES_ALL).find(comment)
+        if (match != null) {
+            val def = match.groupValues[1].trim()
+            if (def.isNotBlank()) return def
+        }
+        return comment.trim()
+    }
+
+    fun getIsolatedContextSentence(): String {
+        if (!contextSentence.isNullOrBlank()) return contextSentence.trim()
+        val match = Regex("""•\s*Context in Audio:\s*(.*?)(?=\n•|\n\n|$)""", RegexOption.DOT_MATCHES_ALL).find(comment)
+        if (match != null) {
+            val ctx = match.groupValues[1].trim()
+            if (ctx.isNotBlank()) return ctx
+        }
+        return text.trim()
     }
 }
 
@@ -408,7 +448,10 @@ data class QuizQuestion(
     val timesAnswered: Int = 0,
     val timesCorrect: Int = 0,
     val lastAnsweredAt: Long? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val targetWord: String? = null, // Isolated target word
+    val meaning: String? = null, // Isolated meaning/definition
+    val contextSentence: String? = null // Isolated context sentence
 ) {
     fun getOptions(): List<String> {
         return try {
@@ -422,9 +465,103 @@ data class QuizQuestion(
             emptyList()
         }
     }
+
+    fun getIsolatedTargetWord(): String {
+        if (!targetWord.isNullOrBlank()) return targetWord.trim()
+        val quoted = Regex("['\"]([^'\"]+)['\"]").find(question)?.groupValues?.get(1)?.trim()
+        if (!quoted.isNullOrBlank() && quoted.length in 2..30) {
+            return quoted
+        }
+        return ""
+    }
+
+    fun getIsolatedMeaning(): String {
+        if (!meaning.isNullOrBlank()) return meaning.trim()
+        val options = getOptions()
+        return options.getOrNull(correctIndex) ?: explanation.trim()
+    }
+
+    fun getIsolatedContextSentence(): String {
+        if (!contextSentence.isNullOrBlank()) return contextSentence.trim()
+        return ""
+    }
 }
 
+@Entity(
+    tableName = "vocabulary_items",
+    indices = [
+        Index(value = ["targetWord"]),
+        Index(value = ["noteId"]),
+        Index(value = ["trackId"])
+    ]
+)
+data class VocabularyItem(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val targetWord: String,
+    val meaning: String,
+    val contextSentence: String = "",
+    val noteId: Long? = null,
+    val trackId: Long? = null,
+    val timestampMs: Long? = null,
+    val timesReviewed: Int = 0,
+    val timesCorrect: Int = 0,
+    val isMastered: Boolean = false,
+    val lastReviewedAt: Long? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 // --- DAOs ---
+
+@Dao
+interface VocabularyItemDao {
+    @Query("SELECT * FROM vocabulary_items ORDER BY createdAt DESC")
+    fun getAllVocabularyItemsFlow(): Flow<List<VocabularyItem>>
+
+    @Query("SELECT * FROM vocabulary_items ORDER BY createdAt DESC")
+    suspend fun getAllVocabularyItemsDirect(): List<VocabularyItem>
+
+    @Query("SELECT * FROM vocabulary_items WHERE id = :id LIMIT 1")
+    suspend fun getVocabularyItemById(id: Long): VocabularyItem?
+
+    @Query("SELECT * FROM vocabulary_items WHERE targetWord = :targetWord LIMIT 1")
+    suspend fun getVocabularyItemByWord(targetWord: String): VocabularyItem?
+
+    @Query("SELECT * FROM vocabulary_items WHERE noteId = :noteId ORDER BY createdAt DESC")
+    fun getVocabularyItemsForNoteFlow(noteId: Long): Flow<List<VocabularyItem>>
+
+    @Query("SELECT * FROM vocabulary_items WHERE trackId = :trackId ORDER BY createdAt DESC")
+    fun getVocabularyItemsForTrackFlow(trackId: Long): Flow<List<VocabularyItem>>
+
+    @Query("SELECT * FROM vocabulary_items WHERE isMastered = 1 ORDER BY lastReviewedAt DESC")
+    fun getMasteredVocabularyItemsFlow(): Flow<List<VocabularyItem>>
+
+    @Query("SELECT * FROM vocabulary_items WHERE isMastered = 0 ORDER BY createdAt DESC")
+    fun getUnmasteredVocabularyItemsFlow(): Flow<List<VocabularyItem>>
+
+    @Query("SELECT * FROM vocabulary_items WHERE targetWord LIKE '%' || :query || '%' OR meaning LIKE '%' || :query || '%' OR contextSentence LIKE '%' || :query || '%' ORDER BY createdAt DESC")
+    fun searchVocabularyItemsFlow(query: String): Flow<List<VocabularyItem>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertVocabularyItem(item: VocabularyItem): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertVocabularyItems(items: List<VocabularyItem>): List<Long>
+
+    @Update
+    suspend fun updateVocabularyItem(item: VocabularyItem)
+
+    @Delete
+    suspend fun deleteVocabularyItem(item: VocabularyItem)
+
+    @Query("DELETE FROM vocabulary_items WHERE id = :id")
+    suspend fun deleteVocabularyItemById(id: Long)
+
+    @Query("DELETE FROM vocabulary_items WHERE noteId = :noteId")
+    suspend fun deleteVocabularyItemsForNote(noteId: Long)
+
+    @Query("UPDATE vocabulary_items SET timesReviewed = timesReviewed + 1, timesCorrect = timesCorrect + :correctDelta, isMastered = CASE WHEN (timesCorrect + :correctDelta) >= 3 THEN 1 ELSE isMastered END, lastReviewedAt = :timestamp WHERE id = :id")
+    suspend fun recordReview(id: Long, correctDelta: Int, timestamp: Long = System.currentTimeMillis())
+}
 
 @Dao
 interface AppDao {
@@ -784,13 +921,15 @@ interface AppDao {
         NoteTag::class,
         TaskLabel::class,
         TaskDailyProgress::class,
-        QuizQuestion::class
+        QuizQuestion::class,
+        VocabularyItem::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun appDao(): AppDao
+    abstract fun vocabularyItemDao(): VocabularyItemDao
 
     companion object {
         @Volatile
@@ -978,6 +1117,53 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. Create vocabulary_items table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `vocabulary_items` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `targetWord` TEXT NOT NULL,
+                        `meaning` TEXT NOT NULL,
+                        `contextSentence` TEXT NOT NULL DEFAULT '',
+                        `noteId` INTEGER,
+                        `trackId` INTEGER,
+                        `timestampMs` INTEGER,
+                        `timesReviewed` INTEGER NOT NULL DEFAULT 0,
+                        `timesCorrect` INTEGER NOT NULL DEFAULT 0,
+                        `isMastered` INTEGER NOT NULL DEFAULT 0,
+                        `lastReviewedAt` INTEGER,
+                        `createdAt` INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_vocabulary_items_targetWord` ON `vocabulary_items` (`targetWord`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_vocabulary_items_noteId` ON `vocabulary_items` (`noteId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_vocabulary_items_trackId` ON `vocabulary_items` (`trackId`)")
+
+                // 2. Add isolated fields to notes table
+                try {
+                    db.execSQL("ALTER TABLE `notes` ADD COLUMN `targetWord` TEXT DEFAULT NULL")
+                } catch (_: Exception) {}
+                try {
+                    db.execSQL("ALTER TABLE `notes` ADD COLUMN `meaning` TEXT DEFAULT NULL")
+                } catch (_: Exception) {}
+                try {
+                    db.execSQL("ALTER TABLE `notes` ADD COLUMN `contextSentence` TEXT DEFAULT NULL")
+                } catch (_: Exception) {}
+
+                // 3. Add isolated fields to quiz_questions table
+                try {
+                    db.execSQL("ALTER TABLE `quiz_questions` ADD COLUMN `targetWord` TEXT DEFAULT NULL")
+                } catch (_: Exception) {}
+                try {
+                    db.execSQL("ALTER TABLE `quiz_questions` ADD COLUMN `meaning` TEXT DEFAULT NULL")
+                } catch (_: Exception) {}
+                try {
+                    db.execSQL("ALTER TABLE `quiz_questions` ADD COLUMN `contextSentence` TEXT DEFAULT NULL")
+                } catch (_: Exception) {}
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -985,7 +1171,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smart_audio_tasks_db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                     .fallbackToDestructiveMigrationOnDowngrade(true)
                     .build()
                 INSTANCE = instance
@@ -997,7 +1183,7 @@ abstract class AppDatabase : RoomDatabase() {
 
 // --- REPOSITORY ---
 
-class AppRepository(val dao: AppDao) {
+class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
     val allFolders: Flow<List<Folder>> = dao.getAllFolders()
     suspend fun getAllFoldersDirect(): List<Folder> = dao.getAllFoldersDirect()
     val rootFolders: Flow<List<Folder>> = dao.getRootFoldersFlow()
@@ -1345,19 +1531,58 @@ class AppRepository(val dao: AppDao) {
     suspend fun getNoteById(id: Long): Note? = dao.getNoteById(id)
 
     suspend fun insertNote(note: Note): Long {
-        return dao.insertNote(note)
+        val resolvedWord: String? = note.targetWord?.takeIf { it.isNotBlank() } ?: note.getIsolatedTargetWord().takeIf { it.isNotBlank() }
+        val resolvedMeaning: String? = note.meaning?.takeIf { it.isNotBlank() } ?: note.getIsolatedMeaning().takeIf { it.isNotBlank() }
+        val resolvedContext: String? = note.contextSentence?.takeIf { it.isNotBlank() } ?: note.getIsolatedContextSentence().takeIf { it.isNotBlank() }
+        val noteToInsert = note.copy(
+            targetWord = resolvedWord,
+            meaning = resolvedMeaning,
+            contextSentence = resolvedContext
+        )
+        val id = dao.insertNote(noteToInsert)
+        if (!resolvedWord.isNullOrBlank()) {
+            insertOrUpdateVocabularyItem(
+                targetWord = resolvedWord,
+                meaning = resolvedMeaning ?: note.comment.trim(),
+                contextSentence = resolvedContext ?: note.text.trim(),
+                noteId = id,
+                trackId = note.trackId,
+                timestampMs = note.startTimestampMs
+            )
+        }
+        return id
     }
 
     suspend fun updateNote(note: Note) {
-        dao.updateNote(note)
+        val resolvedWord: String? = note.targetWord?.takeIf { it.isNotBlank() } ?: note.getIsolatedTargetWord().takeIf { it.isNotBlank() }
+        val resolvedMeaning: String? = note.meaning?.takeIf { it.isNotBlank() } ?: note.getIsolatedMeaning().takeIf { it.isNotBlank() }
+        val resolvedContext: String? = note.contextSentence?.takeIf { it.isNotBlank() } ?: note.getIsolatedContextSentence().takeIf { it.isNotBlank() }
+        val noteToUpdate = note.copy(
+            targetWord = resolvedWord,
+            meaning = resolvedMeaning,
+            contextSentence = resolvedContext
+        )
+        dao.updateNote(noteToUpdate)
+        if (!resolvedWord.isNullOrBlank()) {
+            insertOrUpdateVocabularyItem(
+                targetWord = resolvedWord,
+                meaning = resolvedMeaning ?: note.comment.trim(),
+                contextSentence = resolvedContext ?: note.text.trim(),
+                noteId = note.id,
+                trackId = note.trackId,
+                timestampMs = note.startTimestampMs
+            )
+        }
     }
 
     suspend fun deleteNote(note: Note) {
         dao.deleteNote(note)
+        vocabDao?.deleteVocabularyItemsForNote(note.id)
     }
 
     suspend fun deleteNoteById(id: Long) {
         dao.deleteNoteById(id)
+        vocabDao?.deleteVocabularyItemsForNote(id)
     }
 
     suspend fun insertTag(name: String, colorHex: String? = null): Long {
@@ -1455,8 +1680,55 @@ class AppRepository(val dao: AppDao) {
     fun getAllVocabularyQuestionsFlow(): Flow<List<QuizQuestion>> = dao.getAllVocabularyQuestionsFlow()
     suspend fun getAllVocabularyQuestionsDirect(): List<QuizQuestion> = dao.getAllVocabularyQuestionsDirect()
     fun getQuestionsForTrackAndCategoryFlow(trackId: Long, category: String): Flow<List<QuizQuestion>> = dao.getQuestionsForTrackAndCategoryFlow(trackId, category)
-    suspend fun insertQuizQuestions(questions: List<QuizQuestion>): List<Long> = dao.insertQuizQuestions(questions)
-    suspend fun insertQuizQuestion(question: QuizQuestion): Long = dao.insertQuizQuestion(question)
+    suspend fun insertQuizQuestions(questions: List<QuizQuestion>): List<Long> {
+        val prepared = questions.map { q ->
+            val resolvedWord: String? = q.targetWord?.takeIf { it.isNotBlank() } ?: q.getIsolatedTargetWord().takeIf { it.isNotBlank() }
+            val resolvedMeaning: String? = q.meaning?.takeIf { it.isNotBlank() } ?: q.getIsolatedMeaning().takeIf { it.isNotBlank() }
+            val resolvedContext: String? = q.contextSentence?.takeIf { it.isNotBlank() } ?: q.getIsolatedContextSentence().takeIf { it.isNotBlank() }
+            q.copy(
+                targetWord = resolvedWord,
+                meaning = resolvedMeaning,
+                contextSentence = resolvedContext
+            )
+        }
+        val ids = dao.insertQuizQuestions(prepared)
+        prepared.forEachIndexed { index, q ->
+            if (q.category == "VOCABULARY" && !q.targetWord.isNullOrBlank()) {
+                insertOrUpdateVocabularyItem(
+                    targetWord = q.targetWord,
+                    meaning = q.meaning ?: q.explanation,
+                    contextSentence = q.contextSentence ?: "",
+                    noteId = q.noteId,
+                    trackId = q.trackId,
+                    timestampMs = q.timestampMs
+                )
+            }
+        }
+        return ids
+    }
+
+    suspend fun insertQuizQuestion(question: QuizQuestion): Long {
+        val resolvedWord: String? = question.targetWord?.takeIf { it.isNotBlank() } ?: question.getIsolatedTargetWord().takeIf { it.isNotBlank() }
+        val resolvedMeaning: String? = question.meaning?.takeIf { it.isNotBlank() } ?: question.getIsolatedMeaning().takeIf { it.isNotBlank() }
+        val resolvedContext: String? = question.contextSentence?.takeIf { it.isNotBlank() } ?: question.getIsolatedContextSentence().takeIf { it.isNotBlank() }
+        val prepared = question.copy(
+            targetWord = resolvedWord,
+            meaning = resolvedMeaning,
+            contextSentence = resolvedContext
+        )
+        val id = dao.insertQuizQuestion(prepared)
+        if (prepared.category == "VOCABULARY" && !prepared.targetWord.isNullOrBlank()) {
+            insertOrUpdateVocabularyItem(
+                targetWord = prepared.targetWord,
+                meaning = prepared.meaning ?: prepared.explanation,
+                contextSentence = prepared.contextSentence ?: "",
+                noteId = prepared.noteId,
+                trackId = prepared.trackId,
+                timestampMs = prepared.timestampMs
+            )
+        }
+        return id
+    }
     suspend fun updateQuizQuestion(question: QuizQuestion) = dao.updateQuizQuestion(question)
     suspend fun recordQuestionAnswer(id: Long, isCorrect: Boolean) = dao.recordQuestionAnswer(id, if (isCorrect) 1 else 0)
     suspend fun deleteQuizQuestionById(id: Long) = dao.deleteQuizQuestionById(id)
@@ -1465,4 +1737,56 @@ class AppRepository(val dao: AppDao) {
     suspend fun getQuestionsForNoteDirect(noteId: Long): List<QuizQuestion> = dao.getQuestionsForNoteDirect(noteId)
     fun getNotebookVocabularyQuestionsFlow(): Flow<List<QuizQuestion>> = dao.getNotebookVocabularyQuestionsFlow()
     suspend fun getNotebookVocabularyQuestionsDirect(): List<QuizQuestion> = dao.getNotebookVocabularyQuestionsDirect()
+
+    // VocabularyItem repository operations
+    val allVocabularyItems: Flow<List<VocabularyItem>> = vocabDao?.getAllVocabularyItemsFlow() ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    suspend fun getAllVocabularyItemsDirect(): List<VocabularyItem> = vocabDao?.getAllVocabularyItemsDirect() ?: emptyList()
+    suspend fun getVocabularyItemById(id: Long): VocabularyItem? = vocabDao?.getVocabularyItemById(id)
+    suspend fun getVocabularyItemByWord(targetWord: String): VocabularyItem? = vocabDao?.getVocabularyItemByWord(targetWord.trim())
+    fun getVocabularyItemsForNoteFlow(noteId: Long): Flow<List<VocabularyItem>> = vocabDao?.getVocabularyItemsForNoteFlow(noteId) ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    fun getVocabularyItemsForTrackFlow(trackId: Long): Flow<List<VocabularyItem>> = vocabDao?.getVocabularyItemsForTrackFlow(trackId) ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    fun getMasteredVocabularyItemsFlow(): Flow<List<VocabularyItem>> = vocabDao?.getMasteredVocabularyItemsFlow() ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    fun getUnmasteredVocabularyItemsFlow(): Flow<List<VocabularyItem>> = vocabDao?.getUnmasteredVocabularyItemsFlow() ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    fun searchVocabularyItemsFlow(query: String): Flow<List<VocabularyItem>> = vocabDao?.searchVocabularyItemsFlow(query) ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    suspend fun insertVocabularyItem(item: VocabularyItem): Long = vocabDao?.insertVocabularyItem(item) ?: 0L
+    suspend fun insertVocabularyItems(items: List<VocabularyItem>): List<Long> = vocabDao?.insertVocabularyItems(items) ?: emptyList()
+    suspend fun updateVocabularyItem(item: VocabularyItem) = vocabDao?.updateVocabularyItem(item)
+    suspend fun deleteVocabularyItem(item: VocabularyItem) = vocabDao?.deleteVocabularyItem(item)
+    suspend fun deleteVocabularyItemById(id: Long) = vocabDao?.deleteVocabularyItemById(id)
+    suspend fun deleteVocabularyItemsForNote(noteId: Long) = vocabDao?.deleteVocabularyItemsForNote(noteId)
+    suspend fun recordVocabularyReview(id: Long, isCorrect: Boolean) = vocabDao?.recordReview(id, if (isCorrect) 1 else 0)
+
+    suspend fun insertOrUpdateVocabularyItem(
+        targetWord: String,
+        meaning: String,
+        contextSentence: String = "",
+        noteId: Long? = null,
+        trackId: Long? = null,
+        timestampMs: Long? = null
+    ): Long {
+        if (vocabDao == null || targetWord.isBlank()) return 0L
+        val trimmedWord = targetWord.trim()
+        val existing = vocabDao.getVocabularyItemByWord(trimmedWord)
+        return if (existing != null) {
+            val updated = existing.copy(
+                meaning = if (meaning.isNotBlank()) meaning.trim() else existing.meaning,
+                contextSentence = if (contextSentence.isNotBlank()) contextSentence.trim() else existing.contextSentence,
+                noteId = noteId ?: existing.noteId,
+                trackId = trackId ?: existing.trackId,
+                timestampMs = timestampMs ?: existing.timestampMs
+            )
+            vocabDao.updateVocabularyItem(updated)
+            existing.id
+        } else {
+            val newItem = VocabularyItem(
+                targetWord = trimmedWord,
+                meaning = meaning.trim(),
+                contextSentence = contextSentence.trim(),
+                noteId = noteId,
+                trackId = trackId,
+                timestampMs = timestampMs
+            )
+            vocabDao.insertVocabularyItem(newItem)
+        }
+    }
 }

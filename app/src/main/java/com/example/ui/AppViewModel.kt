@@ -33,7 +33,10 @@ import org.json.JSONObject
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getDatabase(application)
-    val repository = AppRepository(database.appDao())
+    val repository = AppRepository(database.appDao(), database.vocabularyItemDao())
+
+    val allVocabularyItems: StateFlow<List<VocabularyItem>> = repository.allVocabularyItems
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // UI exposed resources
     val folders: StateFlow<List<Folder>> = repository.allFolders
@@ -325,7 +328,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             optionsJson = optionsJson,
                             correctIndex = item.correctIndex,
                             explanation = item.explanation,
-                            timestampMs = item.timestampMs
+                            timestampMs = item.timestampMs,
+                            targetWord = item.targetWord,
+                            meaning = item.meaning,
+                            contextSentence = item.contextSentence
                         )
                     }
                     repository.insertQuizQuestions(entities)
@@ -433,7 +439,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         tags = n.getTagsList(),
                         trackId = n.trackId,
                         trackName = n.trackName,
-                        startTimestampMs = n.startTimestampMs
+                        startTimestampMs = n.startTimestampMs,
+                        targetWord = n.targetWord,
+                        meaning = n.meaning,
+                        contextSentence = n.contextSentence
                     )
                 }
                 val notesMap = notes.associateBy { it.id }
@@ -451,6 +460,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         // AUTO-SAVE IMMEDIATELY TO GLOBAL QUIZ BANK WITHOUT WAITING OR REQUIRING MANUAL REVIEW
                         val entities = generated.map { item ->
                             val sourceNote = notesMap[item.sourceNoteId]
+                            val isolatedWord = item.targetWord.ifBlank { sourceNote?.getIsolatedTargetWord() ?: sourceNote?.text ?: "" }
+                            val isolatedMeaning = item.meaning.ifBlank { sourceNote?.getIsolatedMeaning() ?: item.options.getOrNull(item.correctIndex) ?: item.explanation }
+                            val isolatedContext = item.contextSentence.ifBlank { sourceNote?.getIsolatedContextSentence() ?: sourceNote?.text ?: "" }
                             QuizQuestion(
                                 trackId = item.trackId ?: sourceNote?.trackId,
                                 noteId = item.sourceNoteId,
@@ -460,7 +472,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 optionsJson = org.json.JSONArray(item.options).toString(),
                                 correctIndex = item.correctIndex,
                                 explanation = item.explanation,
-                                timestampMs = item.timestampMs ?: sourceNote?.startTimestampMs
+                                timestampMs = item.timestampMs ?: sourceNote?.startTimestampMs,
+                                targetWord = isolatedWord.takeIf { it.isNotBlank() },
+                                meaning = isolatedMeaning.takeIf { it.isNotBlank() },
+                                contextSentence = isolatedContext.takeIf { it.isNotBlank() }
                             )
                         }
 
@@ -510,6 +525,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val entities = items.map { item ->
                 val sourceNote = notesMap[item.sourceNoteId]
+                val isolatedWord = item.targetWord.ifBlank { sourceNote?.getIsolatedTargetWord() ?: sourceNote?.text ?: "" }
+                val isolatedMeaning = item.meaning.ifBlank { sourceNote?.getIsolatedMeaning() ?: item.options.getOrNull(item.correctIndex) ?: item.explanation }
+                val isolatedContext = item.contextSentence.ifBlank { sourceNote?.getIsolatedContextSentence() ?: sourceNote?.text ?: "" }
                 QuizQuestion(
                     trackId = item.trackId ?: sourceNote?.trackId,
                     noteId = item.sourceNoteId,
@@ -519,7 +537,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     optionsJson = org.json.JSONArray(item.options).toString(),
                     correctIndex = item.correctIndex,
                     explanation = item.explanation,
-                    timestampMs = item.timestampMs ?: sourceNote?.startTimestampMs
+                    timestampMs = item.timestampMs ?: sourceNote?.startTimestampMs,
+                    targetWord = isolatedWord.takeIf { it.isNotBlank() },
+                    meaning = isolatedMeaning.takeIf { it.isNotBlank() },
+                    contextSentence = isolatedContext.takeIf { it.isNotBlank() }
                 )
             }
             repository.insertQuizQuestions(entities)
@@ -544,7 +565,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         tags = note.getTagsList(),
                         trackId = note.trackId,
                         trackName = note.trackName,
-                        startTimestampMs = note.startTimestampMs
+                        startTimestampMs = note.startTimestampMs,
+                        targetWord = note.targetWord,
+                        meaning = note.meaning,
+                        contextSentence = note.contextSentence
                     )
                 )
                 val result = com.example.ai.GeminiService.generateQuizFromNotebookNotes(
@@ -556,6 +580,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 result.onSuccess { generatedList ->
                     val first = generatedList.firstOrNull()
                     if (first != null) {
+                        val isolatedWord = first.targetWord.ifBlank { note.getIsolatedTargetWord() }
+                        val isolatedMeaning = first.meaning.ifBlank { note.getIsolatedMeaning() }
+                        val isolatedContext = first.contextSentence.ifBlank { note.getIsolatedContextSentence() }
                         val entity = QuizQuestion(
                             trackId = first.trackId ?: note.trackId,
                             noteId = note.id,
@@ -565,7 +592,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             optionsJson = org.json.JSONArray(first.options).toString(),
                             correctIndex = first.correctIndex,
                             explanation = first.explanation,
-                            timestampMs = first.timestampMs ?: note.startTimestampMs
+                            timestampMs = first.timestampMs ?: note.startTimestampMs,
+                            targetWord = isolatedWord.takeIf { it.isNotBlank() },
+                            meaning = isolatedMeaning.takeIf { it.isNotBlank() },
+                            contextSentence = isolatedContext.takeIf { it.isNotBlank() }
                         )
                         val insertedId = repository.insertQuizQuestion(entity)
                         activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
@@ -2498,6 +2528,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         endTimestampMs: Long,
         originStartMs: Long? = null,
         tags: List<String>,
+        targetWord: String? = null,
+        meaning: String? = null,
+        contextSentence: String? = null,
         onSuccess: (() -> Unit)? = null
     ) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -2536,6 +2569,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     cleanUserTags
                 }
                 val tagsString = finalTagsList.distinctBy { it.lowercase() }.joinToString(",")
+
+                val resolvedWord = targetWord?.trim()?.ifEmpty { null }
+                    ?: (if (id != 0L) existingNote?.targetWord else null)
+                val resolvedMeaning = meaning?.trim()?.ifEmpty { null }
+                    ?: (if (id != 0L) existingNote?.meaning else null)
+                val resolvedContext = contextSentence?.trim()?.ifEmpty { null }
+                    ?: (if (id != 0L) existingNote?.contextSentence else null)
+
                 val note = Note(
                     id = id,
                     text = text.trim(),
@@ -2549,7 +2590,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     originStartMs = originStartMs ?: if (id != 0L) existingNote?.originStartMs else null,
                     tags = tagsString,
                     createdAt = if (id == 0L) System.currentTimeMillis() else (notes.value.find { it.id == id }?.createdAt ?: System.currentTimeMillis()),
-                    updatedAt = System.currentTimeMillis()
+                    updatedAt = System.currentTimeMillis(),
+                    targetWord = resolvedWord,
+                    meaning = resolvedMeaning,
+                    contextSentence = resolvedContext
                 )
 
                 if (id == 0L) {
