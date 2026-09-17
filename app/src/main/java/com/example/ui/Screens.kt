@@ -5509,7 +5509,7 @@ fun AudioPlayerOverlay(
                         onTapToSyncClick = { showLiveSyncDialog = true },
                         onDeleteSubtitlesClick = { showDeleteSubtitleConfirmDialog = true },
                         onSeekTo = { AudioPlayerManager.seekTo(it, isPhysicalTimestamp = true) },
-                        onFontSizeChange = { AudioPlayerManager.subtitleFontSize.value = it },
+                        onFontSizeChange = { AudioPlayerManager.setSubtitleFontSize(it) },
                         onAdjustOffset = { AudioPlayerManager.adjustSubtitleOffset(it) },
                         onResetOffset = { AudioPlayerManager.resetSubtitleOffset() },
                         onAddNoteFromCue = { cueText, startMs, endMs ->

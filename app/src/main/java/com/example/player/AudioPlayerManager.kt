@@ -325,7 +325,7 @@ object AudioPlayerManager {
             audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         }
         
-        // Load playback speed and headset preferences
+        // Load playback speed, headset, and subtitle preferences
         try {
             val sharedPref = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
             val savedSpeed = sharedPref.getFloat("playback_speed", 1.0f)
@@ -333,6 +333,8 @@ object AudioPlayerManager {
             isAutoPlayEnabled.value = sharedPref.getBoolean("autoplay_enabled", true)
             isHeadsetControlsEnabled.value = sharedPref.getBoolean("headset_controls_enabled", true)
             headsetMultiClickAction.value = sharedPref.getString("headset_multiclick_action", "NEXT_PREV") ?: "NEXT_PREV"
+            val savedFontSize = sharedPref.getFloat("subtitle_font_size", 16f)
+            subtitleFontSize.value = savedFontSize
         } catch (e: Exception) {
             Log.e(TAG, "Error loading saved settings: ${e.message}")
         }
@@ -2180,6 +2182,17 @@ object AudioPlayerManager {
             repository?.updateTrack(updated)
             updateTrackState { updated }
             loadSubtitlesForTrack(updated)
+        }
+    }
+
+    fun setSubtitleFontSize(size: Float) {
+        subtitleFontSize.value = size
+        val ctx = appContext ?: return
+        try {
+            val sharedPref = ctx.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            sharedPref.edit().putFloat("subtitle_font_size", size).apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving subtitle font size: ${e.message}")
         }
     }
 
