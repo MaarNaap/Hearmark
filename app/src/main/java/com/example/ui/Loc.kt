@@ -880,6 +880,23 @@ object Loc {
         "notebook_quiz_target_single_note" to mapOf("en" to "Selected Target Note", "ar" to "الملاحظة المختارة"),
         "notebook_quiz_multi_q_single_note_hint" to mapOf("en" to "Will generate %d distinct questions testing this vocabulary from different angles (definitions, cloze sentences, collocations)", "ar" to "سيتم إنشاء %d أسئلة متنوعة لاختبار هذه المفردة من زوايا وسياقات مختلفة"),
         "notebook_quiz_delete_question" to mapOf("en" to "Delete Question", "ar" to "حذف السؤال"),
-        "notebook_quiz_count_range_hint" to mapOf("en" to "From 1 to 20 questions (Default: 4)", "ar" to "من 1 إلى 20 سؤالاً (الافتراضي: 4)")
+        "notebook_quiz_count_range_hint" to mapOf("en" to "From 1 to 20 questions (Default: 4)", "ar" to "من 1 إلى 20 سؤالاً (الافتراضي: 4)"),
+        "unified_quiz_hub_title" to mapOf("en" to "AI Quiz Hub", "ar" to "مركز الاختبارات الذكية"),
+        "unified_quiz_tab_track" to mapOf("en" to "Audio Dialogue", "ar" to "حوار المقطع"),
+        "unified_quiz_tab_notes" to mapOf("en" to "Notebook Notes", "ar" to "ملاحظات الدفتر"),
+        "unified_quiz_tab_bank" to mapOf("en" to "Practice & Bank", "ar" to "الممارسة والبنك"),
+        "unified_quiz_select_track" to mapOf("en" to "Target Audio Track", "ar" to "المقطع الصوتي المستهدف"),
+        "unified_quiz_switch_track" to mapOf("en" to "Switch Track", "ar" to "تغيير المقطع"),
+        "unified_quiz_no_track_selected" to mapOf("en" to "No audio track selected. Please choose a track or play one first.", "ar" to "لم يتم اختيار مقطع صوتي. يرجى اختيار مقطع أو تشغيل أحدهم أولاً."),
+        "unified_quiz_track_desc" to mapOf("en" to "AI generates comprehension & vocabulary questions directly from this track's subtitle dialogue.", "ar" to "يولّد الذكاء الاصطناعي أسئلة فهم ومفردات مباشرة من نصوص حوار هذا المقطع."),
+        "unified_quiz_practice_track_badge" to mapOf("en" to "%d questions saved for this track", "ar" to "تم حفظ %d أسئلة لهذا المقطع"),
+        "unified_quiz_all_vocab_bank" to mapOf("en" to "All Vocabulary Bank (%d)", "ar" to "بنك كل المفردات (%d)"),
+        "unified_quiz_current_track_bank" to mapOf("en" to "Current Track Bank (%d)", "ar" to "بنك المقطع الحالي (%d)"),
+        "unified_quiz_generate_audio_action" to mapOf("en" to "Generate Audio Quiz", "ar" to "توليد اختبار من المقطع"),
+        "unified_quiz_start_session" to mapOf("en" to "Start Practice Session", "ar" to "بدء جلسة تدريب"),
+        "unified_quiz_active_session" to mapOf("en" to "Active Quiz Session", "ar" to "جلسة الاختبار الحالية"),
+        "unified_quiz_question_counter" to mapOf("en" to "Question %d of %d", "ar" to "السؤال %d من %d"),
+        "unified_quiz_results_title" to mapOf("en" to "Quiz Results", "ar" to "نتيجة الاختبار"),
+        "unified_quiz_retake" to mapOf("en" to "Retake Quiz", "ar" to "إعادة الاختبار")
     )
 }

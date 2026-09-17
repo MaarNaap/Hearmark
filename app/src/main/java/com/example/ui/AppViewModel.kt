@@ -116,507 +116,92 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var savedApiKeys by mutableStateOf<List<SavedApiKey>>(emptyList())
     var activeApiKeyId by mutableStateOf("")
 
-    // Gemini Chatbot State
-    private val _chatMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
-    val chatMessages: StateFlow<List<ChatMessage>> = _chatMessages.asStateFlow()
+    // Focused Sub-Controllers (Decomposition)
+    val mediaAiViewModel by lazy {
+        MediaAiViewModel(
+            application = getApplication(),
+            apiKeyProvider = { customGeminiApiKey },
+            languageProvider = { Loc.currentLanguage }
+        )
+    }
 
-    private val _isGeneratingAiResponse = MutableStateFlow(false)
-    val isGeneratingAiResponse: StateFlow<Boolean> = _isGeneratingAiResponse.asStateFlow()
+    val quizViewModel by lazy {
+        QuizViewModel(
+            application = getApplication(),
+            repository = repository,
+            apiKeyProvider = { customGeminiApiKey },
+            languageProvider = { Loc.currentLanguage }
+        )
+    }
 
-    val isChatDialogOpen = MutableStateFlow(false)
-    val activeChatContext = MutableStateFlow<AudioContextSummary?>(null)
+    // Gemini Chatbot State & Actions (Delegated to mediaAiViewModel)
+    val chatMessages: StateFlow<List<ChatMessage>> get() = mediaAiViewModel.chatMessages
+    val isGeneratingAiResponse: StateFlow<Boolean> get() = mediaAiViewModel.isGeneratingAiResponse
+    val isChatDialogOpen: MutableStateFlow<Boolean> get() = mediaAiViewModel.isChatDialogOpen
+    val activeChatContext: MutableStateFlow<AudioContextSummary?> get() = mediaAiViewModel.activeChatContext
 
-    // Subtitle Generation State
-    private val _isGeneratingSubtitles = MutableStateFlow(false)
-    val isGeneratingSubtitles: StateFlow<Boolean> = _isGeneratingSubtitles.asStateFlow()
-
-    private val _subtitleGenerationStatus = MutableStateFlow("")
-    val subtitleGenerationStatus: StateFlow<String> = _subtitleGenerationStatus.asStateFlow()
+    // Subtitle Generation State & Actions (Delegated to mediaAiViewModel)
+    val isGeneratingSubtitles: StateFlow<Boolean> get() = mediaAiViewModel.isGeneratingSubtitles
+    val subtitleGenerationStatus: StateFlow<String> get() = mediaAiViewModel.subtitleGenerationStatus
 
     fun generateSubtitlesForCurrentTrack(
         contextSummary: AudioContextSummary? = null,
         onSuccess: (() -> Unit)? = null,
         onError: ((String) -> Unit)? = null
-    ) {
-        if (_isGeneratingSubtitles.value) return
-        val track = AudioPlayerManager.currentTrack.value
-        if (track == null) {
-            val noTrackMsg = Loc.getText("no_track_selected") ?: "No audio track selected"
-            onError?.invoke(noTrackMsg)
-            return
-        }
+    ) = mediaAiViewModel.generateSubtitlesForCurrentTrack(contextSummary, onSuccess, onError)
 
-        val audioFile = java.io.File(track.filePath)
-        if (!audioFile.exists() || !audioFile.canRead()) {
-            val missingMsg = Loc.getText("ai_subtitles_audio_missing")
-            onError?.invoke(missingMsg)
-            _chatMessages.value = _chatMessages.value + ChatMessage(
-                role = "model",
-                text = missingMsg,
-                isError = true
-            )
-            return
-        }
+    fun openChatWithContext(contextSummary: AudioContextSummary? = null) = mediaAiViewModel.openChatWithContext(contextSummary)
+    fun closeChatDialog() = mediaAiViewModel.closeChatDialog()
+    fun clearChatHistory() = mediaAiViewModel.clearChatHistory()
 
-        _isGeneratingSubtitles.value = true
-        _subtitleGenerationStatus.value = Loc.getText("ai_creating_subtitles")
+    // AI Quiz & Practice Bank State (Delegated to quizViewModel)
+    val isQuizSheetOpen: MutableStateFlow<Boolean> get() = quizViewModel.isQuizSheetOpen
+    val isGeneratingQuiz: MutableStateFlow<Boolean> get() = quizViewModel.isGeneratingQuiz
+    val quizGenerationError: MutableStateFlow<String?> get() = quizViewModel.quizGenerationError
+    val quizGenerationSuccessMessage: MutableStateFlow<String?> get() = quizViewModel.quizGenerationSuccessMessage
+    val activeQuizTargetTrack: MutableStateFlow<AudioTrack?> get() = quizViewModel.activeQuizTargetTrack
+    val currentTrackQuizQuestions: MutableStateFlow<List<QuizQuestion>> get() = quizViewModel.currentTrackQuizQuestions
+    val allVocabularyQuestions: StateFlow<List<QuizQuestion>> get() = quizViewModel.allVocabularyQuestions
 
-        val rawReference = AudioPlayerManager.getCurrentSubtitlesRawText()
-        val referenceSubtitles = if (rawReference.isNotBlank()) rawReference else null
+    fun openQuizForTrack(track: AudioTrack) = quizViewModel.openQuizForTrack(track)
+    fun openQuizForCurrentTrack() = quizViewModel.openQuizForCurrentTrack()
+    fun closeQuizSheet() = quizViewModel.closeQuizSheet()
+    fun clearQuizGenerationFeedback() = quizViewModel.clearQuizGenerationFeedback()
+    fun loadQuizQuestionsForTrack(trackId: Long) = quizViewModel.loadQuizQuestionsForTrack(trackId)
+    fun generateQuizForTrack(track: AudioTrack) = quizViewModel.generateQuizForTrack(track)
+    fun recordQuizAnswer(question: QuizQuestion, isCorrect: Boolean) = quizViewModel.recordQuizAnswer(question, isCorrect)
+    fun clearQuizBankForTrack(trackId: Long) = quizViewModel.clearQuizBankForTrack(trackId)
+    fun deleteQuizQuestion(questionId: Long) = quizViewModel.deleteQuizQuestion(questionId)
 
-        viewModelScope.launch {
-            val result = GeminiService.generateSubtitles(
-                audioFile = audioFile,
-                existingSubtitleText = referenceSubtitles,
-                totalDurationMs = AudioPlayerManager.duration.value,
-                customApiKey = customGeminiApiKey,
-                language = Loc.currentLanguage,
-                onProgressUpdate = { progressText ->
-                    _subtitleGenerationStatus.value = progressText
-                }
-            )
+    // Notebook Vocabulary Quiz State (Delegated to quizViewModel)
+    val isNotebookQuizSheetOpen: MutableStateFlow<Boolean> get() = quizViewModel.isNotebookQuizSheetOpen
+    val isGeneratingNotebookQuiz: MutableStateFlow<Boolean> get() = quizViewModel.isGeneratingNotebookQuiz
+    val notebookQuizError: MutableStateFlow<String?> get() = quizViewModel.notebookQuizError
+    val notebookQuizGeneratedQuestions: MutableStateFlow<List<com.example.ai.GeneratedNoteQuizItem>> get() = quizViewModel.notebookQuizGeneratedQuestions
+    val notebookQuizSuccessMessage: MutableStateFlow<String?> get() = quizViewModel.notebookQuizSuccessMessage
+    val notebookVocabularyQuestions: StateFlow<List<QuizQuestion>> get() = quizViewModel.notebookVocabularyQuestions
 
-            result.fold(
-                onSuccess = { cleanSrt ->
-                    AudioPlayerManager.setSubtitleContentForCurrentTrack(cleanSrt)
-                    val successMsg = Loc.getText("ai_subtitles_success")
-                    _chatMessages.value = _chatMessages.value + ChatMessage(
-                        role = "model",
-                        text = "✨ $successMsg"
-                    )
-                    _isGeneratingSubtitles.value = false
-                    _subtitleGenerationStatus.value = ""
-                    onSuccess?.invoke()
-                },
-                onFailure = { error ->
-                    val errorMsg = when {
-                        error.message == "MISSING_API_KEY" -> Loc.getText("missing_api_key_prompt")
-                        else -> String.format(Loc.getText("ai_subtitles_failed"), error.localizedMessage ?: "Unknown error")
-                    }
-                    _chatMessages.value = _chatMessages.value + ChatMessage(
-                        role = "model",
-                        text = errorMsg,
-                        isError = true
-                    )
-                    _isGeneratingSubtitles.value = false
-                    _subtitleGenerationStatus.value = ""
-                    onError?.invoke(errorMsg)
-                }
-            )
-        }
-    }
+    fun openNotebookQuizSheet(initialNotes: List<Note>? = null) = quizViewModel.openNotebookQuizSheet(initialNotes)
+    fun closeNotebookQuizSheet() = quizViewModel.closeNotebookQuizSheet()
+    fun resetNotebookQuiz() = quizViewModel.resetNotebookQuiz()
+    fun clearNotebookQuizFeedback() = quizViewModel.clearNotebookQuizFeedback()
+    fun deleteNotebookQuizQuestion(item: com.example.ai.GeneratedNoteQuizItem) = quizViewModel.deleteNotebookQuizQuestion(item)
+    fun generateQuizFromNotes(notes: List<Note>, maxQuestions: Int = 4, onSuccess: (() -> Unit)? = null) =
+        quizViewModel.generateQuizFromNotes(notes, maxQuestions, onSuccess)
+    fun saveNotebookQuizQuestions(items: List<com.example.ai.GeneratedNoteQuizItem>, notesMap: Map<Long, Note> = emptyMap(), onSuccess: (Int) -> Unit = {}) =
+        quizViewModel.saveNotebookQuizQuestions(items, notesMap, onSuccess)
+    fun generateQuizForSingleNote(note: Note, onSuccess: (QuizQuestion) -> Unit = {}, onError: (String) -> Unit = {}) =
+        quizViewModel.generateQuizForSingleNote(note, onSuccess, onError)
 
-    fun openChatWithContext(contextSummary: AudioContextSummary? = null) {
-        activeChatContext.value = contextSummary
-        isChatDialogOpen.value = true
-    }
+    // Unified Quiz Hub State (Delegated to quizViewModel)
+    val isUnifiedQuizSheetOpen: MutableStateFlow<Boolean> get() = quizViewModel.isUnifiedQuizSheetOpen
+    val activeQuizTabMode: StateFlow<QuizTabMode> get() = quizViewModel.activeQuizTabMode
 
-    fun closeChatDialog() {
-        isChatDialogOpen.value = false
-    }
-
-    fun clearChatHistory() {
-        _chatMessages.value = emptyList()
-    }
-
-    // AI Quiz & Practice Bank State
-    val isQuizSheetOpen = MutableStateFlow(false)
-    val isGeneratingQuiz = MutableStateFlow(false)
-    val quizGenerationError = MutableStateFlow<String?>(null)
-    val quizGenerationSuccessMessage = MutableStateFlow<String?>(null)
-    val activeQuizTargetTrack = MutableStateFlow<AudioTrack?>(null)
-    val currentTrackQuizQuestions = MutableStateFlow<List<QuizQuestion>>(emptyList())
-    val allVocabularyQuestions: StateFlow<List<QuizQuestion>> = repository.getAllVocabularyQuestionsFlow()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    fun openQuizForTrack(track: AudioTrack) {
-        activeQuizTargetTrack.value = track
-        quizGenerationError.value = null
-        quizGenerationSuccessMessage.value = null
-        viewModelScope.launch {
-            loadQuizQuestionsForTrack(track.id)
-            isQuizSheetOpen.value = true
-        }
-    }
-
-    fun openQuizForCurrentTrack() {
-        val current = AudioPlayerManager.currentTrack.value ?: return
-        openQuizForTrack(current)
-    }
-
-    fun closeQuizSheet() {
-        isQuizSheetOpen.value = false
-        quizGenerationError.value = null
-        quizGenerationSuccessMessage.value = null
-    }
-
-    fun clearQuizGenerationFeedback() {
-        quizGenerationError.value = null
-        quizGenerationSuccessMessage.value = null
-    }
-
-    fun loadQuizQuestionsForTrack(trackId: Long) {
-        viewModelScope.launch {
-            val questions = repository.getQuestionsForTrackDirect(trackId)
-            currentTrackQuizQuestions.value = questions
-        }
-    }
-
-    fun generateQuizForTrack(track: AudioTrack) {
-        if (isGeneratingQuiz.value) return
-
-        quizGenerationError.value = null
-        quizGenerationSuccessMessage.value = null
-
-        val cuesToUse = when {
-            AudioPlayerManager.currentTrack.value?.id == track.id && AudioPlayerManager.subtitlesCues.value.isNotEmpty() -> {
-                AudioPlayerManager.subtitlesCues.value
-            }
-            !track.subtitleContent.isNullOrBlank() -> {
-                com.example.player.SubtitleParser.parseContent(track.subtitleContent ?: "", track.subtitleOffsetMs)
-            }
-            !track.subtitlePath.isNullOrBlank() && java.io.File(track.subtitlePath).exists() -> {
-                com.example.player.SubtitleParser.parseFile(java.io.File(track.subtitlePath), track.subtitleOffsetMs)
-            }
-            else -> {
-                val matching = com.example.player.SubtitleParser.findMatchingSubtitleFile(track.filePath)
-                if (matching != null && matching.exists()) {
-                    com.example.player.SubtitleParser.parseFile(matching, track.subtitleOffsetMs)
-                } else if (AudioPlayerManager.subtitlesCues.value.isNotEmpty()) {
-                    AudioPlayerManager.subtitlesCues.value
-                } else {
-                    emptyList()
-                }
-            }
-        }
-
-        if (cuesToUse.isEmpty()) {
-            quizGenerationError.value = Loc.getText("quiz_no_transcript_error")
-            return
-        }
-
-        isGeneratingQuiz.value = true
-
-        viewModelScope.launch {
-            try {
-                // Fetch any existing questions already in the bank for this track to avoid duplicates
-                val existingQuestions = repository.getQuestionsForTrackDirect(track.id)
-                val existingQuestionTexts = existingQuestions.map { it.question.trim() }.filter { it.isNotBlank() }
-
-                val result = GeminiService.generateQuizQuestions(
-                    mediaTitle = track.getDisplayTitle(),
-                    transcriptCues = cuesToUse,
-                    existingQuestions = existingQuestionTexts,
-                    customApiKey = customGeminiApiKey,
-                    language = Loc.currentLanguage
-                )
-
-                result.onSuccess { generatedItems ->
-                    // Filter out any duplicate questions on the client side as a safeguard
-                    val existingNormalized = existingQuestionTexts.map { it.lowercase() }.toSet()
-                    val uniqueGenerated = generatedItems.filter { item ->
-                        item.question.trim().lowercase() !in existingNormalized
-                    }.ifEmpty { generatedItems }
-
-                    val entities = uniqueGenerated.map { item ->
-                        val optionsJson = org.json.JSONArray(item.options).toString()
-                        QuizQuestion(
-                            trackId = track.id,
-                            questionType = item.questionType,
-                            category = item.category,
-                            question = item.question,
-                            optionsJson = optionsJson,
-                            correctIndex = item.correctIndex,
-                            explanation = item.explanation,
-                            timestampMs = item.timestampMs,
-                            targetWord = item.targetWord,
-                            meaning = item.meaning,
-                            contextSentence = item.contextSentence
-                        )
-                    }
-                    repository.insertQuizQuestions(entities)
-                    loadQuizQuestionsForTrack(track.id)
-                    isGeneratingQuiz.value = false
-                    quizGenerationSuccessMessage.value = String.format(Loc.getText("quiz_generated_success"), entities.size)
-                }.onFailure { err ->
-                    isGeneratingQuiz.value = false
-                    val msg = err.message ?: ""
-                    quizGenerationError.value = when {
-                        msg == "MISSING_API_KEY" -> Loc.getText("missing_api_key_prompt")
-                        msg.isNotBlank() -> msg
-                        else -> Loc.getText("quiz_error_generic")
-                    }
-                }
-            } catch (e: Exception) {
-                isGeneratingQuiz.value = false
-                quizGenerationError.value = e.localizedMessage ?: Loc.getText("quiz_error_generic")
-            }
-        }
-    }
-
-    fun recordQuizAnswer(question: QuizQuestion, isCorrect: Boolean) {
-        viewModelScope.launch {
-            repository.recordQuestionAnswer(question.id, isCorrect)
-            activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
-        }
-    }
-
-    fun clearQuizBankForTrack(trackId: Long) {
-        viewModelScope.launch {
-            repository.deleteQuizQuestionsForTrack(trackId)
-            loadQuizQuestionsForTrack(trackId)
-        }
-    }
-
-    fun deleteQuizQuestion(questionId: Long) {
-        viewModelScope.launch {
-            repository.deleteQuizQuestionById(questionId)
-            activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
-        }
-    }
-
-    // --- NOTEBOOK VOCABULARY QUIZ GENERATION ---
-    val isNotebookQuizSheetOpen = MutableStateFlow(false)
-    val isGeneratingNotebookQuiz = MutableStateFlow(false)
-    val notebookQuizError = MutableStateFlow<String?>(null)
-    val notebookQuizGeneratedQuestions = MutableStateFlow<List<com.example.ai.GeneratedNoteQuizItem>>(emptyList())
-    val notebookQuizSuccessMessage = MutableStateFlow<String?>(null)
-    val notebookVocabularyQuestions: StateFlow<List<QuizQuestion>> = repository.getNotebookVocabularyQuestionsFlow()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    fun openNotebookQuizSheet() {
-        // Do not wipe existing generated questions or progress so user never loses work on accidental swipe
-        notebookQuizError.value = null
-        isNotebookQuizSheetOpen.value = true
-    }
-
-    fun closeNotebookQuizSheet() {
-        // Only hide the sheet; keep state so reopening restores generated results or in-progress status
-        isNotebookQuizSheetOpen.value = false
-    }
-
-    fun resetNotebookQuiz() {
-        notebookQuizGeneratedQuestions.value = emptyList()
-        notebookQuizError.value = null
-        notebookQuizSuccessMessage.value = null
-    }
-
-    fun clearNotebookQuizFeedback() {
-        notebookQuizError.value = null
-    }
-
-    fun deleteNotebookQuizQuestion(item: com.example.ai.GeneratedNoteQuizItem) {
-        viewModelScope.launch {
-            val qId = item.savedQuestionId
-            if (qId != null && qId > 0) {
-                repository.deleteQuizQuestionById(qId)
-                activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
-            }
-            notebookQuizGeneratedQuestions.value = notebookQuizGeneratedQuestions.value.filter { it != item }
-            if (notebookQuizGeneratedQuestions.value.isEmpty()) {
-                notebookQuizSuccessMessage.value = null
-            }
-        }
-    }
-
-    fun generateQuizFromNotes(
-        notes: List<Note>,
-        maxQuestions: Int = 4,
-        onSuccess: (() -> Unit)? = null
-    ) {
-        if (isGeneratingNotebookQuiz.value) return
-        notebookQuizError.value = null
-        notebookQuizSuccessMessage.value = null
-        isGeneratingNotebookQuiz.value = true
-
-        viewModelScope.launch {
-            try {
-                val inputList = notes.map { n ->
-                    com.example.ai.NoteInputForQuiz(
-                        id = n.id,
-                        text = n.text,
-                        comment = n.comment,
-                        tags = n.getTagsList(),
-                        trackId = n.trackId,
-                        trackName = n.trackName,
-                        startTimestampMs = n.startTimestampMs,
-                        targetWord = n.targetWord,
-                        meaning = n.meaning,
-                        contextSentence = n.contextSentence
-                    )
-                }
-                val notesMap = notes.associateBy { it.id }
-
-                val result = com.example.ai.GeminiService.generateQuizFromNotebookNotes(
-                    notes = inputList,
-                    maxQuestions = maxQuestions,
-                    customApiKey = customGeminiApiKey,
-                    language = Loc.currentLanguage
-                )
-
-                result.onSuccess { generated ->
-                    isGeneratingNotebookQuiz.value = false
-                    if (generated.isNotEmpty()) {
-                        // AUTO-SAVE IMMEDIATELY TO GLOBAL QUIZ BANK WITHOUT WAITING OR REQUIRING MANUAL REVIEW
-                        val entities = generated.map { item ->
-                            val sourceNote = notesMap[item.sourceNoteId]
-                            val isolatedWord = item.targetWord.ifBlank { sourceNote?.getIsolatedTargetWord() ?: sourceNote?.text ?: "" }
-                            val isolatedMeaning = item.meaning.ifBlank { sourceNote?.getIsolatedMeaning() ?: item.options.getOrNull(item.correctIndex) ?: item.explanation }
-                            val isolatedContext = item.contextSentence.ifBlank { sourceNote?.getIsolatedContextSentence() ?: sourceNote?.text ?: "" }
-                            QuizQuestion(
-                                trackId = item.trackId ?: sourceNote?.trackId,
-                                noteId = item.sourceNoteId,
-                                questionType = item.questionType,
-                                category = "VOCABULARY",
-                                question = item.question,
-                                optionsJson = org.json.JSONArray(item.options).toString(),
-                                correctIndex = item.correctIndex,
-                                explanation = item.explanation,
-                                timestampMs = item.timestampMs ?: sourceNote?.startTimestampMs,
-                                targetWord = isolatedWord.takeIf { it.isNotBlank() },
-                                meaning = isolatedMeaning.takeIf { it.isNotBlank() },
-                                contextSentence = isolatedContext.takeIf { it.isNotBlank() }
-                            )
-                        }
-
-                        viewModelScope.launch(Dispatchers.IO) {
-                            val insertedIds = repository.insertQuizQuestions(entities)
-                            activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
-
-                            val itemsWithIds = generated.mapIndexed { idx, item ->
-                                val id = insertedIds.getOrNull(idx)
-                                item.copy(savedQuestionId = id)
-                            }
-
-                            withContext(Dispatchers.Main) {
-                                notebookQuizGeneratedQuestions.value = itemsWithIds
-                                notebookQuizSuccessMessage.value = String.format(
-                                    Loc.getText("notebook_quiz_saved_success"),
-                                    entities.size
-                                )
-                                onSuccess?.invoke()
-                            }
-                        }
-                    } else {
-                        notebookQuizError.value = Loc.getText("notebook_quiz_no_vocab_found")
-                    }
-                }.onFailure { err ->
-                    isGeneratingNotebookQuiz.value = false
-                    val msg = err.message ?: ""
-                    notebookQuizError.value = when {
-                        msg == "MISSING_API_KEY" -> Loc.getText("missing_api_key_prompt")
-                        msg.isNotBlank() -> msg
-                        else -> Loc.getText("quiz_error_generic")
-                    }
-                }
-            } catch (e: Exception) {
-                isGeneratingNotebookQuiz.value = false
-                notebookQuizError.value = e.localizedMessage ?: Loc.getText("quiz_error_generic")
-            }
-        }
-    }
-
-    fun saveNotebookQuizQuestions(
-        items: List<com.example.ai.GeneratedNoteQuizItem>,
-        notesMap: Map<Long, Note> = emptyMap(),
-        onSuccess: (Int) -> Unit = {}
-    ) {
-        if (items.isEmpty()) return
-        viewModelScope.launch {
-            val entities = items.map { item ->
-                val sourceNote = notesMap[item.sourceNoteId]
-                val isolatedWord = item.targetWord.ifBlank { sourceNote?.getIsolatedTargetWord() ?: sourceNote?.text ?: "" }
-                val isolatedMeaning = item.meaning.ifBlank { sourceNote?.getIsolatedMeaning() ?: item.options.getOrNull(item.correctIndex) ?: item.explanation }
-                val isolatedContext = item.contextSentence.ifBlank { sourceNote?.getIsolatedContextSentence() ?: sourceNote?.text ?: "" }
-                QuizQuestion(
-                    trackId = item.trackId ?: sourceNote?.trackId,
-                    noteId = item.sourceNoteId,
-                    questionType = item.questionType,
-                    category = "VOCABULARY",
-                    question = item.question,
-                    optionsJson = org.json.JSONArray(item.options).toString(),
-                    correctIndex = item.correctIndex,
-                    explanation = item.explanation,
-                    timestampMs = item.timestampMs ?: sourceNote?.startTimestampMs,
-                    targetWord = isolatedWord.takeIf { it.isNotBlank() },
-                    meaning = isolatedMeaning.takeIf { it.isNotBlank() },
-                    contextSentence = isolatedContext.takeIf { it.isNotBlank() }
-                )
-            }
-            repository.insertQuizQuestions(entities)
-            activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
-            notebookQuizSuccessMessage.value = String.format(Loc.getText("notebook_quiz_saved_success"), entities.size)
-            onSuccess(entities.size)
-        }
-    }
-
-    fun generateQuizForSingleNote(
-        note: Note,
-        onSuccess: (QuizQuestion) -> Unit = {},
-        onError: (String) -> Unit = {}
-    ) {
-        viewModelScope.launch {
-            try {
-                val input = listOf(
-                    com.example.ai.NoteInputForQuiz(
-                        id = note.id,
-                        text = note.text,
-                        comment = note.comment,
-                        tags = note.getTagsList(),
-                        trackId = note.trackId,
-                        trackName = note.trackName,
-                        startTimestampMs = note.startTimestampMs,
-                        targetWord = note.targetWord,
-                        meaning = note.meaning,
-                        contextSentence = note.contextSentence
-                    )
-                )
-                val result = com.example.ai.GeminiService.generateQuizFromNotebookNotes(
-                    notes = input,
-                    maxQuestions = 1,
-                    customApiKey = customGeminiApiKey,
-                    language = Loc.currentLanguage
-                )
-                result.onSuccess { generatedList ->
-                    val first = generatedList.firstOrNull()
-                    if (first != null) {
-                        val isolatedWord = first.targetWord.ifBlank { note.getIsolatedTargetWord() }
-                        val isolatedMeaning = first.meaning.ifBlank { note.getIsolatedMeaning() }
-                        val isolatedContext = first.contextSentence.ifBlank { note.getIsolatedContextSentence() }
-                        val entity = QuizQuestion(
-                            trackId = first.trackId ?: note.trackId,
-                            noteId = note.id,
-                            questionType = first.questionType,
-                            category = "VOCABULARY",
-                            question = first.question,
-                            optionsJson = org.json.JSONArray(first.options).toString(),
-                            correctIndex = first.correctIndex,
-                            explanation = first.explanation,
-                            timestampMs = first.timestampMs ?: note.startTimestampMs,
-                            targetWord = isolatedWord.takeIf { it.isNotBlank() },
-                            meaning = isolatedMeaning.takeIf { it.isNotBlank() },
-                            contextSentence = isolatedContext.takeIf { it.isNotBlank() }
-                        )
-                        val insertedId = repository.insertQuizQuestion(entity)
-                        activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
-                        onSuccess(entity.copy(id = insertedId))
-                    } else {
-                        onError(Loc.getText("notebook_quiz_no_vocab_found"))
-                    }
-                }.onFailure { err ->
-                    val msg = err.message ?: ""
-                    val errText = when {
-                        msg == "MISSING_API_KEY" -> Loc.getText("missing_api_key_prompt")
-                        msg.isNotBlank() -> msg
-                        else -> Loc.getText("quiz_error_generic")
-                    }
-                    onError(errText)
-                }
-            } catch (e: Exception) {
-                onError(e.localizedMessage ?: Loc.getText("quiz_error_generic"))
-            }
-        }
-    }
+    fun openUnifiedQuiz(tabMode: QuizTabMode = QuizTabMode.TRACK, initialTrack: AudioTrack? = null, initialNotes: List<Note>? = null) =
+        quizViewModel.openUnifiedQuiz(tabMode, initialTrack, initialNotes)
+    fun openUnifiedQuizSheet(initialTrack: AudioTrack? = null, initialNotes: List<Note>? = null) =
+        quizViewModel.openUnifiedQuizSheet(initialTrack, initialNotes)
+    fun closeUnifiedQuizSheet() = quizViewModel.closeUnifiedQuizSheet()
 
     data class SavedApiKey(
         val id: String = UUID.randomUUID().toString(),
@@ -709,142 +294,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun sendChatMessage(
         prompt: String,
         contextSummary: AudioContextSummary? = null
-    ) {
-        val trimmedPrompt = prompt.trim()
-        if (trimmedPrompt.isBlank() || _isGeneratingAiResponse.value) return
-
-        val userMessage = ChatMessage(
-            role = "user",
-            text = trimmedPrompt,
-            attachedContext = contextSummary
-        )
-
-        val updatedHistory = _chatMessages.value + userMessage
-        _chatMessages.value = updatedHistory
-        _isGeneratingAiResponse.value = true
-
-        viewModelScope.launch {
-            val result = GeminiService.sendMessage(
-                history = updatedHistory.dropLast(1),
-                newUserMessage = trimmedPrompt,
-                contextSummary = contextSummary,
-                customApiKey = customGeminiApiKey,
-                language = Loc.currentLanguage
-            )
-
-            result.fold(
-                onSuccess = { modelReply ->
-                    _chatMessages.value = _chatMessages.value + ChatMessage(
-                        role = "model",
-                        text = modelReply
-                    )
-                    _isGeneratingAiResponse.value = false
-                },
-                onFailure = { error ->
-                    val errorText = when {
-                        error.message == "MISSING_API_KEY" -> Loc.getText("missing_api_key_prompt")
-                        else -> "Error: ${error.localizedMessage ?: "Failed to generate response"}"
-                    }
-                    _chatMessages.value = _chatMessages.value + ChatMessage(
-                        role = "model",
-                        text = errorText,
-                        isError = true
-                    )
-                    _isGeneratingAiResponse.value = false
-                }
-            )
-        }
-    }
+    ) = mediaAiViewModel.sendChatMessage(prompt, contextSummary)
 
     suspend fun generateNoteExplanation(
         quoteText: String,
         promptOrInstruction: String,
         trackTitle: String? = null
-    ): Result<String> {
-        val trimmedQuote = quoteText.trim()
-        val trimmedPrompt = promptOrInstruction.trim()
-        val defaultPrompt = Loc.getText("ai_default_note_prompt")
+    ): Result<String> = mediaAiViewModel.generateNoteExplanation(quoteText, promptOrInstruction, trackTitle)
 
-        val isDefaultOrBlankPrompt = trimmedPrompt.isBlank() ||
-                trimmedPrompt.equals(defaultPrompt, ignoreCase = true) ||
-                trimmedPrompt.equals("define vocabulary with examples", ignoreCase = true) ||
-                trimmedPrompt.equals("عرّف المفردات مع أمثلة", ignoreCase = true)
-
-        val userSpecifiedTarget = if (!isDefaultOrBlankPrompt) trimmedPrompt else null
-
-        val promptBuilder = StringBuilder()
-        promptBuilder.append("Define the vocabulary/expression using the strict fixed template without translation.\n\n")
-
-        if (userSpecifiedTarget != null) {
-            promptBuilder.append("Target word/phrase or instruction: \"$userSpecifiedTarget\"\n")
-        }
-
-        if (trimmedQuote.isNotBlank()) {
-            promptBuilder.append("Audio quote / sentence context: \"$trimmedQuote\"\n")
-        }
-
-        if (!trackTitle.isNullOrBlank()) {
-            promptBuilder.append("Audio track title: \"$trackTitle\"\n")
-        }
-
-        promptBuilder.append("\nStrict Rules to Follow:")
-        promptBuilder.append("\n1. Strictly follow the fixed template format line by line.")
-        promptBuilder.append("\n2. NO TRANSLATION. Do not provide any translation into Arabic or any other language. Everything must be strictly in English.")
-        promptBuilder.append("\n3. Keep the definition concise and clear (1-2 sentences).")
-        promptBuilder.append("\n4. Start immediately with the word/phrase line without any introductory greetings or headers.")
-        promptBuilder.append("\n\nRequired Template Structure:")
-        promptBuilder.append("\n[Word/Phrase]: [Meaning: Clear, direct, 1-2-sentence definition in simple language]")
-        promptBuilder.append("\n• Context in Audio: [How it was used in this specific line/sentence]")
-        promptBuilder.append("\n• Examples:")
-        promptBuilder.append("\n  1. \"[Natural everyday example sentence showing typical usage]\"")
-        promptBuilder.append("\n  2. \"[Second contrast or collocation example sentence]\"")
-        promptBuilder.append("\n• Key Collocations / Synonyms: [2–3 relevant words/phrases]")
-
-        val context = if (!trackTitle.isNullOrBlank()) {
-            AudioContextSummary(
-                trackTitle = trackTitle,
-                activeSubtitleLine = trimmedQuote.takeIf { it.isNotBlank() }
-            )
-        } else if (trimmedQuote.isNotBlank()) {
-            AudioContextSummary(
-                trackTitle = null,
-                activeSubtitleLine = trimmedQuote
-            )
-        } else null
-
-        val rawResult = GeminiService.sendMessage(
-            history = emptyList(),
-            newUserMessage = promptBuilder.toString(),
-            contextSummary = context,
-            customApiKey = customGeminiApiKey,
-            language = "en",
-            customSystemInstruction = GeminiService.VOCAB_NOTE_SYSTEM_PROMPT
-        )
-
-        return rawResult.map { cleanMarkdownToPlainText(it) }
-    }
-
-    private fun cleanMarkdownToPlainText(input: String): String {
-        var text = input
-        // Strip fenced code blocks
-        text = text.replace(Regex("```[a-zA-Z]*\n?"), "").replace("```", "")
-        // Strip bold & italic markdown syntax: **word**, *word*, __word__, _word_
-        text = text.replace(Regex("\\*\\*([^*]+)\\*\\*"), "$1")
-        text = text.replace(Regex("__([^_]+)__"), "$1")
-        text = text.replace(Regex("\\*([^*]+)\\*"), "$1")
-        text = text.replace(Regex("(?<!\\w)_([^_]+)_(?!\\w)"), "$1")
-        // Strip inline backticks
-        text = text.replace(Regex("`([^`]+)`"), "$1")
-        // Strip header hashes at line starts like # Title, ## Subtitle, ### Header
-        text = text.replace(Regex("(?m)^#{1,6}\\s*"), "")
-        // Convert markdown bullets (*, -, +) at line starts to standard clean bullet symbol •
-        text = text.replace(Regex("(?m)^[\\*\\-\\+]\\s+"), "• ")
-        // Strip blockquotes >
-        text = text.replace(Regex("(?m)^>\\s*"), "")
-        // Remove any remaining stray asterisks or hashes
-        text = text.replace("**", "").replace("*", "")
-        return text.trim()
-    }
+    fun cleanMarkdownToPlainText(input: String): String = mediaAiViewModel.cleanMarkdownToPlainText(input)
 
     // Stats variables
     var statsFilter by mutableStateOf("all") // all, today, week, month
