@@ -94,23 +94,12 @@ fun UnifiedQuizSheet(
         }
     }
 
-    // Active Quiz Session Runner State (shared across all modes)
-    var isSessionActive by remember { mutableStateOf(false) }
-    var sessionQuestions by remember { mutableStateOf<List<QuizQuestion>>(emptyList()) }
-    var currentQuestionIndex by remember { mutableIntStateOf(0) }
-    var userAnswers by remember { mutableStateOf<Map<Int, Int>>(emptyMap()) }
-    var isQuizFinished by remember { mutableStateOf(false) }
-
-    val startQuizSession: (List<QuizQuestion>) -> Unit = { questions ->
-        if (questions.isNotEmpty()) {
-            sessionQuestions = questions.shuffled().take(10)
-            currentQuestionIndex = 0
-            userAnswers = emptyMap()
-            isQuizFinished = false
-            isSessionActive = true
-            quizViewModel.setQuizTabMode(QuizTabMode.BANK)
-        }
-    }
+    // Active Quiz Session Runner State (shared across all modes, managed by ViewModel)
+    val isSessionActive by quizViewModel.isSessionActive.collectAsStateWithLifecycle()
+    val sessionQuestions by quizViewModel.sessionQuestions.collectAsStateWithLifecycle()
+    val currentQuestionIndex by quizViewModel.currentQuestionIndex.collectAsStateWithLifecycle()
+    val userAnswers by quizViewModel.userAnswers.collectAsStateWithLifecycle()
+    val isQuizFinished by quizViewModel.isQuizFinished.collectAsStateWithLifecycle()
 
     // Auto-launch session when track quiz generation succeeds
     LaunchedEffect(trackQuizBank) {
@@ -266,13 +255,12 @@ fun UnifiedQuizSheet(
                     modifier = Modifier.weight(1f)
                 )
 
-                // Tab 2: Practice & Bank
+                // Tab 2: Practice
                 FilterChip(
                     selected = activeTabMode == QuizTabMode.BANK,
                     onClick = { quizViewModel.setQuizTabMode(QuizTabMode.BANK) },
                     label = {
-                        val count = if (targetTrack != null) trackQuizBank.size else allVocabQuestions.size
-                        Text("${Loc.getText("unified_quiz_tab_bank")} ($count)", fontSize = 12.sp)
+                        Text(Loc.getText("unified_quiz_tab_bank"), fontSize = 12.sp)
                     },
                     leadingIcon = {
                         Icon(
@@ -300,13 +288,13 @@ fun UnifiedQuizSheet(
                             trackBankCount = trackQuizBank.size,
                             isGenerating = isGeneratingTrackQuiz,
                             errorMessage = trackQuizError,
-                            onSelectTrack = { track -> quizViewModel.openQuizForTrack(track) },
-                            onGenerateQuiz = {
-                                targetTrack?.let { quizViewModel.generateQuizForTrack(it) }
+                            onSelectTrack = { track -> quizViewModel.selectTrack(track) },
+                            onGenerateQuiz = { count ->
+                                targetTrack?.let { quizViewModel.generateQuizForTrack(it, count) }
                             },
                             onStartPractice = {
                                 if (trackQuizBank.isNotEmpty()) {
-                                    startQuizSession(trackQuizBank)
+                                    quizViewModel.startQuizSession(trackQuizBank)
                                 }
                             }
                         )
@@ -342,7 +330,7 @@ fun UnifiedQuizSheet(
                                         contextSentence = item.contextSentence
                                     )
                                 }
-                                startQuizSession(entities)
+                                quizViewModel.startQuizSession(entities)
                             },
                             onOpenVocabReview = onOpenVocabularyReview
                         )
@@ -354,8 +342,8 @@ fun UnifiedQuizSheet(
                                 QuizSessionResultsView(
                                     questions = sessionQuestions,
                                     userAnswers = userAnswers,
-                                    onRetake = { startQuizSession(sessionQuestions) },
-                                    onExitSession = { isSessionActive = false },
+                                    onRetake = { quizViewModel.retakeSession() },
+                                    onExitSession = { quizViewModel.exitSession() },
                                     onTogglePlayAudio = togglePlayAudio,
                                     isPlayingAudio = isPlayingAudio,
                                     currentlyPlayingTs = currentlyPlayingTs
@@ -366,26 +354,14 @@ fun UnifiedQuizSheet(
                                     currentIndex = currentQuestionIndex,
                                     userAnswers = userAnswers,
                                     onAnswerSelected = { qIndex, optIndex ->
-                                        if (userAnswers[qIndex] == null) {
-                                            userAnswers = userAnswers + (qIndex to optIndex)
-                                            val q = sessionQuestions[qIndex]
-                                            quizViewModel.recordQuizAnswer(q, optIndex == q.correctIndex)
-                                        }
+                                        quizViewModel.recordUserAnswer(qIndex, optIndex)
                                     },
-                                    onNext = {
-                                        if (currentQuestionIndex < sessionQuestions.size - 1) {
-                                            currentQuestionIndex++
-                                        } else {
-                                            isQuizFinished = true
-                                        }
-                                    },
-                                    onPrevious = {
-                                        if (currentQuestionIndex > 0) currentQuestionIndex--
-                                    },
+                                    onNext = { quizViewModel.nextQuestion() },
+                                    onPrevious = { quizViewModel.previousQuestion() },
                                     onTogglePlayAudio = togglePlayAudio,
                                     isPlayingAudio = isPlayingAudio,
                                     currentlyPlayingTs = currentlyPlayingTs,
-                                    onExitSession = { isSessionActive = false }
+                                    onExitSession = { quizViewModel.exitSession() }
                                 )
                             }
                         } else {
@@ -393,12 +369,13 @@ fun UnifiedQuizSheet(
                                 targetTrack = targetTrack,
                                 trackQuestions = trackQuizBank,
                                 allVocabQuestions = allVocabQuestions,
-                                onStartPractice = { list -> startQuizSession(list) },
+                                onStartPractice = { list -> quizViewModel.startQuizSession(list) },
                                 onDeleteQuestion = { id -> quizViewModel.deleteQuizQuestion(id) },
                                 onClearTrackBank = { id -> quizViewModel.clearQuizBankForTrack(id) },
                                 onTogglePlayAudio = togglePlayAudio,
                                 isPlayingAudio = isPlayingAudio,
-                                currentlyPlayingTs = currentlyPlayingTs
+                                currentlyPlayingTs = currentlyPlayingTs,
+                                onNavigateToTab = { mode -> quizViewModel.setQuizTabMode(mode) }
                             )
                         }
                     }
@@ -419,10 +396,11 @@ private fun TrackQuizTabContent(
     isGenerating: Boolean,
     errorMessage: String?,
     onSelectTrack: (AudioTrack) -> Unit,
-    onGenerateQuiz: () -> Unit,
+    onGenerateQuiz: (Int) -> Unit,
     onStartPractice: () -> Unit
 ) {
     var isTrackMenuExpanded by remember { mutableStateOf(false) }
+    var requestedTrackQuestionCount by remember { mutableIntStateOf(4) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -559,11 +537,89 @@ private fun TrackQuizTabContent(
             }
         }
 
+        // Number of questions stepper
+        item {
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                ),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = Loc.getText("notebook_quiz_question_count"),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = Loc.getText("notebook_quiz_count_range_hint"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.5.sp
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilledTonalIconButton(
+                            onClick = { if (requestedTrackQuestionCount > 1) requestedTrackQuestionCount-- },
+                            enabled = requestedTrackQuestionCount > 1,
+                            modifier = Modifier.size(38.dp).testTag("dec_track_quiz_count_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Remove,
+                                contentDescription = "Decrease count",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                            modifier = Modifier.widthIn(min = 44.dp)
+                        ) {
+                            Text(
+                                text = "$requestedTrackQuestionCount",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+
+                        FilledTonalIconButton(
+                            onClick = { if (requestedTrackQuestionCount < 20) requestedTrackQuestionCount++ },
+                            enabled = requestedTrackQuestionCount < 20,
+                            modifier = Modifier.size(38.dp).testTag("inc_track_quiz_count_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Add,
+                                contentDescription = "Increase count",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // Action Buttons
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
-                    onClick = onGenerateQuiz,
+                    onClick = { onGenerateQuiz(requestedTrackQuestionCount) },
                     enabled = targetTrack != null && !isGenerating,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().height(48.dp).testTag("generate_audio_quiz_btn")
@@ -688,19 +744,81 @@ private fun NotebookQuizTabContent(
 
         // Count picker
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                ),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text(Loc.getText("notebook_quiz_question_count"), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(2, 4, 6, 8).forEach { count ->
-                        FilterChip(
-                            selected = requestedCount == count,
-                            onClick = { requestedCount = count },
-                            label = { Text("$count", fontSize = 12.sp) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = Loc.getText("notebook_quiz_question_count"),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
                         )
+                        Text(
+                            text = Loc.getText("notebook_quiz_count_range_hint"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.5.sp
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilledTonalIconButton(
+                            onClick = { if (requestedCount > 1) requestedCount-- },
+                            enabled = requestedCount > 1,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .testTag("dec_quiz_count_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Remove,
+                                contentDescription = "Decrease count",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                            modifier = Modifier.widthIn(min = 44.dp)
+                        ) {
+                            Text(
+                                text = "$requestedCount",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+
+                        FilledTonalIconButton(
+                            onClick = { if (requestedCount < 20) requestedCount++ },
+                            enabled = requestedCount < 20,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .testTag("inc_quiz_count_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Add,
+                                contentDescription = "Increase count",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -1062,7 +1180,8 @@ private fun QuizBankBrowserView(
     onClearTrackBank: (Long) -> Unit,
     onTogglePlayAudio: (Long, Long?) -> Unit,
     isPlayingAudio: Boolean,
-    currentlyPlayingTs: Long?
+    currentlyPlayingTs: Long?,
+    onNavigateToTab: ((QuizTabMode) -> Unit)? = null
 ) {
     var viewAllVocab by remember { mutableStateOf(targetTrack == null) }
     val displayList = if (viewAllVocab) allVocabQuestions else trackQuestions
@@ -1096,31 +1215,96 @@ private fun QuizBankBrowserView(
         }
 
         // Start practice button
-        item {
-            Button(
-                onClick = { onStartPractice(displayList) },
-                enabled = displayList.isNotEmpty(),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().height(48.dp)
-            ) {
-                Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("${Loc.getText("unified_quiz_start_session")} (${displayList.size})", fontWeight = FontWeight.Bold)
+        if (displayList.isNotEmpty()) {
+            item {
+                Button(
+                    onClick = { onStartPractice(displayList) },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("${Loc.getText("unified_quiz_start_session")} (${displayList.size})", fontWeight = FontWeight.Bold)
+                }
             }
         }
 
         if (displayList.isEmpty()) {
             item {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(32.dp),
-                    contentAlignment = Alignment.Center
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp)
                 ) {
-                    Text(
-                        text = Loc.getText("quiz_empty_bank_prompt"),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                            modifier = Modifier.size(56.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.Quiz,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = Loc.getText("quiz_empty_bank_prompt"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+
+                        if (onNavigateToTab != null) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Button(
+                                    onClick = { onNavigateToTab(QuizTabMode.TRACK) },
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(Loc.getText("unified_quiz_tab_track"))
+                                }
+
+                                OutlinedButton(
+                                    onClick = { onNavigateToTab(QuizTabMode.NOTEBOOK) },
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(Loc.getText("unified_quiz_tab_notebook"))
+                                }
+                            }
+                        }
+                    }
                 }
             }
         } else {

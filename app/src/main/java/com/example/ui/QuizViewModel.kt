@@ -56,6 +56,66 @@ class QuizViewModel(
     val unifiedQuizInitialTrack = MutableStateFlow<AudioTrack?>(null)
     val unifiedQuizInitialNotes = MutableStateFlow<List<Note>?>(null)
 
+    // --- ACTIVE QUIZ SESSION RUNNER STATE ---
+    val isSessionActive = MutableStateFlow(false)
+    val sessionQuestions = MutableStateFlow<List<QuizQuestion>>(emptyList())
+    val currentQuestionIndex = MutableStateFlow(0)
+    val userAnswers = MutableStateFlow<Map<Int, Int>>(emptyMap())
+    val isQuizFinished = MutableStateFlow(false)
+
+    fun startQuizSession(questions: List<QuizQuestion>) {
+        if (questions.isNotEmpty()) {
+            sessionQuestions.value = questions.shuffled().take(10)
+            currentQuestionIndex.value = 0
+            userAnswers.value = emptyMap()
+            isQuizFinished.value = false
+            isSessionActive.value = true
+            activeQuizTabMode.value = QuizTabMode.BANK
+        }
+    }
+
+    fun recordUserAnswer(qIndex: Int, optionIndex: Int) {
+        if (userAnswers.value[qIndex] == null) {
+            userAnswers.value = userAnswers.value + (qIndex to optionIndex)
+            val q = sessionQuestions.value.getOrNull(qIndex)
+            if (q != null) {
+                recordQuizAnswer(q, optionIndex == q.correctIndex)
+            }
+        }
+    }
+
+    fun nextQuestion() {
+        if (currentQuestionIndex.value < sessionQuestions.value.size - 1) {
+            currentQuestionIndex.value++
+        } else {
+            isQuizFinished.value = true
+        }
+    }
+
+    fun previousQuestion() {
+        if (currentQuestionIndex.value > 0) {
+            currentQuestionIndex.value--
+        }
+    }
+
+    fun retakeSession() {
+        if (sessionQuestions.value.isNotEmpty()) {
+            startQuizSession(sessionQuestions.value)
+        }
+    }
+
+    fun exitSession() {
+        isSessionActive.value = false
+    }
+
+    fun selectTrack(track: AudioTrack) {
+        activeQuizTargetTrack.value = track
+        unifiedQuizInitialTrack.value = track
+        viewModelScope.launch {
+            loadQuizQuestionsForTrack(track.id)
+        }
+    }
+
     fun setQuizTabMode(mode: QuizTabMode) {
         activeQuizTabMode.value = mode
     }
@@ -97,22 +157,51 @@ class QuizViewModel(
 
     // --- TRACK QUIZ METHODS ---
 
-    fun openQuizForTrack(track: AudioTrack) {
-        activeQuizTabMode.value = QuizTabMode.TRACK
+    fun openQuizForTrack(track: AudioTrack, startPracticeSession: Boolean = true) {
         activeQuizTargetTrack.value = track
         unifiedQuizInitialTrack.value = track
         quizGenerationError.value = null
         quizGenerationSuccessMessage.value = null
-        viewModelScope.launch {
-            loadQuizQuestionsForTrack(track.id)
-            isQuizSheetOpen.value = true
-            isUnifiedQuizSheetOpen.value = true
+
+        if (startPracticeSession) {
+            activeQuizTabMode.value = QuizTabMode.BANK
+
+            // If an active session is already ongoing and not yet finished, re-open directly on it
+            if (isSessionActive.value && !isQuizFinished.value && sessionQuestions.value.isNotEmpty()) {
+                isQuizSheetOpen.value = true
+                isUnifiedQuizSheetOpen.value = true
+                return
+            }
+
+            viewModelScope.launch {
+                loadQuizQuestionsForTrack(track.id)
+                val trackQuestions = repository.getQuestionsForTrackDirect(track.id)
+                if (trackQuestions.isNotEmpty()) {
+                    startQuizSession(trackQuestions)
+                } else {
+                    val vocabQuestions = repository.getAllVocabularyQuestionsDirect()
+                    if (vocabQuestions.isNotEmpty()) {
+                        startQuizSession(vocabQuestions)
+                    } else {
+                        isSessionActive.value = false
+                    }
+                }
+                isQuizSheetOpen.value = true
+                isUnifiedQuizSheetOpen.value = true
+            }
+        } else {
+            activeQuizTabMode.value = QuizTabMode.TRACK
+            viewModelScope.launch {
+                loadQuizQuestionsForTrack(track.id)
+                isQuizSheetOpen.value = true
+                isUnifiedQuizSheetOpen.value = true
+            }
         }
     }
 
-    fun openQuizForCurrentTrack() {
+    fun openQuizForCurrentTrack(startPracticeSession: Boolean = true) {
         val current = AudioPlayerManager.currentTrack.value ?: return
-        openQuizForTrack(current)
+        openQuizForTrack(current, startPracticeSession)
     }
 
     fun closeQuizSheet() {
@@ -131,7 +220,7 @@ class QuizViewModel(
         }
     }
 
-    fun generateQuizForTrack(track: AudioTrack) {
+    fun generateQuizForTrack(track: AudioTrack, count: Int = 4) {
         if (isGeneratingQuiz.value) return
 
         quizGenerationError.value = null
@@ -174,7 +263,8 @@ class QuizViewModel(
                 val source = QuizContentSource.Transcript(
                     mediaTitle = track.getDisplayTitle(),
                     cues = cuesToUse,
-                    existingQuestions = existingQuestionTexts
+                    existingQuestions = existingQuestionTexts,
+                    questionCount = count
                 )
 
                 val result = GeminiService.generateQuizUnified(
@@ -209,6 +299,8 @@ class QuizViewModel(
                     loadQuizQuestionsForTrack(track.id)
                     isGeneratingQuiz.value = false
                     quizGenerationSuccessMessage.value = String.format(Loc.getText("quiz_generated_success"), entities.size)
+                    // Automatically launch into practice with the newly generated questions
+                    startQuizSession(entities)
                 }.onFailure { err ->
                     isGeneratingQuiz.value = false
                     val msg = err.message ?: ""

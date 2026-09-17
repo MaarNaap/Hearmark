@@ -163,12 +163,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val currentTrackQuizQuestions: MutableStateFlow<List<QuizQuestion>> get() = quizViewModel.currentTrackQuizQuestions
     val allVocabularyQuestions: StateFlow<List<QuizQuestion>> get() = quizViewModel.allVocabularyQuestions
 
-    fun openQuizForTrack(track: AudioTrack) = quizViewModel.openQuizForTrack(track)
-    fun openQuizForCurrentTrack() = quizViewModel.openQuizForCurrentTrack()
+    fun openQuizForTrack(track: AudioTrack, startPracticeSession: Boolean = true) = quizViewModel.openQuizForTrack(track, startPracticeSession)
+    fun openQuizForCurrentTrack(startPracticeSession: Boolean = true) = quizViewModel.openQuizForCurrentTrack(startPracticeSession)
     fun closeQuizSheet() = quizViewModel.closeQuizSheet()
     fun clearQuizGenerationFeedback() = quizViewModel.clearQuizGenerationFeedback()
     fun loadQuizQuestionsForTrack(trackId: Long) = quizViewModel.loadQuizQuestionsForTrack(trackId)
-    fun generateQuizForTrack(track: AudioTrack) = quizViewModel.generateQuizForTrack(track)
+    fun generateQuizForTrack(track: AudioTrack, count: Int = 4) = quizViewModel.generateQuizForTrack(track, count)
     fun recordQuizAnswer(question: QuizQuestion, isCorrect: Boolean) = quizViewModel.recordQuizAnswer(question, isCorrect)
     fun clearQuizBankForTrack(trackId: Long) = quizViewModel.clearQuizBankForTrack(trackId)
     fun deleteQuizQuestion(questionId: Long) = quizViewModel.deleteQuizQuestion(questionId)

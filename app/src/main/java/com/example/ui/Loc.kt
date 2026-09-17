@@ -809,7 +809,7 @@ object Loc {
         "quiz_clear_bank_confirm" to mapOf("en" to "Clear all saved quiz questions for this track?", "ar" to "هل تريد حذف جميع الأسئلة المحفوظة لهذا المقطع؟"),
         "quiz_accuracy_rate" to mapOf("en" to "Accuracy: %d%% (%d/%d answered)", "ar" to "نسبة الدقة: %d%% (%d/%d مجابة)"),
         "quiz_never_answered" to mapOf("en" to "Not answered yet", "ar" to "لم تتم الإجابة بعد"),
-        "quiz_empty_bank_prompt" to mapOf("en" to "No questions in the bank yet. Tap below to generate 8 quiz questions with Gemini!", "ar" to "لا توجد أسئلة في البنك لهذا المقطع بعد. اضغط بالأسفل لتوليد 8 أسئلة تفاعلية بالذكاء الاصطناعي!"),
+        "quiz_empty_bank_prompt" to mapOf("en" to "No questions in the bank yet. Generate quiz questions from Subtitles or Notes to start practicing!", "ar" to "لا توجد أسئلة في البنك بعد. قم بتوليد أسئلة من الترجمة أو الملاحظات لبدء التدريب!"),
         "quiz_delete_question" to mapOf("en" to "Delete Question", "ar" to "حذف السؤال"),
         "quiz_next_question" to mapOf("en" to "Next Question", "ar" to "السؤال التالي"),
         "quiz_prev_question" to mapOf("en" to "Previous", "ar" to "السابق"),
