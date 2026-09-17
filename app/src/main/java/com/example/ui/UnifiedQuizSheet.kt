@@ -862,26 +862,6 @@ private fun QuizSessionActiveRunner(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        // Word & meaning pill if present
-                        if (!currentQuestion.targetWord.isNullOrBlank()) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(currentQuestion.targetWord ?: "", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                    if (!currentQuestion.meaning.isNullOrBlank()) {
-                                        Text("•", fontSize = 10.sp)
-                                        Text(currentQuestion.meaning ?: "", fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                }
-                            }
-                        }
-
                         Text(
                             text = currentQuestion.question,
                             style = MaterialTheme.typography.titleMedium,
@@ -1153,17 +1133,9 @@ private fun QuizBankBrowserView(
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (!q.targetWord.isNullOrBlank()) {
-                                Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                                    Text(q.targetWord ?: "", fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                                }
-                            } else {
-                                Spacer(modifier = Modifier.width(1.dp))
-                            }
-
                             Row {
                                 if (q.timestampMs != null && q.timestampMs!! > 0) {
                                     val isPlaying = isPlayingAudio && currentlyPlayingTs == q.timestampMs

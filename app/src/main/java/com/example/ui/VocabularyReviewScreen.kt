@@ -1177,21 +1177,6 @@ fun VocabBankBrowserView(
                                 }
                             }
 
-                            if (!q.targetWord.isNullOrBlank()) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                                    shape = RoundedCornerShape(6.dp)
-                                ) {
-                                    Text(
-                                        text = "Target Word: ${q.targetWord}",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-
                             Text(
                                 text = q.question,
                                 fontWeight = FontWeight.SemiBold,
