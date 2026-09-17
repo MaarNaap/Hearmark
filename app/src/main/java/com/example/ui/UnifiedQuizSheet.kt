@@ -236,14 +236,14 @@ fun UnifiedQuizSheet(
                     .padding(vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Tab 0: Audio Dialogue Track
+                // Tab 0: Subtitles
                 FilterChip(
                     selected = activeTabMode == QuizTabMode.TRACK,
                     onClick = { quizViewModel.setQuizTabMode(QuizTabMode.TRACK) },
                     label = { Text(Loc.getText("unified_quiz_tab_track"), fontSize = 12.sp) },
                     leadingIcon = {
                         Icon(
-                            imageVector = Icons.Filled.Headphones,
+                            imageVector = Icons.Filled.Subtitles,
                             contentDescription = null,
                             modifier = Modifier.size(15.dp)
                         )
@@ -630,29 +630,6 @@ private fun NotebookQuizTabContent(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(vertical = 10.dp)
     ) {
-        // AI smart filter badge
-        item {
-            Card(
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(Icons.Filled.Psychology, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(24.dp))
-                    Text(
-                        text = Loc.getText("notebook_quiz_ai_filter_info"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        lineHeight = 18.sp
-                    )
-                }
-            }
-        }
-
         // Generated results banner
         if (generatedQuestions.isNotEmpty() && !isGenerating) {
             item {

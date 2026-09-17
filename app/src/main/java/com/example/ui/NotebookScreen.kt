@@ -75,9 +75,6 @@ fun NotebookScreen(
     var selectedTrackId by remember { mutableStateOf<Long?>(null) }
     var noteToDelete by remember { mutableStateOf<Note?>(null) }
     var viewingNoteTarget by remember { mutableStateOf<Note?>(null) }
-    var showQuizGeneratorSheet by remember { mutableStateOf(false) }
-    var singleNoteForQuiz by remember { mutableStateOf<Note?>(null) }
-    val isNotebookQuizSheetOpen by viewModel.isNotebookQuizSheetOpen.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
 
@@ -288,39 +285,6 @@ fun NotebookScreen(
                             }
                         }
 
-                        // Vocabulary Review Action Button
-                        IconButton(
-                            onClick = onOpenVocabularyReview,
-                            modifier = Modifier
-                                .size(40.dp)
-                                .testTag("notebook_vocab_review_btn")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Spellcheck,
-                                contentDescription = Loc.getText("vocab_review_title"),
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-
-                        // Create Vocab Quiz from Notebook Action Button
-                        IconButton(
-                            onClick = {
-                                singleNoteForQuiz = null
-                                showQuizGeneratorSheet = true
-                            },
-                            modifier = Modifier
-                                .size(40.dp)
-                                .testTag("notebook_quiz_generate_btn")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.AutoAwesome,
-                                contentDescription = Loc.getText("notebook_quiz_generate_btn"),
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-
                         // Single Add Note Icon Button
                         FilledTonalIconButton(
                             onClick = onAddNoteClicked,
@@ -497,8 +461,7 @@ fun NotebookScreen(
                                 Toast.makeText(context, Loc.getText("note_copied"), Toast.LENGTH_SHORT).show()
                             },
                             onCreateQuizQuestion = {
-                                singleNoteForQuiz = note
-                                showQuizGeneratorSheet = true
+                                viewModel.openNotebookQuizSheet(listOf(note))
                             }
                         )
                     }
@@ -574,8 +537,7 @@ fun NotebookScreen(
             onCreateQuizQuestion = {
                 val noteForQuiz = liveNote
                 viewingNoteTarget = null
-                singleNoteForQuiz = noteForQuiz
-                showQuizGeneratorSheet = true
+                viewModel.openNotebookQuizSheet(listOf(noteForQuiz))
             },
             onDismiss = { viewingNoteTarget = null }
         )
@@ -1066,20 +1028,6 @@ fun NotebookScreen(
                     Text(Loc.getText("cancel"))
                 }
             }
-        )
-    }
-
-    if (showQuizGeneratorSheet || isNotebookQuizSheetOpen) {
-        NotebookQuizGeneratorSheet(
-            viewModel = viewModel,
-            allNotes = notes,
-            initialSelectedNotes = singleNoteForQuiz?.let { listOf(it) },
-            onDismiss = {
-                showQuizGeneratorSheet = false
-                singleNoteForQuiz = null
-                viewModel.closeNotebookQuizSheet()
-            },
-            onOpenVocabularyReview = onOpenVocabularyReview
         )
     }
 }
