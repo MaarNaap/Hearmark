@@ -62,6 +62,7 @@ fun NotebookScreen(
     val tags by viewModel.noteTags.collectAsStateWithLifecycle()
     val folders by viewModel.folders.collectAsStateWithLifecycle()
     val tracks by viewModel.tracks.collectAsStateWithLifecycle()
+    val noteQuestionCounts by viewModel.noteQuestionCounts.collectAsStateWithLifecycle()
     val playingSnippetNoteId by NoteAudioPlayer.playingNoteId.collectAsStateWithLifecycle()
     val isSnippetPlaying by NoteAudioPlayer.isPlaying.collectAsStateWithLifecycle()
     val snippetPosition by NoteAudioPlayer.currentPosition.collectAsStateWithLifecycle()
@@ -425,11 +426,13 @@ fun NotebookScreen(
                 ) {
                     items(filteredNotes, key = { it.id }) { note ->
                         val isThisSnippetPlaying = isSnippetPlaying && playingSnippetNoteId == note.id
+                        val qCount = noteQuestionCounts[note.id] ?: 0
 
                         NoteCard(
                             note = note,
                             isPlaying = isThisSnippetPlaying,
                             currentPosition = if (isThisSnippetPlaying) snippetPosition else 0L,
+                            questionCount = qCount,
                             onPlaySnippet = {
                                 if (isThisSnippetPlaying) {
                                     viewModel.stopNoteSnippet()
@@ -479,6 +482,7 @@ fun NotebookScreen(
             note = liveNote,
             isPlaying = isThisSnippetPlaying,
             currentPosition = if (isThisSnippetPlaying) snippetPosition else 0L,
+            questionCount = noteQuestionCounts[liveNote.id] ?: 0,
             allTracks = tracks,
             onPlaySnippet = {
                 if (isThisSnippetPlaying) {
@@ -1037,6 +1041,7 @@ fun NoteCard(
     note: Note,
     isPlaying: Boolean,
     currentPosition: Long,
+    questionCount: Int = 0,
     onPlaySnippet: () -> Unit,
     onToggleFavorite: () -> Unit,
     onView: () -> Unit,
@@ -1201,6 +1206,29 @@ fun NoteCard(
                             )
                         }
                     }
+
+                    // Display question count if questions are attached to this note
+                    if (questionCount > 0) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier
+                                .height(22.dp)
+                                .padding(horizontal = 2.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier.padding(horizontal = 7.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "$questionCount",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+                    }
                 }
 
                 // Audio Snippet Play Button on the right (if linked to track)
@@ -1245,6 +1273,7 @@ fun NoteCard(
 @Composable
 fun PlaybackCueNotesBottomSheet(
     notes: List<Note>,
+    noteQuestionCounts: Map<Long, Int> = emptyMap(),
     onDismiss: () -> Unit,
     onEditNote: (Note) -> Unit,
     onDeleteNote: (Note) -> Unit,
@@ -1369,6 +1398,29 @@ fun PlaybackCueNotesBottomSheet(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    val qCount = noteQuestionCounts[note.id] ?: 0
+                                    if (qCount > 0) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                            modifier = Modifier
+                                                .height(22.dp)
+                                                .padding(horizontal = 2.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.padding(horizontal = 7.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = "$qCount",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                )
+                                            }
+                                        }
+                                    }
+
                                     // Favorite Toggle
                                     IconButton(
                                         onClick = { onToggleFavorite(note) },
@@ -1436,6 +1488,7 @@ fun ViewNoteDetailsModal(
     note: Note,
     isPlaying: Boolean,
     currentPosition: Long,
+    questionCount: Int = 0,
     allTracks: List<AudioTrack>,
     onPlaySnippet: () -> Unit,
     onPlayInMainPlayer: (AudioTrack, Long) -> Unit,
@@ -1505,6 +1558,28 @@ fun ViewNoteDetailsModal(
                             contentDescription = Loc.getText("notebook_quiz_single_note_btn"),
                             tint = MaterialTheme.colorScheme.primary
                         )
+                    }
+
+                    if (questionCount > 0) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier
+                                .height(22.dp)
+                                .padding(end = 4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier.padding(horizontal = 7.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "$questionCount",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
                     }
 
                     IconButton(onClick = onDismiss) {

@@ -418,6 +418,11 @@ data class TaskDailyProgress(
     val completedPlayCount: Int = 0
 )
 
+data class NoteQuestionCount(
+    val noteId: Long,
+    val count: Int
+)
+
 @Entity(
     tableName = "quiz_questions",
     foreignKeys = [
@@ -904,6 +909,9 @@ interface AppDao {
 
     @Query("SELECT * FROM quiz_questions WHERE noteId IS NOT NULL ORDER BY createdAt DESC")
     suspend fun getNotebookVocabularyQuestionsDirect(): List<QuizQuestion>
+
+    @Query("SELECT noteId, COUNT(*) as count FROM quiz_questions WHERE noteId IS NOT NULL GROUP BY noteId")
+    fun getNoteQuestionCountsFlow(): Flow<List<NoteQuestionCount>>
 }
 
 // --- DATABASE ---
@@ -1737,6 +1745,9 @@ class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
     suspend fun getQuestionsForNoteDirect(noteId: Long): List<QuizQuestion> = dao.getQuestionsForNoteDirect(noteId)
     fun getNotebookVocabularyQuestionsFlow(): Flow<List<QuizQuestion>> = dao.getNotebookVocabularyQuestionsFlow()
     suspend fun getNotebookVocabularyQuestionsDirect(): List<QuizQuestion> = dao.getNotebookVocabularyQuestionsDirect()
+    fun getNoteQuestionCountsMapFlow(): Flow<Map<Long, Int>> = dao.getNoteQuestionCountsFlow().map { list ->
+        list.associate { it.noteId to it.count }
+    }
 
     // VocabularyItem repository operations
     val allVocabularyItems: Flow<List<VocabularyItem>> = vocabDao?.getAllVocabularyItemsFlow() ?: kotlinx.coroutines.flow.flowOf(emptyList())

@@ -151,6 +151,7 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
 
     val allTasksList by viewModel.allTasks.collectAsStateWithLifecycle()
     val allTracksList by viewModel.tracks.collectAsStateWithLifecycle()
+    val noteQuestionCounts by viewModel.noteQuestionCounts.collectAsStateWithLifecycle()
     val playingSnippetNoteId by com.example.player.NoteAudioPlayer.playingNoteId.collectAsStateWithLifecycle()
     val isSnippetPlaying by com.example.player.NoteAudioPlayer.isPlaying.collectAsStateWithLifecycle()
     val snippetPosition by com.example.player.NoteAudioPlayer.currentPosition.collectAsStateWithLifecycle()
@@ -621,6 +622,7 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                 if (viewingCueNotesTarget != null) {
                     PlaybackCueNotesBottomSheet(
                         notes = viewingCueNotesTarget!!,
+                        noteQuestionCounts = noteQuestionCounts,
                         onDismiss = { viewingCueNotesTarget = null },
                         onEditNote = { note ->
                             viewingCueNotesTarget = null

@@ -83,6 +83,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val notes: StateFlow<List<Note>> = repository.allNotes
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val noteQuestionCounts: StateFlow<Map<Long, Int>> = repository.getNoteQuestionCountsMapFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
     val noteTags: StateFlow<List<NoteTag>> = repository.allTags
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

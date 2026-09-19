@@ -897,6 +897,7 @@ object Loc {
         "unified_quiz_active_session" to mapOf("en" to "Active Quiz Session", "ar" to "جلسة الاختبار الحالية"),
         "unified_quiz_question_counter" to mapOf("en" to "Question %d of %d", "ar" to "السؤال %d من %d"),
         "unified_quiz_results_title" to mapOf("en" to "Quiz Results", "ar" to "نتيجة الاختبار"),
-        "unified_quiz_retake" to mapOf("en" to "Retake Quiz", "ar" to "إعادة الاختبار")
+        "unified_quiz_retake" to mapOf("en" to "Retake Quiz", "ar" to "إعادة الاختبار"),
+        "note_related_questions_count" to mapOf("en" to "%d related questions", "ar" to "%d أسئلة مرتبطة")
     )
 }
