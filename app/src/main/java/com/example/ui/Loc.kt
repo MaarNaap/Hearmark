@@ -898,6 +898,23 @@ object Loc {
         "unified_quiz_question_counter" to mapOf("en" to "Question %d of %d", "ar" to "السؤال %d من %d"),
         "unified_quiz_results_title" to mapOf("en" to "Quiz Results", "ar" to "نتيجة الاختبار"),
         "unified_quiz_retake" to mapOf("en" to "Retake Quiz", "ar" to "إعادة الاختبار"),
-        "note_related_questions_count" to mapOf("en" to "%d related questions", "ar" to "%d أسئلة مرتبطة")
+        "note_related_questions_count" to mapOf("en" to "%d related questions", "ar" to "%d أسئلة مرتبطة"),
+        "unified_ai_hub_title" to mapOf("en" to "AI Hub", "ar" to "مركز الذكاء الاصطناعي"),
+        "unified_ai_hub_subtitle" to mapOf("en" to "Unified AI Assistant & Generators", "ar" to "المساعد الذكي والمولدات الموحدة"),
+        "ai_hub_step1_action" to mapOf("en" to "1. Select Function", "ar" to "1. اختر الوظيفة المطلوبة"),
+        "ai_hub_step2_context" to mapOf("en" to "2. Select Context", "ar" to "2. اختر السياق"),
+        "ai_hub_action_chat" to mapOf("en" to "AI Audio Companion", "ar" to "المساعد الذكي الصوتي"),
+        "ai_hub_action_chat_desc" to mapOf("en" to "Ask questions, explain grammar, translate vocabulary, or summarize audio dialogue", "ar" to "اسأل عن المقطع، اشرح القواعد، ترجم المفردات، أو لخص الحوار"),
+        "ai_hub_action_subtitles" to mapOf("en" to "Generate Subtitles", "ar" to "توليد ملف الترجمة"),
+        "ai_hub_action_subtitles_desc" to mapOf("en" to "Transcribe full audio into synchronized sentence-by-sentence SRT subtitles", "ar" to "تحويل الصوت إلى نصوص ترجمة SRT متزامنة جملة بجملة بدقة عالية"),
+        "ai_hub_action_quiz" to mapOf("en" to "Generate Quiz", "ar" to "توليد اختبار تفاعلي"),
+        "ai_hub_action_quiz_desc" to mapOf("en" to "Create retention quizzes from track dialogue or your notebook vocabulary notes", "ar" to "إنشاء اختبارات لتعزيز الحفظ من حوار المقطع أو ملاحظات المفردات"),
+        "ai_hub_context_type_track" to mapOf("en" to "Audio Track", "ar" to "مقطع صوتي"),
+        "ai_hub_context_type_note" to mapOf("en" to "Notebook Notes", "ar" to "ملاحظات الدفتر"),
+        "ai_hub_context_type_task" to mapOf("en" to "Goal Task", "ar" to "مهمة الهدف"),
+        "ai_hub_execute_action" to mapOf("en" to "Launch Function", "ar" to "تنفيذ الوظيفة"),
+        "ai_hub_current_playing_badge" to mapOf("en" to "Playing Now", "ar" to "قيد التشغيل"),
+        "ai_hub_notes_count_badge" to mapOf("en" to "%d notes selected", "ar" to "%d ملاحظة محددة"),
+        "ai_hub_all_notes_badge" to mapOf("en" to "All Notes (%d)", "ar" to "كل الملاحظات (%d)")
     )
 }

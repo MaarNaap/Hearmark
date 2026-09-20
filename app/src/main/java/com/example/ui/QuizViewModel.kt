@@ -445,6 +445,10 @@ class QuizViewModel(
 
                         viewModelScope.launch(Dispatchers.IO) {
                             val insertedIds = repository.insertQuizQuestions(entities)
+                            val affectedTrackIds = entities.mapNotNull { it.trackId }.distinct()
+                            for (tId in affectedTrackIds) {
+                                loadQuizQuestionsForTrack(tId)
+                            }
                             activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
 
                             val itemsWithIds = generated.mapIndexed { idx, item ->
@@ -508,6 +512,10 @@ class QuizViewModel(
                 )
             }
             repository.insertQuizQuestions(entities)
+            val affectedTrackIds = entities.mapNotNull { it.trackId }.distinct()
+            for (tId in affectedTrackIds) {
+                loadQuizQuestionsForTrack(tId)
+            }
             activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
             notebookQuizSuccessMessage.value = String.format(Loc.getText("notebook_quiz_saved_success"), entities.size)
             onSuccess(entities.size)
@@ -565,6 +573,7 @@ class QuizViewModel(
                             contextSentence = isolatedContext.takeIf { it.isNotBlank() }
                         )
                         val insertedId = repository.insertQuizQuestion(entity)
+                        entity.trackId?.let { loadQuizQuestionsForTrack(it) }
                         activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
                         onSuccess(entity.copy(id = insertedId))
                     } else {

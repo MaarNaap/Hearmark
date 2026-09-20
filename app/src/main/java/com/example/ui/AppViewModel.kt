@@ -206,6 +206,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         quizViewModel.openUnifiedQuizSheet(initialTrack, initialNotes)
     fun closeUnifiedQuizSheet() = quizViewModel.closeUnifiedQuizSheet()
 
+    // Unified AI Hub State & Controls
+    val isAiHubOpen = MutableStateFlow(false)
+    val aiHubInitialFunction = MutableStateFlow(AiFunctionType.CHAT)
+    val aiHubInitialTrack = MutableStateFlow<AudioTrack?>(null)
+    val aiHubInitialNotes = MutableStateFlow<List<Note>?>(null)
+    val aiHubInitialTask = MutableStateFlow<Task?>(null)
+
+    fun openAiHub(
+        function: AiFunctionType = AiFunctionType.CHAT,
+        track: AudioTrack? = null,
+        notes: List<Note>? = null,
+        task: Task? = null
+    ) {
+        aiHubInitialFunction.value = function
+        aiHubInitialTrack.value = track ?: AudioPlayerManager.currentTrack.value
+        aiHubInitialNotes.value = notes
+        aiHubInitialTask.value = task
+        isAiHubOpen.value = true
+    }
+
+    fun closeAiHub() {
+        isAiHubOpen.value = false
+        aiHubInitialTrack.value = null
+        aiHubInitialNotes.value = null
+        aiHubInitialTask.value = null
+    }
+
     data class SavedApiKey(
         val id: String = UUID.randomUUID().toString(),
         val name: String,

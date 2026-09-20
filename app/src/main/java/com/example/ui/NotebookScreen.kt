@@ -464,7 +464,12 @@ fun NotebookScreen(
                                 Toast.makeText(context, Loc.getText("note_copied"), Toast.LENGTH_SHORT).show()
                             },
                             onCreateQuizQuestion = {
-                                viewModel.openNotebookQuizSheet(listOf(note))
+                                val associatedTrack = if (note.trackId != null) tracks.find { it.id == note.trackId } else null
+                                viewModel.openAiHub(
+                                    function = AiFunctionType.QUIZ,
+                                    track = associatedTrack,
+                                    notes = listOf(note)
+                                )
                             }
                         )
                     }
@@ -541,7 +546,12 @@ fun NotebookScreen(
             onCreateQuizQuestion = {
                 val noteForQuiz = liveNote
                 viewingNoteTarget = null
-                viewModel.openNotebookQuizSheet(listOf(noteForQuiz))
+                val associatedTrack = if (noteForQuiz.trackId != null) tracks.find { it.id == noteForQuiz.trackId } else null
+                viewModel.openAiHub(
+                    function = AiFunctionType.QUIZ,
+                    track = associatedTrack,
+                    notes = listOf(noteForQuiz)
+                )
             },
             onDismiss = { viewingNoteTarget = null }
         )

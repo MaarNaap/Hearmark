@@ -692,7 +692,7 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                     )
                 }
 
-                // FLOATING AI ACTION BUTTON (Context-Aware Assistant)
+                // FLOATING AI ACTION BUTTON (Context-Aware Assistant - Unified AI Hub)
                 if (!isFullPlayerExpanded) {
                     Box(
                         modifier = Modifier
@@ -702,24 +702,32 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                     ) {
                         FloatingAiButton(
                             onClick = {
-                                val track = currentTrackState
-                                val cue = AudioPlayerManager.activeSubtitleCue.value
-                                val pos = AudioPlayerManager.currentPosition.value
-                                val dur = AudioPlayerManager.duration.value
-                                val formattedPos = if (dur > 0) "${formatDuration(pos)} / ${formatDuration(dur)}" else formatDuration(pos)
-                                viewModel.openChatWithContext(
-                                    com.example.ai.AudioContextSummary(
-                                        trackTitle = track?.getDisplayTitle(),
-                                        trackArtist = null,
-                                        currentPositionMs = pos,
-                                        formattedPosition = formattedPos,
-                                        activeSubtitleLine = cue?.text,
-                                        activeTaskTitle = activeTaskForDetails?.getDisplayTitle()
-                                    )
+                                viewModel.openAiHub(
+                                    function = AiFunctionType.CHAT,
+                                    track = currentTrackState,
+                                    task = activeTaskForDetails
                                 )
                             }
                         )
                     }
+                }
+
+                // UNIFIED AI HUB SHEET
+                val isAiHubOpen by viewModel.isAiHubOpen.collectAsStateWithLifecycle()
+                val aiHubInitialFunction by viewModel.aiHubInitialFunction.collectAsStateWithLifecycle()
+                val aiHubInitialTrack by viewModel.aiHubInitialTrack.collectAsStateWithLifecycle()
+                val aiHubInitialNotes by viewModel.aiHubInitialNotes.collectAsStateWithLifecycle()
+                val aiHubInitialTask by viewModel.aiHubInitialTask.collectAsStateWithLifecycle()
+
+                if (isAiHubOpen) {
+                    UnifiedAiHubSheet(
+                        viewModel = viewModel,
+                        onDismiss = { viewModel.closeAiHub() },
+                        initialFunction = aiHubInitialFunction,
+                        initialTrack = aiHubInitialTrack,
+                        initialNotes = aiHubInitialNotes,
+                        initialTask = aiHubInitialTask
+                    )
                 }
 
                 // GEMINI AI CHAT SHEET
