@@ -130,8 +130,7 @@ fun ListeningActivityLineChart(
     }
 
     var selectedIndex by remember(points) {
-        val peakIdx = points.indexOfFirst { it.actualDurationMs == (points.maxOfOrNull { p -> p.actualDurationMs } ?: 0L) }
-        mutableStateOf<Int?>(if (hasActivity && peakIdx >= 0 && points[peakIdx].actualDurationMs > 0L) peakIdx else (points.size - 1).coerceAtLeast(0))
+        mutableStateOf<Int?>(if (points.isNotEmpty()) points.size - 1 else null)
     }
     val activePoint = selectedIndex?.let { points.getOrNull(it) } ?: points.lastOrNull()
 
