@@ -10,6 +10,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
@@ -19,12 +21,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -44,6 +48,7 @@ enum class AiFunctionType {
 }
 
 enum class AiContextType {
+    FREE,
     TRACK,
     NOTEBOOK,
     TASK
@@ -64,22 +69,42 @@ fun UnifiedAiHubSheet(
     val allTracks by viewModel.tracks.collectAsStateWithLifecycle()
     val allFolders by viewModel.folders.collectAsStateWithLifecycle()
     val allNotes by viewModel.notes.collectAsStateWithLifecycle()
-    val allTasks by viewModel.allTasks.collectAsStateWithLifecycle()
+    val activeTasks by viewModel.activeTasks.collectAsStateWithLifecycle()
 
-    // 1. Function Selection
+    // 1. Function Selection (First Step)
     var selectedFunction by remember { mutableStateOf(initialFunction) }
 
-    // 2. Context Type Selection (FILES, NOTEBOOK, TASKS)
-    // Initially null unless caller provided a specific initial context
+    // Helper: allowed contexts based on function
+    val allowedContexts = remember(selectedFunction) {
+        when (selectedFunction) {
+            AiFunctionType.SUBTITLES -> listOf(AiContextType.TRACK)
+            AiFunctionType.QUIZ -> listOf(AiContextType.TRACK, AiContextType.NOTEBOOK)
+            AiFunctionType.CHAT -> listOf(AiContextType.FREE, AiContextType.TRACK, AiContextType.NOTEBOOK, AiContextType.TASK)
+        }
+    }
+
+    // 2. Context Type Selection
     var selectedContextType by remember {
-        mutableStateOf<AiContextType?>(
-            when {
-                initialNotes != null -> AiContextType.NOTEBOOK
-                initialTask != null -> AiContextType.TASK
-                initialTrack != null -> AiContextType.TRACK
-                else -> null
+        val initialCtx = when {
+            initialNotes != null -> AiContextType.NOTEBOOK
+            initialTask != null -> AiContextType.TASK
+            initialTrack != null -> AiContextType.TRACK
+            else -> null
+        }
+        mutableStateOf<AiContextType?>(initialCtx)
+    }
+
+    // Ensure selectedContextType is always compatible with selectedFunction
+    LaunchedEffect(selectedFunction) {
+        if (selectedContextType != null && !allowedContexts.contains(selectedContextType)) {
+            selectedContextType = if (selectedFunction == AiFunctionType.SUBTITLES) {
+                AiContextType.TRACK
+            } else if (allowedContexts.size == 1) {
+                allowedContexts.first()
+            } else {
+                null
             }
-        )
+        }
     }
 
     // Selected Targets for Each Context Type
@@ -91,8 +116,8 @@ fun UnifiedAiHubSheet(
         mutableStateOf(initialNotes ?: emptyList())
     }
 
-    var selectedTask by remember(initialTask, allTasks) {
-        mutableStateOf(initialTask ?: allTasks.firstOrNull())
+    var selectedTask by remember(initialTask, activeTasks) {
+        mutableStateOf(initialTask ?: activeTasks.firstOrNull())
     }
 
     // Dropdown expansion states
@@ -184,7 +209,7 @@ fun UnifiedAiHubSheet(
                 thickness = 0.5.dp
             )
 
-            // TWO DROPDOWN MENUS IN ONE COMPACT SECTION
+            // TWO DROPDOWN MENUS IN ONE ROW (Function first, Context second filtered by Function)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -309,7 +334,7 @@ fun UnifiedAiHubSheet(
                     }
                 }
 
-                // DROPDOWN 2: CONTEXT SELECTION (Files, Notebook, Tasks)
+                // DROPDOWN 2: CONTEXT SELECTION (Filtered strictly by selectedFunction)
                 Box(modifier = Modifier.weight(1f)) {
                     Surface(
                         onClick = { contextMenuExpanded = true },
@@ -339,6 +364,7 @@ fun UnifiedAiHubSheet(
                             ) {
                                 Icon(
                                     imageVector = when (selectedContextType) {
+                                        AiContextType.FREE -> Icons.Filled.Public
                                         AiContextType.TRACK -> Icons.Filled.Folder
                                         AiContextType.NOTEBOOK -> Icons.Filled.MenuBook
                                         AiContextType.TASK -> Icons.Filled.Assignment
@@ -350,6 +376,7 @@ fun UnifiedAiHubSheet(
                                 )
                                 Text(
                                     text = when (selectedContextType) {
+                                        AiContextType.FREE -> Loc.getText("ai_hub_context_free")
                                         AiContextType.TRACK -> Loc.getText("ai_hub_context_files")
                                         AiContextType.NOTEBOOK -> Loc.getText("ai_hub_context_notebook")
                                         AiContextType.TASK -> Loc.getText("ai_hub_context_tasks")
@@ -375,69 +402,94 @@ fun UnifiedAiHubSheet(
                         onDismissRequest = { contextMenuExpanded = false },
                         modifier = Modifier.widthIn(min = 180.dp)
                     ) {
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = Loc.getText("ai_hub_context_files"),
-                                    fontWeight = if (selectedContextType == AiContextType.TRACK) FontWeight.Bold else FontWeight.Normal
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Filled.Folder,
-                                    contentDescription = null,
-                                    tint = if (selectedContextType == AiContextType.TRACK) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
-                            onClick = {
-                                selectedContextType = AiContextType.TRACK
-                                contextMenuExpanded = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = Loc.getText("ai_hub_context_notebook"),
-                                    fontWeight = if (selectedContextType == AiContextType.NOTEBOOK) FontWeight.Bold else FontWeight.Normal
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Filled.MenuBook,
-                                    contentDescription = null,
-                                    tint = if (selectedContextType == AiContextType.NOTEBOOK) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
-                            onClick = {
-                                if (selectedFunction == AiFunctionType.SUBTITLES) {
-                                    selectedFunction = AiFunctionType.QUIZ
+                        // Only show options present in allowedContexts
+                        if (allowedContexts.contains(AiContextType.FREE)) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = Loc.getText("ai_hub_context_free"),
+                                        fontWeight = if (selectedContextType == AiContextType.FREE) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Filled.Public,
+                                        contentDescription = null,
+                                        tint = if (selectedContextType == AiContextType.FREE) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                },
+                                onClick = {
+                                    selectedContextType = AiContextType.FREE
+                                    contextMenuExpanded = false
                                 }
-                                selectedContextType = AiContextType.NOTEBOOK
-                                contextMenuExpanded = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = Loc.getText("ai_hub_context_tasks"),
-                                    fontWeight = if (selectedContextType == AiContextType.TASK) FontWeight.Bold else FontWeight.Normal
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Filled.Assignment,
-                                    contentDescription = null,
-                                    tint = if (selectedContextType == AiContextType.TASK) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
-                            onClick = {
-                                if (selectedFunction != AiFunctionType.CHAT) {
-                                    selectedFunction = AiFunctionType.CHAT
+                            )
+                        }
+
+                        if (allowedContexts.contains(AiContextType.TRACK)) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = Loc.getText("ai_hub_context_files"),
+                                        fontWeight = if (selectedContextType == AiContextType.TRACK) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Filled.Folder,
+                                        contentDescription = null,
+                                        tint = if (selectedContextType == AiContextType.TRACK) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                },
+                                onClick = {
+                                    selectedContextType = AiContextType.TRACK
+                                    contextMenuExpanded = false
                                 }
-                                selectedContextType = AiContextType.TASK
-                                contextMenuExpanded = false
-                            }
-                        )
+                            )
+                        }
+
+                        if (allowedContexts.contains(AiContextType.NOTEBOOK)) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = Loc.getText("ai_hub_context_notebook"),
+                                        fontWeight = if (selectedContextType == AiContextType.NOTEBOOK) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Filled.MenuBook,
+                                        contentDescription = null,
+                                        tint = if (selectedContextType == AiContextType.NOTEBOOK) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                },
+                                onClick = {
+                                    selectedContextType = AiContextType.NOTEBOOK
+                                    contextMenuExpanded = false
+                                }
+                            )
+                        }
+
+                        if (allowedContexts.contains(AiContextType.TASK)) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = Loc.getText("ai_hub_context_tasks"),
+                                        fontWeight = if (selectedContextType == AiContextType.TASK) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Filled.Assignment,
+                                        contentDescription = null,
+                                        tint = if (selectedContextType == AiContextType.TASK) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                },
+                                onClick = {
+                                    selectedContextType = AiContextType.TASK
+                                    contextMenuExpanded = false
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -450,7 +502,7 @@ fun UnifiedAiHubSheet(
             ) {
                 when (selectedContextType) {
                     null -> {
-                        // Clean empty state prompt
+                        // Prompt until user chooses context
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -483,8 +535,58 @@ fun UnifiedAiHubSheet(
                         }
                     }
 
+                    AiContextType.FREE -> {
+                        // Free Chat preview card with clear description
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight(),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Public,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = Loc.getText("ai_hub_context_free"),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = Loc.getText("ai_hub_context_free_desc"),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                )
+                            }
+                        }
+                    }
+
                     AiContextType.TRACK -> {
-                        // Hierarchy Tree File Picker (Folders & Audio Tracks)
+                        // Hierarchy Tree File Picker (Folders collapsed by default, with Collapse All / Expand All toggle)
                         HierarchyFilePicker(
                             folders = allFolders,
                             tracks = allTracks,
@@ -494,7 +596,7 @@ fun UnifiedAiHubSheet(
                     }
 
                     AiContextType.NOTEBOOK -> {
-                        // Rich Notebook Notes Preview & Multi-Selection List
+                        // Rich Notebook Notes Preview with Expandable Search Icon
                         NotebookNotesPicker(
                             allNotes = allNotes,
                             selectedNotes = selectedNotesList,
@@ -503,9 +605,9 @@ fun UnifiedAiHubSheet(
                     }
 
                     AiContextType.TASK -> {
-                        // Tasks Preview Cards with Progress & Single Selection
+                        // Tasks Preview Cards showing ONLY ACTIVE TASKS
                         TasksPicker(
-                            allTasks = allTasks,
+                            activeTasks = activeTasks,
                             selectedTask = selectedTask,
                             onTaskSelected = { selectedTask = it }
                         )
@@ -577,25 +679,59 @@ private fun executeAiAction(
 ) {
     when (function) {
         AiFunctionType.CHAT -> {
-            val isSelectedTrackPlaying = track != null && AudioPlayerManager.currentTrack.value?.id == track.id
-            val pos = if (isSelectedTrackPlaying) AudioPlayerManager.currentPosition.value else 0L
-            val dur = if (isSelectedTrackPlaying) AudioPlayerManager.duration.value else (track?.duration ?: 0L)
-            val cue = if (isSelectedTrackPlaying) AudioPlayerManager.activeSubtitleCue.value?.text else null
-            val formattedPos = if (dur > 0) "${formatDuration(pos)} / ${formatDuration(dur)}" else formatDuration(pos)
+            when (contextType) {
+                AiContextType.FREE -> {
+                    // Chat freely without any attached file/note/task context
+                    viewModel.openChatWithContext(null)
+                }
 
-            val notesSummary = if (contextType == AiContextType.NOTEBOOK && notes.isNotEmpty()) {
-                notes.joinToString("; ") { "${it.text}${if (it.comment.isNotBlank()) ": " + it.comment else ""}" }
-            } else null
+                AiContextType.TRACK -> {
+                    val isSelectedTrackPlaying = track != null && AudioPlayerManager.currentTrack.value?.id == track.id
+                    val pos = if (isSelectedTrackPlaying) AudioPlayerManager.currentPosition.value else 0L
+                    val dur = if (isSelectedTrackPlaying) AudioPlayerManager.duration.value else (track?.duration ?: 0L)
+                    val cue = if (isSelectedTrackPlaying) AudioPlayerManager.activeSubtitleCue.value?.text else null
+                    val formattedPos = if (dur > 0) "${formatDuration(pos)} / ${formatDuration(dur)}" else formatDuration(pos)
 
-            val summary = AudioContextSummary(
-                trackTitle = track?.getDisplayTitle(),
-                trackArtist = null,
-                currentPositionMs = pos,
-                formattedPosition = formattedPos,
-                activeSubtitleLine = cue ?: notesSummary,
-                activeTaskTitle = task?.getDisplayTitle()
-            )
-            viewModel.openChatWithContext(summary)
+                    val summary = AudioContextSummary(
+                        trackTitle = track?.getDisplayTitle(),
+                        trackArtist = null,
+                        currentPositionMs = pos,
+                        formattedPosition = formattedPos,
+                        activeSubtitleLine = cue,
+                        audioFilePath = track?.filePath,
+                        trackId = track?.id,
+                        totalDurationMs = dur
+                    )
+                    viewModel.openChatWithContext(summary)
+                }
+
+                AiContextType.NOTEBOOK -> {
+                    val notesSummary = if (notes.isNotEmpty()) {
+                        notes.joinToString("; ") { "${it.text}${if (it.comment.isNotBlank()) ": " + it.comment else ""}" }
+                    } else null
+
+                    val summary = AudioContextSummary(
+                        trackTitle = null,
+                        trackArtist = null,
+                        currentPositionMs = 0L,
+                        formattedPosition = "",
+                        activeSubtitleLine = notesSummary
+                    )
+                    viewModel.openChatWithContext(summary)
+                }
+
+                AiContextType.TASK -> {
+                    val summary = AudioContextSummary(
+                        trackTitle = null,
+                        trackArtist = null,
+                        currentPositionMs = 0L,
+                        formattedPosition = "",
+                        activeSubtitleLine = null,
+                        activeTaskTitle = task?.getDisplayTitle()
+                    )
+                    viewModel.openChatWithContext(summary)
+                }
+            }
         }
 
         AiFunctionType.SUBTITLES -> {
@@ -619,7 +755,7 @@ private fun executeAiAction(
 
         AiFunctionType.QUIZ -> {
             when (contextType) {
-                AiContextType.TRACK -> {
+                AiContextType.FREE, AiContextType.TRACK -> {
                     if (track != null) {
                         viewModel.openUnifiedQuiz(
                             tabMode = QuizTabMode.TRACK,
@@ -654,7 +790,7 @@ private fun executeAiAction(
 }
 
 // -------------------------------------------------------------------------------------------------
-// 1. FILES CONTEXT: HIERARCHICAL TREE FILE PICKER
+// 1. FILES CONTEXT: HIERARCHICAL TREE FILE PICKER (Collapsed as default + Expand/Collapse All toggle)
 // -------------------------------------------------------------------------------------------------
 
 @Composable
@@ -664,12 +800,16 @@ private fun HierarchyFilePicker(
     selectedTrack: AudioTrack?,
     onTrackSelected: (AudioTrack) -> Unit
 ) {
-    // Build hierarchical tree nodes
     val folderTree = remember(folders) { buildFolderTree(folders) }
 
-    // State of expanded folders: expand root folders by default
+    // All folders collapsed by default
     var expandedFolderIds by remember(folders) {
-        mutableStateOf(folders.map { it.id }.toSet())
+        mutableStateOf(emptySet<Long>())
+    }
+
+    val allFolderIds = remember(folders) { folders.map { it.id }.toSet() }
+    val isAllExpanded = remember(expandedFolderIds, allFolderIds) {
+        allFolderIds.isNotEmpty() && expandedFolderIds.containsAll(allFolderIds)
     }
 
     // Flatten tree respecting expanded folders
@@ -677,7 +817,7 @@ private fun HierarchyFilePicker(
         flattenFolderTree(folderTree, expandedFolderIds)
     }
 
-    // Independent tracks (no parent folder or parent folder not found)
+    // Independent tracks
     val independentTracks = remember(tracks, folders) {
         val folderIds = folders.map { it.id }.toSet()
         tracks.filter { it.parentFolderId == null || !folderIds.contains(it.parentFolderId) }
@@ -698,96 +838,140 @@ private fun HierarchyFilePicker(
                 )
             }
         } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                // Render Folder Tree
-                flattenedFolders.forEach { node ->
-                    val folder = node.folder
-                    val isExpanded = expandedFolderIds.contains(folder.id)
-                    val folderTracks = tracks.filter { it.parentFolderId == folder.id }
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Header with Expand All / Collapse All toggle button
+                if (folders.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${Loc.getText("folders")} (${folders.size})",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
 
-                    item(key = "folder_${folder.id}") {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = (node.depth * 14 + 6).dp, end = 10.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
-                                    expandedFolderIds = if (isExpanded) {
-                                        expandedFolderIds - folder.id
-                                    } else {
-                                        expandedFolderIds + folder.id
-                                    }
-                                }
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        TextButton(
+                            onClick = {
+                                expandedFolderIds = if (isAllExpanded) emptySet() else allFolderIds
+                            },
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Icon(
-                                imageVector = if (isExpanded) Icons.Filled.FolderOpen else Icons.Filled.Folder,
+                                imageVector = if (isAllExpanded) Icons.Filled.UnfoldLess else Icons.Filled.UnfoldMore,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary
                             )
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = folder.folderName,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = "${folderTracks.size}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Icon(
-                                imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                modifier = Modifier.size(16.dp)
+                                text = if (isAllExpanded) Loc.getText("ai_hub_collapse_all") else Loc.getText("ai_hub_expand_all"),
+                                fontSize = 11.5.sp
                             )
                         }
                     }
 
-                    // Render Tracks within this folder if expanded
-                    if (isExpanded) {
-                        items(folderTracks, key = { "track_${it.id}" }) { track ->
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+                        thickness = 0.5.dp
+                    )
+                }
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    // Render Folder Tree
+                    flattenedFolders.forEach { node ->
+                        val folder = node.folder
+                        val isExpanded = expandedFolderIds.contains(folder.id)
+                        val folderTracks = tracks.filter { it.parentFolderId == folder.id }
+
+                        item(key = "folder_${folder.id}") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = (node.depth * 14 + 6).dp, end = 10.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        expandedFolderIds = if (isExpanded) {
+                                            expandedFolderIds - folder.id
+                                        } else {
+                                            expandedFolderIds + folder.id
+                                        }
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isExpanded) Icons.Filled.FolderOpen else Icons.Filled.Folder,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = folder.folderName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "${folderTracks.size}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Icon(
+                                    imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        // Render Tracks within this folder if expanded
+                        if (isExpanded) {
+                            items(folderTracks, key = { "track_${it.id}" }) { track ->
+                                val isSelected = selectedTrack?.id == track.id
+                                FileTrackRowItem(
+                                    track = track,
+                                    depth = node.depth + 1,
+                                    isSelected = isSelected,
+                                    onSelect = { onTrackSelected(track) }
+                                )
+                            }
+                        }
+                    }
+
+                    // Independent tracks section
+                    if (independentTracks.isNotEmpty()) {
+                        item(key = "header_independent") {
+                            Text(
+                                text = Loc.getText("ai_hub_independent_tracks"),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(start = 14.dp, top = 8.dp, bottom = 4.dp)
+                            )
+                        }
+                        items(independentTracks, key = { "indep_${it.id}" }) { track ->
                             val isSelected = selectedTrack?.id == track.id
                             FileTrackRowItem(
                                 track = track,
-                                depth = node.depth + 1,
+                                depth = 0,
                                 isSelected = isSelected,
                                 onSelect = { onTrackSelected(track) }
                             )
                         }
-                    }
-                }
-
-                // Independent tracks section
-                if (independentTracks.isNotEmpty()) {
-                    item(key = "header_independent") {
-                        Text(
-                            text = Loc.getText("ai_hub_independent_tracks"),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 14.dp, top = 8.dp, bottom = 4.dp)
-                        )
-                    }
-                    items(independentTracks, key = { "indep_${it.id}" }) { track ->
-                        val isSelected = selectedTrack?.id == track.id
-                        FileTrackRowItem(
-                            track = track,
-                            depth = 0,
-                            isSelected = isSelected,
-                            onSelect = { onTrackSelected(track) }
-                        )
                     }
                 }
             }
@@ -846,7 +1030,7 @@ private fun FileTrackRowItem(
 }
 
 // -------------------------------------------------------------------------------------------------
-// 2. NOTEBOOK CONTEXT: NOTES PREVIEW & SELECTION
+// 2. NOTEBOOK CONTEXT: NOTES PREVIEW WITH EXPANDABLE SEARCH ICON
 // -------------------------------------------------------------------------------------------------
 
 @Composable
@@ -856,6 +1040,28 @@ private fun NotebookNotesPicker(
     onSelectionChanged: (List<Note>) -> Unit
 ) {
     val selectedIds = remember(selectedNotes) { selectedNotes.map { it.id }.toSet() }
+
+    // Search state & Expandable icon
+    var isSearchExpanded by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+
+    val filteredNotes = remember(allNotes, searchQuery) {
+        if (searchQuery.isBlank()) {
+            allNotes
+        } else {
+            allNotes.filter {
+                it.text.contains(searchQuery, ignoreCase = true) ||
+                it.comment.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
+
+    LaunchedEffect(isSearchExpanded) {
+        if (isSearchExpanded) {
+            focusRequester.requestFocus()
+        }
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -873,37 +1079,92 @@ private fun NotebookNotesPicker(
             }
         } else {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Header with Select All / Deselect All
+                // Header with Title / Search Toggle / Select All / Deselect All
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = if (selectedNotes.isEmpty()) {
-                            String.format(Loc.getText("ai_hub_all_notes_badge"), allNotes.size)
-                        } else {
-                            String.format(Loc.getText("ai_hub_notes_count_badge"), selectedNotes.size)
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    if (isSearchExpanded) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = {
+                                Text(
+                                    text = Loc.getText("ai_hub_search_notes"),
+                                    fontSize = 12.sp
+                                )
+                            },
+                            singleLine = true,
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = {
+                                        if (searchQuery.isNotEmpty()) {
+                                            searchQuery = ""
+                                        } else {
+                                            isSearchExpanded = false
+                                        }
+                                    },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Close,
+                                        contentDescription = "Close search",
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .focusRequester(focusRequester),
+                            shape = RoundedCornerShape(8.dp),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { isSearchExpanded = false })
+                        )
+                    } else {
+                        Text(
+                            text = if (selectedNotes.isEmpty()) {
+                                String.format(Loc.getText("ai_hub_all_notes_badge"), allNotes.size)
+                            } else {
+                                String.format(Loc.getText("ai_hub_notes_count_badge"), selectedNotes.size)
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        TextButton(
-                            onClick = { onSelectionChanged(allNotes) },
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            Text(Loc.getText("select_all"), fontSize = 11.sp)
-                        }
-                        TextButton(
-                            onClick = { onSelectionChanged(emptyList()) },
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(Loc.getText("deselect_all"), fontSize = 11.sp)
+                            // Expandable search icon button
+                            IconButton(
+                                onClick = { isSearchExpanded = true },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Search,
+                                    contentDescription = "Search",
+                                    tint = if (searchQuery.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            TextButton(
+                                onClick = { onSelectionChanged(filteredNotes) },
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(Loc.getText("select_all"), fontSize = 11.sp)
+                            }
+                            TextButton(
+                                onClick = { onSelectionChanged(emptyList()) },
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(Loc.getText("deselect_all"), fontSize = 11.sp)
+                            }
                         }
                     }
                 }
@@ -918,7 +1179,7 @@ private fun NotebookNotesPicker(
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    items(allNotes, key = { it.id }) { note ->
+                    items(filteredNotes, key = { it.id }) { note ->
                         val isChecked = selectedIds.contains(note.id)
                         Surface(
                             shape = RoundedCornerShape(10.dp),
@@ -983,12 +1244,12 @@ private fun NotebookNotesPicker(
 }
 
 // -------------------------------------------------------------------------------------------------
-// 3. TASKS CONTEXT: PREVIEW CARDS
+// 3. TASKS CONTEXT: PREVIEW CARDS (ONLY ACTIVE TASKS)
 // -------------------------------------------------------------------------------------------------
 
 @Composable
 private fun TasksPicker(
-    allTasks: List<Task>,
+    activeTasks: List<Task>,
     selectedTask: Task?,
     onTaskSelected: (Task) -> Unit
 ) {
@@ -998,10 +1259,10 @@ private fun TasksPicker(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
     ) {
-        if (allTasks.isEmpty()) {
+        if (activeTasks.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    text = Loc.getText("no_tasks_found"),
+                    text = Loc.getText("ai_hub_no_active_tasks"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1012,7 +1273,7 @@ private fun TasksPicker(
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                items(allTasks, key = { it.id }) { task ->
+                items(activeTasks, key = { it.id }) { task ->
                     val isSelected = selectedTask?.id == task.id
                     Surface(
                         shape = RoundedCornerShape(10.dp),
@@ -1045,7 +1306,7 @@ private fun TasksPicker(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = if (task.isCompleted) Icons.Filled.CheckCircle else Icons.Filled.Assignment,
+                                    imageVector = Icons.Filled.Assignment,
                                     contentDescription = null,
                                     tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(18.dp)
