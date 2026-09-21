@@ -5556,9 +5556,12 @@ fun AudioPlayerOverlay(
                     // Practice Mode Status Row in Focus Mode (Single row with Repeat & Skip Pause)
                     if (isPracticeMode) {
                         val practiceSegmentsList by AudioPlayerManager.currentPracticeSegments.collectAsStateWithLifecycle()
+                        val practiceMultiplierState by AudioPlayerManager.practicePauseMultiplierFlow.collectAsStateWithLifecycle()
                         val currentPlayingTrack by AudioPlayerManager.currentTrack.collectAsStateWithLifecycle()
                         val activeTrack = currentPlayingTrack ?: track
                         val activePracticeSource = AudioPlayerManager.getActivePracticeSourceForTrack(activeTrack)
+                        val effectiveSegments = if (practiceSegmentsList.isNotEmpty()) practiceSegmentsList else activeTrack.getPracticeSegmentsList()
+                        val cutsCount = effectiveSegments.size
 
                         Surface(
                             shape = RoundedCornerShape(12.dp),
@@ -5696,7 +5699,7 @@ fun AudioPlayerOverlay(
                                             .weight(1f, fill = false)
                                             .clickable { showPracticeSetupSheet = true },
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         Box(
                                             modifier = Modifier
@@ -5726,56 +5729,77 @@ fun AudioPlayerOverlay(
                                             lineHeight = 14.sp,
                                             color = MaterialTheme.colorScheme.primary
                                         )
-                                        Text(
-                                            text = "${practiceSegmentsList.size} ${Loc.getText("cuts_label")} • ${String.format(java.util.Locale.US, "%.2f", AudioPlayerManager.practicePauseMultiplier)}x",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            lineHeight = 14.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                                            border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.50f))
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.ContentCut,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Text(
+                                                    text = "$cutsCount ${Loc.getText("cuts_label")} • ${String.format(java.util.Locale.US, "%.2f", practiceMultiplierState)}x",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    lineHeight = 14.sp,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
                                     }
 
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
+                                        // Customize button styled exactly like Repeat/Skip buttons
                                         Row(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
                                                 .clickable { showPracticeSetupSheet = true }
-                                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                .padding(horizontal = 6.dp, vertical = 3.dp),
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
                                         ) {
-                                            Text(
-                                                text = Loc.getText("tap_to_change_source"),
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                lineHeight = 14.sp,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
                                             Icon(
-                                                imageVector = Icons.Filled.ChevronRight,
+                                                imageVector = Icons.Filled.Tune,
                                                 contentDescription = Loc.getText("tap_to_change_source"),
                                                 tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(14.dp)
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Text(
+                                                text = Loc.getText("tap_to_change_source"),
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                lineHeight = 13.sp,
+                                                color = MaterialTheme.colorScheme.primary
                                             )
                                         }
 
-                                        IconButton(
-                                            onClick = {
-                                                AudioPlayerManager.setFocusMode(false)
-                                            },
-                                            modifier = Modifier.size(24.dp)
+                                        // Exit button
+                                        Row(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                                                .clickable { AudioPlayerManager.setFocusMode(false) }
+                                                .padding(horizontal = 5.dp, vertical = 3.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Filled.Close,
                                                 contentDescription = "Exit Practice Mode",
                                                 tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(15.dp)
+                                                modifier = Modifier.size(13.dp)
                                             )
                                         }
                                     }

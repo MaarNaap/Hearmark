@@ -93,6 +93,9 @@ object AudioPlayerManager {
     private val _practicePauseTotalSeconds = MutableStateFlow(0f)
     val practicePauseTotalSeconds: StateFlow<Float> = _practicePauseTotalSeconds.asStateFlow()
 
+    private val _practicePauseMultiplierFlow = MutableStateFlow(1.0f)
+    val practicePauseMultiplierFlow: StateFlow<Float> = _practicePauseMultiplierFlow.asStateFlow()
+
     private val _currentPracticeSegments = MutableStateFlow<List<Long>>(emptyList())
     val currentPracticeSegments: StateFlow<List<Long>> = _currentPracticeSegments.asStateFlow()
 
@@ -759,7 +762,9 @@ object AudioPlayerManager {
             "MANUAL" -> "MANUAL"
             else -> "SILENCE"
         }
-        practicePauseMultiplier = multiplier.coerceIn(0.25f, 4.0f)
+        val coerced = multiplier.coerceIn(0.25f, 4.0f)
+        practicePauseMultiplier = coerced
+        _practicePauseMultiplierFlow.value = coerced
 
         if (!oldSource.equals(segmentSource, ignoreCase = true)) {
             val track = currentTrackValue
@@ -2638,7 +2643,9 @@ object AudioPlayerManager {
             else -> "SILENCE"
         }
         segmentSource = normalizedSource
-        practicePauseMultiplier = multiplier.coerceIn(0.25f, 4.0f)
+        val coerced = multiplier.coerceIn(0.25f, 4.0f)
+        practicePauseMultiplier = coerced
+        _practicePauseMultiplierFlow.value = coerced
 
         // If manual and cuts exist, directly apply without reanalysis
         if (normalizedSource == "MANUAL" && track.practiceSegments?.startsWith("MAN:") == true) {
