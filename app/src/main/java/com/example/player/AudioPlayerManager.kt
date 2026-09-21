@@ -116,16 +116,26 @@ object AudioPlayerManager {
 
     val isVideoFullWidth = MutableStateFlow(true)
 
-    val isVideoFocusMode = MutableStateFlow(false)
+    val isFocusMode = MutableStateFlow(false)
+    val isVideoFocusMode: MutableStateFlow<Boolean> get() = isFocusMode
 
-    fun toggleVideoFocusMode(): Boolean {
-        val next = !isVideoFocusMode.value
-        isVideoFocusMode.value = next
+    fun toggleFocusMode(): Boolean {
+        val next = !isFocusMode.value
+        setFocusMode(next)
         return next
     }
 
+    fun toggleVideoFocusMode(): Boolean = toggleFocusMode()
+
+    fun setFocusMode(enabled: Boolean) {
+        isFocusMode.value = enabled
+        if (!enabled && _isPracticeMode.value) {
+            stopPracticeMode()
+        }
+    }
+
     fun setVideoFocusMode(enabled: Boolean) {
-        isVideoFocusMode.value = enabled
+        setFocusMode(enabled)
     }
 
     fun toggleVideoFullWidth(): Boolean {
@@ -2583,6 +2593,7 @@ object AudioPlayerManager {
             if (list.isNotEmpty()) {
                 _currentPracticeSegments.value = list
                 _isPracticeMode.value = true
+                setFocusMode(true)
                 resetPracticeSegmentTracking(_currentPosition.value)
                 if (!_isPlaying.value) {
                     resume()
@@ -2599,6 +2610,7 @@ object AudioPlayerManager {
         coroutineScope.launch(Dispatchers.IO) {
             reanalyzePracticeSegmentsInternal(track, context, repository, silent = false) { count ->
                 _isPracticeMode.value = true
+                setFocusMode(true)
                 if (!_isPlaying.value) {
                     resume()
                 }
@@ -2619,6 +2631,7 @@ object AudioPlayerManager {
                 resetPracticeSegmentTracking(_currentPosition.value)
                 if (autoEnable) {
                     _isPracticeMode.value = true
+                    setFocusMode(true)
                     if (!_isPlaying.value) {
                         resume()
                     }
@@ -2640,6 +2653,8 @@ object AudioPlayerManager {
         _currentPracticeSegments.value = emptyList()
         practiceNextBoundaryIndex = 0
         practiceLastSegmentStartMs = 0L
+        practiceLastPlayedSegmentStartMs = 0L
+        practiceRepeatSegmentStartMs = 0L
         val track = currentTrackValue
         if (track != null) {
             coroutineScope.launch(Dispatchers.IO) {
@@ -2649,8 +2664,8 @@ object AudioPlayerManager {
         }
     }
 
-    fun togglePracticeMode(context: Context? = null, repository: AppRepository? = null, forceReanalyze: Boolean = false) {
-        if (_isPracticeMode.value && !forceReanalyze) {
+    fun stopPracticeMode() {
+        if (_isPracticeMode.value) {
             _isPracticeMode.value = false
             practicePauseJob?.cancel()
             val wasPausing = _isPracticePausing.value
@@ -2659,6 +2674,13 @@ object AudioPlayerManager {
             if (wasPausing) {
                 resume()
             }
+        }
+    }
+
+    fun togglePracticeMode(context: Context? = null, repository: AppRepository? = null, forceReanalyze: Boolean = false) {
+        if (_isPracticeMode.value && !forceReanalyze) {
+            stopPracticeMode()
+            setFocusMode(false)
         } else {
             val targetContext = context ?: appContext ?: return
             val targetRepo = repository ?: this.repository ?: return
@@ -2668,6 +2690,7 @@ object AudioPlayerManager {
             if (!shouldReanalyze) {
                 _currentPracticeSegments.value = track.getPracticeSegmentsList()
                 _isPracticeMode.value = true
+                setFocusMode(true)
                 resetPracticeSegmentTracking(_currentPosition.value)
                 if (!_isPlaying.value) {
                     resume()
@@ -2676,6 +2699,7 @@ object AudioPlayerManager {
                 coroutineScope.launch(Dispatchers.IO) {
                     reanalyzePracticeSegmentsInternal(track, targetContext, targetRepo, silent = false) {
                         _isPracticeMode.value = true
+                        setFocusMode(true)
                         if (!_isPlaying.value) {
                             resume()
                         }
@@ -2685,11 +2709,16 @@ object AudioPlayerManager {
         }
     }
 
+    private var practiceLastPlayedSegmentStartMs = 0L
+    private var practiceRepeatSegmentStartMs = 0L
+
     private fun resetPracticeSegmentTracking(pos: Long) {
         val segments = _currentPracticeSegments.value
         val nextIdx = segments.indexOfFirst { it > pos }
         practiceNextBoundaryIndex = if (nextIdx == -1) segments.size else nextIdx
         practiceLastSegmentStartMs = if (practiceNextBoundaryIndex > 0) segments[practiceNextBoundaryIndex - 1] else 0L
+        practiceLastPlayedSegmentStartMs = practiceLastSegmentStartMs
+        practiceRepeatSegmentStartMs = practiceLastSegmentStartMs
     }
 
     fun onSeekInPracticeMode(targetMs: Long) {
@@ -2736,6 +2765,7 @@ object AudioPlayerManager {
             } else {
                 (boundary - practiceLastSegmentStartMs).coerceAtLeast(1200L)
             }
+            practiceLastPlayedSegmentStartMs = practiceLastSegmentStartMs
             practiceLastSegmentStartMs = boundary
             practiceNextBoundaryIndex++
             triggerPracticePause(segmentLengthMs, boundary)
@@ -2751,6 +2781,7 @@ object AudioPlayerManager {
         _practicePauseRemainingSeconds.value = totalSec
 
         // Ensure active subtitle cue points to the segment that just finished speaking
+        var matchingCueStartVirtual: Long? = null
         if (isSubtitlesEnabled.value) {
             val cues = _subtitlesCues.value
             if (cues.isNotEmpty()) {
@@ -2761,9 +2792,16 @@ object AudioPlayerManager {
                 } ?: cues.lastOrNull { it.startMs <= physBoundary }
                 if (matchingCue != null) {
                     _activeSubtitleCue.value = matchingCue
+                    matchingCueStartVirtual = if (track != null && track.isVirtualScene) {
+                        (matchingCue.startMs - track.startOffsetMs).coerceAtLeast(0L)
+                    } else {
+                        matchingCue.startMs.coerceAtLeast(0L)
+                    }
                 }
             }
         }
+
+        practiceRepeatSegmentStartMs = matchingCueStartVirtual ?: practiceLastPlayedSegmentStartMs.coerceAtLeast(0L)
 
         coroutineScope.launch(Dispatchers.Main) {
             try {
@@ -2806,5 +2844,23 @@ object AudioPlayerManager {
 
     fun skipPracticePause() {
         resumeFromPracticePause()
+    }
+
+    fun repeatPracticeSegment() {
+        practicePauseJob?.cancel()
+        _isPracticePausing.value = false
+        _practicePauseRemainingSeconds.value = 0f
+
+        val targetMs = practiceRepeatSegmentStartMs.coerceAtLeast(0L)
+        seekTo(targetMs)
+        coroutineScope.launch(Dispatchers.Main) {
+            try {
+                mediaPlayer?.start()
+                _isPlaying.value = true
+                startProgressTracking()
+            } catch (e: Exception) {
+                Log.e(TAG, "repeatPracticeSegment error: ${e.message}")
+            }
+        }
     }
 }
