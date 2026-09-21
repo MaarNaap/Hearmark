@@ -155,7 +155,7 @@ object Loc {
         "practice_source_manual_short" to mapOf("en" to "Manual", "ar" to "يدوي"),
         "practice_source_subtitles_short" to mapOf("en" to "Subtitles", "ar" to "ترجمة"),
         "practice_source_silence_short" to mapOf("en" to "Silence", "ar" to "صمت"),
-        "tap_to_change_source" to mapOf("en" to "Tap to customize", "ar" to "اضغط للتخصيص"),
+        "tap_to_change_source" to mapOf("en" to "Customize", "ar" to "تخصيص"),
         "quick_multiplier_presets" to mapOf("en" to "Quick Presets", "ar" to "قيم سريعة"),
         "waveform_loading" to mapOf("en" to "Extracting audio waveform...", "ar" to "جاري استخراج المخطط الموجي للصوت..."),
         "segment_num" to mapOf("en" to "Segment #%d", "ar" to "مقطع #%d"),

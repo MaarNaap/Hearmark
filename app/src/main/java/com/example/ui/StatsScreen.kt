@@ -230,7 +230,7 @@ fun ListeningActivityLineChart(
                                 fontSize = 14.sp,
                                 color = if (activePoint.actualDurationMs > 0L) primaryColor else onSurfaceVariantColor
                             )
-                            if (activePoint.contentDurationMs > activePoint.actualDurationMs) {
+                            if (activePoint.contentDurationMs != activePoint.actualDurationMs && activePoint.contentDurationMs > 0L) {
                                 Text(
                                     text = "(${formatStatsDuration(activePoint.contentDurationMs)})",
                                     fontSize = 10.sp,

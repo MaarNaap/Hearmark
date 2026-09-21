@@ -778,7 +778,7 @@ interface AppDao {
     fun getPlaybackHistoryFilteredFlow(startTime: Long, endTime: Long): Flow<List<PlaybackHistory>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertPlaybackHistory(history: PlaybackHistory)
+    suspend fun insertPlaybackHistory(history: PlaybackHistory): Long
 
     @Query("DELETE FROM playback_history")
     suspend fun clearAllPlaybackHistory()
@@ -1509,8 +1509,8 @@ class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
         return dao.getPlaybackHistoryFilteredFlow(startTime, endTime)
     }
 
-    suspend fun insertPlaybackHistory(history: PlaybackHistory) {
-        dao.insertPlaybackHistory(history)
+    suspend fun insertPlaybackHistory(history: PlaybackHistory): Long {
+        return dao.insertPlaybackHistory(history)
     }
 
     suspend fun clearAllPlaybackHistory() {

@@ -254,9 +254,11 @@ object AudioPlayerManager {
     private var isThresholdTriggeredForCurrentSession = false
     private val completedTaskIdsForCurrentSession = java.util.Collections.synchronizedSet(mutableSetOf<Long>())
 
-    // Active listening stopwatch (measures exact wall-clock listening duration while isPlaying)
+    // Active listening stopwatch (measures exact wall-clock listening duration while isPlaying and in practice pauses)
     private var sessionActualListeningMs: Long = 0L
     private var lastActivePlayTimestamp: Long = 0L
+    private var lastPracticePauseTimestamp: Long = 0L
+    private var currentSessionHistoryId: Long? = null
 
     // In-memory cached bitset of listened segments for the active track to eliminate string parsing/splitting on playback ticks
     private var activeTrackSegmentTrackId: Long? = null
@@ -314,6 +316,78 @@ object AudioPlayerManager {
                 sessionActualListeningMs += delta
             }
             lastActivePlayTimestamp = now
+        }
+    }
+
+    @Synchronized
+    private fun accumulatePracticePauseTime() {
+        if (lastPracticePauseTimestamp > 0L) {
+            val now = System.currentTimeMillis()
+            val delta = now - lastPracticePauseTimestamp
+            if (delta in 1..4000) {
+                sessionActualListeningMs += delta
+            }
+            lastPracticePauseTimestamp = now
+        }
+    }
+
+    private fun syncCurrentSessionHistory(isFinishing: Boolean = false) {
+        val track = currentTrackValue ?: return
+        accumulateActiveListeningTime()
+        accumulatePracticePauseTime()
+
+        val actualMs = sessionActualListeningMs
+        val shouldRecord = isThresholdTriggeredForCurrentSession || (_isPracticeMode.value && actualMs >= 4000L)
+        if (!shouldRecord && currentSessionHistoryId == null) {
+            if (isFinishing) {
+                sessionActualListeningMs = 0L
+                currentSessionHistoryId = null
+            }
+            return
+        }
+
+        val historyId = currentSessionHistoryId ?: 0L
+        val recordedActual = if (actualMs > 0L) actualMs else track.duration
+        val speed = _playbackSpeed.value
+
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val activeTasksAtThatTime = repository?.getActiveTasksForTrackDirect(track) ?: emptyList()
+                val activeTasksJson = if (activeTasksAtThatTime.isNotEmpty()) {
+                    val arr = org.json.JSONArray()
+                    activeTasksAtThatTime.forEach { t ->
+                        val obj = org.json.JSONObject()
+                        obj.put("id", t.id)
+                        obj.put("title", t.getDisplayTitle())
+                        arr.put(obj)
+                    }
+                    arr.toString()
+                } else {
+                    ""
+                }
+
+                val history = PlaybackHistory(
+                    id = historyId,
+                    trackId = track.id,
+                    trackName = track.fileName,
+                    completedAt = System.currentTimeMillis(),
+                    durationMs = track.duration,
+                    playbackSpeed = speed,
+                    actualListenedMs = recordedActual,
+                    activeTasks = activeTasksJson
+                )
+                val newId = repository?.insertPlaybackHistory(history) ?: 0L
+                if (currentSessionHistoryId == null && newId > 0L) {
+                    currentSessionHistoryId = newId
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "syncCurrentSessionHistory error: ${e.message}")
+            } finally {
+                if (isFinishing) {
+                    currentSessionHistoryId = null
+                    sessionActualListeningMs = 0L
+                }
+            }
         }
     }
 
@@ -806,9 +880,12 @@ object AudioPlayerManager {
             isThresholdTriggeredForCurrentSession = initialTrack.getProgressPercent() >= completionThreshold
             completedTaskIdsForCurrentSession.clear()
             
-            // Reset active listening stopwatch for this track session
+            // Sync previous session history if any, then reset for this track session
+            syncCurrentSessionHistory(isFinishing = true)
             sessionActualListeningMs = 0L
+            currentSessionHistoryId = null
             lastActivePlayTimestamp = System.currentTimeMillis()
+            lastPracticePauseTimestamp = 0L
             
             // Pre-populate completedTaskIdsForCurrentSession with tasks for which the threshold has already been met
             repository?.let { repo ->
@@ -1080,6 +1157,8 @@ object AudioPlayerManager {
     }
 
     fun pause() {
+        accumulatePracticePauseTime()
+        lastPracticePauseTimestamp = 0L
         practicePauseJob?.cancel()
         _isPracticePausing.value = false
         _practicePauseRemainingSeconds.value = 0f
@@ -1103,15 +1182,18 @@ object AudioPlayerManager {
         
         // Persist progress position inside database instantly on pause
         saveCurrentPositionProgress()
+        syncCurrentSessionHistory(isFinishing = false)
     }
 
     fun stop() {
+        accumulatePracticePauseTime()
+        lastPracticePauseTimestamp = 0L
         practicePauseJob?.cancel()
         _isPracticePausing.value = false
         _practicePauseRemainingSeconds.value = 0f
         accumulateActiveListeningTime()
         lastActivePlayTimestamp = 0L
-        sessionActualListeningMs = 0L
+        syncCurrentSessionHistory(isFinishing = true)
         lastTrackedPositionMs = null
         try {
             mediaPlayer?.let {
@@ -1493,46 +1575,13 @@ object AudioPlayerManager {
         isThresholdTriggeredForCurrentSession = true
 
         coroutineScope.launch(Dispatchers.IO) {
-            accumulateActiveListeningTime()
-
             // 1. Increment playCount safely
             updateTrackState { t -> t.copy(playCount = t.playCount + 1) }
             
             val track = currentTrackValue ?: return@launch
 
-            // Use exact actual wall-clock listening duration, falling back to full duration only if stopwatch was uninitialized
-            val recordedActualMs = if (sessionActualListeningMs > 0L) {
-                sessionActualListeningMs
-            } else {
-                track.duration
-            }
-            sessionActualListeningMs = 0L // Reset for next iteration/repeat
-
-            // 2. Save into History with active tasks snapshot at this exact moment
-            val activeTasksAtThatTime = repository?.getActiveTasksForTrackDirect(track) ?: emptyList()
-            val activeTasksJson = if (activeTasksAtThatTime.isNotEmpty()) {
-                val arr = org.json.JSONArray()
-                activeTasksAtThatTime.forEach { t ->
-                    val obj = org.json.JSONObject()
-                    obj.put("id", t.id)
-                    obj.put("title", t.getDisplayTitle())
-                    arr.put(obj)
-                }
-                arr.toString()
-            } else {
-                ""
-            }
-
-            val history = PlaybackHistory(
-                trackId = track.id,
-                trackName = track.fileName,
-                completedAt = System.currentTimeMillis(),
-                durationMs = track.duration,
-                playbackSpeed = playbackSpeed.value,
-                actualListenedMs = recordedActualMs,
-                activeTasks = activeTasksJson
-            )
-            repository?.insertPlaybackHistory(history)
+            // 2. Sync / save into History with active tasks snapshot and exact actual listening & speaking time
+            syncCurrentSessionHistory(isFinishing = false)
 
             // 3. Update all active tasks containing this file automatically
             updateAssociatedTasks(track.id)
@@ -1549,7 +1598,11 @@ object AudioPlayerManager {
                 _sleepTimeRemaining.value = 0
             }
 
-            sessionActualListeningMs = 0L
+            if (!isThresholdTriggeredForCurrentSession) {
+                handleThresholdReached()
+            }
+            syncCurrentSessionHistory(isFinishing = true)
+
             activeTrackSegmentTrackId = null
             activeTrackSegmentsBitSet.clear()
 
@@ -2666,6 +2719,8 @@ object AudioPlayerManager {
 
     fun stopPracticeMode() {
         if (_isPracticeMode.value) {
+            accumulatePracticePauseTime()
+            lastPracticePauseTimestamp = 0L
             _isPracticeMode.value = false
             practicePauseJob?.cancel()
             val wasPausing = _isPracticePausing.value
@@ -2723,6 +2778,8 @@ object AudioPlayerManager {
 
     fun onSeekInPracticeMode(targetMs: Long) {
         if (!_isPracticeMode.value) return
+        accumulatePracticePauseTime()
+        lastPracticePauseTimestamp = 0L
         val wasPausing = _isPracticePausing.value
         practicePauseJob?.cancel()
         _isPracticePausing.value = false
@@ -2803,6 +2860,10 @@ object AudioPlayerManager {
 
         practiceRepeatSegmentStartMs = matchingCueStartVirtual ?: practiceLastPlayedSegmentStartMs.coerceAtLeast(0L)
 
+        accumulateActiveListeningTime()
+        lastActivePlayTimestamp = 0L
+        lastPracticePauseTimestamp = System.currentTimeMillis()
+
         coroutineScope.launch(Dispatchers.Main) {
             try {
                 mediaPlayer?.pause()
@@ -2819,6 +2880,7 @@ object AudioPlayerManager {
             while (System.currentTimeMillis() < endTime && _isPracticeMode.value && _isPracticePausing.value) {
                 val remaining = (endTime - System.currentTimeMillis()).coerceAtLeast(0L)
                 _practicePauseRemainingSeconds.value = remaining / 1000f
+                accumulatePracticePauseTime()
                 delay(100L)
             }
             if (_isPracticeMode.value && _isPracticePausing.value) {
@@ -2828,12 +2890,15 @@ object AudioPlayerManager {
     }
 
     fun resumeFromPracticePause() {
+        accumulatePracticePauseTime()
+        lastPracticePauseTimestamp = 0L
         practicePauseJob?.cancel()
         _isPracticePausing.value = false
         _practicePauseRemainingSeconds.value = 0f
         coroutineScope.launch(Dispatchers.Main) {
             try {
                 mediaPlayer?.start()
+                lastActivePlayTimestamp = System.currentTimeMillis()
                 _isPlaying.value = true
                 startProgressTracking()
             } catch (e: Exception) {
@@ -2847,6 +2912,8 @@ object AudioPlayerManager {
     }
 
     fun repeatPracticeSegment() {
+        accumulatePracticePauseTime()
+        lastPracticePauseTimestamp = 0L
         practicePauseJob?.cancel()
         _isPracticePausing.value = false
         _practicePauseRemainingSeconds.value = 0f
@@ -2856,6 +2923,7 @@ object AudioPlayerManager {
         coroutineScope.launch(Dispatchers.Main) {
             try {
                 mediaPlayer?.start()
+                lastActivePlayTimestamp = System.currentTimeMillis()
                 _isPlaying.value = true
                 startProgressTracking()
             } catch (e: Exception) {

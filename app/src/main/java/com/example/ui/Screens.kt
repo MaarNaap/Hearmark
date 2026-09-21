@@ -1026,6 +1026,7 @@ fun SubtitlesPageContent(
     fontSize: Float,
     offsetMs: Long,
     showTimestamps: Boolean = true,
+    isInFocusOrPracticeMode: Boolean = false,
     onToggleTimestamps: () -> Unit = {},
     onCopyAllSubtitlesClick: () -> Unit,
     onEditSubtitlesClick: () -> Unit,
@@ -1050,6 +1051,7 @@ fun SubtitlesPageContent(
     var currentMatchIndex by remember { mutableIntStateOf(0) }
     val focusRequester = remember { FocusRequester() }
 
+    val isDarkBg = isInFocusOrPracticeMode || isSystemInDarkTheme()
     val hasTimings = remember(cues) { cues.any { it.isTimed && it.startMs >= 0L } }
 
     val matchingCueIndices = remember(cues, searchQuery) {
@@ -1119,8 +1121,8 @@ fun SubtitlesPageContent(
             ) {
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    color = if (isDarkBg) Color(0xFF1E2430) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                    border = BorderStroke(1.dp, if (isDarkBg) Color(0xFF334155) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(42.dp)
@@ -1134,7 +1136,7 @@ fun SubtitlesPageContent(
                         Icon(
                             imageVector = Icons.Filled.Search,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = if (isDarkBg) Color(0xFF93C5FD) else MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
@@ -1143,10 +1145,10 @@ fun SubtitlesPageContent(
                             onValueChange = { searchQuery = it },
                             singleLine = true,
                             textStyle = androidx.compose.ui.text.TextStyle(
-                                color = MaterialTheme.colorScheme.onSurface,
+                                color = if (isDarkBg) Color.White else MaterialTheme.colorScheme.onSurface,
                                 fontSize = 13.sp
                             ),
-                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            cursorBrush = SolidColor(if (isDarkBg) Color.White else MaterialTheme.colorScheme.primary),
                             modifier = Modifier
                                 .weight(1f)
                                 .focusRequester(focusRequester),
@@ -1154,7 +1156,7 @@ fun SubtitlesPageContent(
                                 if (searchQuery.isEmpty()) {
                                     Text(
                                         text = Loc.getText("search_subtitles_hint"),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        color = if (isDarkBg) Color(0xFF94A3B8) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                         fontSize = 13.sp
                                     )
                                 }
@@ -1168,7 +1170,7 @@ fun SubtitlesPageContent(
                                     text = "${currentMatchIndex + 1}/${matchingCueIndices.size}",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = if (isDarkBg) Color(0xFF93C5FD) else MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(horizontal = 4.dp)
                                 )
                                 IconButton(
@@ -1187,7 +1189,7 @@ fun SubtitlesPageContent(
                                         imageVector = Icons.Filled.KeyboardArrowUp,
                                         contentDescription = "Previous Match",
                                         modifier = Modifier.size(18.dp),
-                                        tint = MaterialTheme.colorScheme.onSurface
+                                        tint = if (isDarkBg) Color.White else MaterialTheme.colorScheme.onSurface
                                     )
                                 }
                                 IconButton(
@@ -1206,7 +1208,7 @@ fun SubtitlesPageContent(
                                         imageVector = Icons.Filled.KeyboardArrowDown,
                                         contentDescription = "Next Match",
                                         modifier = Modifier.size(18.dp),
-                                        tint = MaterialTheme.colorScheme.onSurface
+                                        tint = if (isDarkBg) Color.White else MaterialTheme.colorScheme.onSurface
                                     )
                                 }
                             } else {
@@ -1233,7 +1235,7 @@ fun SubtitlesPageContent(
                                 imageVector = Icons.Filled.Close,
                                 contentDescription = "Close Search",
                                 modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = if (isDarkBg) Color(0xFF94A3B8) else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -1257,7 +1259,11 @@ fun SubtitlesPageContent(
                         Icon(
                             imageVector = Icons.Filled.Search,
                             contentDescription = "Search Subtitles",
-                            tint = if (cues.isNotEmpty()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            tint = if (isDarkBg) {
+                                if (cues.isNotEmpty()) Color(0xFFE2E8F0) else Color(0xFF64748B)
+                            } else {
+                                if (cues.isNotEmpty()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            }
                         )
                     }
                 }
@@ -1270,7 +1276,7 @@ fun SubtitlesPageContent(
                         Icon(
                             imageVector = Icons.Filled.MoreVert,
                             contentDescription = "Subtitle Controls",
-                            tint = MaterialTheme.colorScheme.onSurface
+                            tint = if (isDarkBg) Color(0xFFE2E8F0) else MaterialTheme.colorScheme.onSurface
                         )
                     }
 
@@ -1522,7 +1528,7 @@ fun SubtitlesPageContent(
                     Text(
                         text = Loc.getText("no_subtitles_found"),
                         fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (isDarkBg) Color(0xFF94A3B8) else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
                     Row(
@@ -1594,16 +1600,16 @@ fun SubtitlesPageContent(
                                         if (isTimedCue) Modifier.clickable { onSeekTo(cue.startMs) } else Modifier
                                     ),
                                 color = when {
-                                    isCurrentSearchMatch -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
-                                    isActive -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                                    isMatched -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                    else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                                    isCurrentSearchMatch -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f)
+                                    isActive -> if (isDarkBg) Color(0xFF1E293B) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                                    isMatched -> if (isDarkBg) Color(0xFF242C38) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    else -> if (isDarkBg) Color(0xFF141820) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
                                 },
                                 border = when {
                                     isCurrentSearchMatch -> BorderStroke(2.dp, MaterialTheme.colorScheme.secondary)
-                                    isActive -> BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
-                                    isMatched -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                                    else -> null
+                                    isActive -> BorderStroke(1.2.dp, if (isDarkBg) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                                    isMatched -> BorderStroke(1.dp, if (isDarkBg) Color(0xFF475569) else MaterialTheme.colorScheme.outlineVariant)
+                                    else -> if (isDarkBg) BorderStroke(0.6.dp, Color(0xFF334155).copy(alpha = 0.35f)) else null
                                 },
                                 shape = RoundedCornerShape(14.dp)
                             ) {
@@ -1621,28 +1627,41 @@ fun SubtitlesPageContent(
                                         if (showTimestamps && isTimedCue) {
                                             Surface(
                                                 shape = RoundedCornerShape(6.dp),
-                                                color = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                                color = if (isDarkBg) {
+                                                    if (isActive) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.35f)
+                                                } else {
+                                                    if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
+                                                },
                                                 border = BorderStroke(
-                                                    0.8.dp,
-                                                    if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                                                    0.5.dp,
+                                                    if (isDarkBg) {
+                                                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f) else Color(0xFF334155).copy(alpha = 0.30f)
+                                                    } else {
+                                                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.25f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                                                    }
                                                 )
                                             ) {
                                                 Row(
                                                     verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                                 ) {
+                                                    val timestampColor = if (isDarkBg) {
+                                                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.70f) else Color(0xFF64748B)
+                                                    } else {
+                                                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.50f)
+                                                    }
                                                     Icon(
                                                         imageVector = Icons.Filled.AccessTime,
                                                         contentDescription = null,
-                                                        modifier = Modifier.size(11.dp),
-                                                        tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                        modifier = Modifier.size(10.dp),
+                                                        tint = timestampColor
                                                     )
                                                     Text(
                                                         text = formatDuration(cue.startMs),
-                                                        fontSize = 10.5.sp,
+                                                        fontSize = 10.sp,
                                                         fontWeight = if (isCurrentSearchMatch) FontWeight.Bold else FontWeight.Normal,
-                                                        color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                        color = timestampColor
                                                     )
                                                 }
                                             }
@@ -1718,7 +1737,11 @@ fun SubtitlesPageContent(
                                                         imageVector = Icons.Filled.EditNote,
                                                         contentDescription = Loc.getText("add_note"),
                                                         modifier = Modifier.size(16.dp),
-                                                        tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                                        tint = if (isDarkBg) {
+                                                            if (isActive) MaterialTheme.colorScheme.primary else Color(0xFF94A3B8)
+                                                        } else {
+                                                            if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                                        }
                                                     )
                                                 }
                                             }
@@ -1731,8 +1754,12 @@ fun SubtitlesPageContent(
                                         isCurrentMatch = isCurrentSearchMatch,
                                         fontSize = fontSize,
                                         lineHeightMultiplier = 1.4,
-                                        fontWeight = if (isCurrentSearchMatch) FontWeight.Bold else FontWeight.Normal,
-                                        textColor = MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = if (isActive || isCurrentSearchMatch) FontWeight.SemiBold else FontWeight.Normal,
+                                        textColor = if (isDarkBg) {
+                                            if (isActive) Color.White else Color(0xFFF1F5F9)
+                                        } else {
+                                            if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        },
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                 }
@@ -1746,13 +1773,13 @@ fun SubtitlesPageContent(
                                     .clip(RoundedCornerShape(12.dp)),
                                 color = when {
                                     isCurrentSearchMatch -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
-                                    isMatched -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                                    else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                                    isMatched -> if (isDarkBg) Color(0xFF242C38) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                    else -> if (isDarkBg) Color(0xFF141820) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
                                 },
                                 border = when {
                                     isCurrentSearchMatch -> BorderStroke(1.5.dp, MaterialTheme.colorScheme.secondary)
-                                    isMatched -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                                    else -> null
+                                    isMatched -> BorderStroke(1.dp, if (isDarkBg) Color(0xFF475569) else MaterialTheme.colorScheme.outlineVariant)
+                                    else -> if (isDarkBg) BorderStroke(0.6.dp, Color(0xFF334155).copy(alpha = 0.35f)) else null
                                 },
                                 shape = RoundedCornerShape(12.dp)
                             ) {
@@ -1763,7 +1790,7 @@ fun SubtitlesPageContent(
                                     fontSize = fontSize,
                                     lineHeightMultiplier = 1.5,
                                     fontWeight = FontWeight.Normal,
-                                    textColor = MaterialTheme.colorScheme.onSurface,
+                                    textColor = if (isDarkBg) Color(0xFFF1F5F9) else MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 16.dp, vertical = 12.dp)
@@ -5453,6 +5480,7 @@ fun AudioPlayerOverlay(
                         fontSize = subtitleFontSizeState,
                         offsetMs = subtitleOffsetMsState,
                         showTimestamps = showTimestampsInSubtitlesState,
+                        isInFocusOrPracticeMode = isDistractionFree || isPracticeMode,
                         onToggleTimestamps = {
                             AudioPlayerManager.showTimestampsInSubtitles.value = !AudioPlayerManager.showTimestampsInSubtitles.value
                         },
@@ -5534,8 +5562,8 @@ fun AudioPlayerOverlay(
 
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = if (isPracticePausing) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
-                            border = BorderStroke(1.dp, if (isPracticePausing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.60f)),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(40.dp)
@@ -5551,7 +5579,7 @@ fun AudioPlayerOverlay(
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         Box(
                                             modifier = Modifier
@@ -5573,18 +5601,36 @@ fun AudioPlayerOverlay(
                                             lineHeight = 14.sp,
                                             color = MaterialTheme.colorScheme.primary
                                         )
-                                        Text(
-                                            text = "${String.format(java.util.Locale.US, "%.1f", practicePauseRemaining)}s",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            lineHeight = 14.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                                            border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.50f))
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Timer,
+                                                    contentDescription = "Stopwatch",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Text(
+                                                    text = "${String.format(java.util.Locale.US, "%.1f", practicePauseRemaining)}s",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    lineHeight = 14.sp,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
                                     }
 
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         // Repeat button
                                         Row(
@@ -5592,21 +5638,21 @@ fun AudioPlayerOverlay(
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
                                                 .clickable { AudioPlayerManager.repeatPracticeSegment() }
-                                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                .padding(horizontal = 6.dp, vertical = 3.dp),
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Filled.Replay,
                                                 contentDescription = Loc.getText("practice_repeat_segment"),
                                                 tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(14.dp)
+                                                modifier = Modifier.size(13.dp)
                                             )
                                             Text(
                                                 text = Loc.getText("practice_repeat_segment"),
-                                                fontSize = 11.sp,
+                                                fontSize = 10.5.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                lineHeight = 14.sp,
+                                                lineHeight = 13.sp,
                                                 color = MaterialTheme.colorScheme.primary
                                             )
                                         }
@@ -5617,22 +5663,22 @@ fun AudioPlayerOverlay(
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
                                                 .clickable { AudioPlayerManager.skipPracticePause() }
-                                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                .padding(horizontal = 6.dp, vertical = 3.dp),
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
                                         ) {
                                             Text(
                                                 text = Loc.getText("practice_skip_pause"),
-                                                fontSize = 11.sp,
+                                                fontSize = 10.5.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                lineHeight = 14.sp,
+                                                lineHeight = 13.sp,
                                                 color = MaterialTheme.colorScheme.primary
                                             )
                                             Icon(
                                                 imageVector = Icons.Filled.SkipNext,
                                                 contentDescription = Loc.getText("practice_skip_pause"),
                                                 tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(15.dp)
+                                                modifier = Modifier.size(14.dp)
                                             )
                                         }
                                     }
@@ -5647,33 +5693,47 @@ fun AudioPlayerOverlay(
                                 ) {
                                     Row(
                                         modifier = Modifier
-                                            .weight(1f)
+                                            .weight(1f, fill = false)
                                             .clickable { showPracticeSetupSheet = true },
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = when (activePracticeSource) {
-                                                "MANUAL" -> Icons.Filled.GraphicEq
-                                                "SUBTITLES" -> Icons.Filled.Subtitles
-                                                else -> Icons.Filled.RecordVoiceOver
-                                            },
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(15.dp)
-                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .size(20.dp)
+                                                .background(MaterialTheme.colorScheme.primary, CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = when (activePracticeSource) {
+                                                    "MANUAL" -> Icons.Filled.GraphicEq
+                                                    "SUBTITLES" -> Icons.Filled.Subtitles
+                                                    else -> Icons.Filled.RecordVoiceOver
+                                                },
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onPrimary,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                        }
                                         Text(
-                                            text = "${when (activePracticeSource) {
+                                            text = when (activePracticeSource) {
                                                 "MANUAL" -> Loc.getText("practice_source_manual_short")
                                                 "SUBTITLES" -> Loc.getText("practice_source_subtitles_short")
                                                 else -> Loc.getText("practice_source_silence_short")
-                                            }}: ${practiceSegmentsList.size} ${Loc.getText("cuts_label")} • ${String.format(java.util.Locale.US, "%.2f", AudioPlayerManager.practicePauseMultiplier)}x",
+                                            },
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             lineHeight = 14.sp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = "${practiceSegmentsList.size} ${Loc.getText("cuts_label")} • ${String.format(java.util.Locale.US, "%.2f", AudioPlayerManager.practicePauseMultiplier)}x",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            lineHeight = 14.sp,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            color = MaterialTheme.colorScheme.onSurface
                                         )
                                     }
 
@@ -5684,21 +5744,22 @@ fun AudioPlayerOverlay(
                                         Row(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
                                                 .clickable { showPracticeSetupSheet = true }
-                                                .padding(horizontal = 6.dp, vertical = 3.dp),
+                                                .padding(horizontal = 8.dp, vertical = 4.dp),
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(3.dp)
                                         ) {
                                             Text(
                                                 text = Loc.getText("tap_to_change_source"),
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Medium,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
                                                 lineHeight = 14.sp,
                                                 color = MaterialTheme.colorScheme.primary
                                             )
                                             Icon(
                                                 imageVector = Icons.Filled.ChevronRight,
-                                                contentDescription = null,
+                                                contentDescription = Loc.getText("tap_to_change_source"),
                                                 tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(14.dp)
                                             )
@@ -5708,12 +5769,12 @@ fun AudioPlayerOverlay(
                                             onClick = {
                                                 AudioPlayerManager.setFocusMode(false)
                                             },
-                                            modifier = Modifier.size(26.dp)
+                                            modifier = Modifier.size(24.dp)
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Filled.Close,
                                                 contentDescription = "Exit Practice Mode",
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(15.dp)
                                             )
                                         }
