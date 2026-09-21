@@ -177,6 +177,7 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
     val isPlayingState by AudioPlayerManager.isPlaying.collectAsStateWithLifecycle()
     val isInPipModeState by AudioPlayerManager.isInPipMode.collectAsStateWithLifecycle()
     val isVideoTrackGlobalState by AudioPlayerManager.isVideoTrack.collectAsStateWithLifecycle()
+    val playbackSpeedState by AudioPlayerManager.playbackSpeed.collectAsStateWithLifecycle()
     val isTrackVideoState = currentTrackState?.let { SubtitleParser.isVideoFile(it.filePath) } == true || isVideoTrackGlobalState
 
     // Enforce RTL layout if language is Arabic
@@ -277,13 +278,38 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                                             )
                                         }
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Text(
-                                            text = "⏱️ $percent%",
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            fontWeight = FontWeight.ExtraBold
-                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Speed,
+                                                contentDescription = "Speed",
+                                                tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = formatPlaybackSpeed(playbackSpeedState),
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Filled.TrendingUp,
+                                                contentDescription = "Max Progress",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = "$percent%",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                        }
                                     }
                                 }
                                 
@@ -4816,138 +4842,8 @@ fun AudioPlayerOverlay(
                         Icon(
                             imageVector = Icons.Filled.Bookmark, 
                             contentDescription = "Bookmark", 
-                            tint = MaterialTheme.colorScheme.onSurface
+                            tint = MaterialTheme.colorScheme.primary
                         )
-                    }
-
-                    var showPlayerMenu by remember { mutableStateOf(false) }
-                    Box {
-                        IconButton(onClick = { showPlayerMenu = true }) {
-                            Icon(
-                                imageVector = Icons.Filled.MoreVert,
-                                contentDescription = "More Options",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = showPlayerMenu,
-                            onDismissRequest = { showPlayerMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Quiz,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(Loc.getText("ai_quiz_action"))
-                                    }
-                                },
-                                onClick = {
-                                    showPlayerMenu = false
-                                    viewModel.openQuizForTrack(track)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Filled.RestartAlt,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(Loc.getText("reset_segments"))
-                                    }
-                                },
-                                onClick = {
-                                    showPlayerMenu = false
-                                    viewModel.resetTrackSegments(track)
-                                    Toast.makeText(context, Loc.getText("segments_reset_success"), Toast.LENGTH_SHORT).show()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Tune,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(Loc.getText("practice_setup_title"))
-                                    }
-                                },
-                                onClick = {
-                                    showPlayerMenu = false
-                                    showPracticeSetupSheet = true
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Refresh,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(Loc.getText("reanalyze_segments"))
-                                    }
-                                },
-                                onClick = {
-                                    showPlayerMenu = false
-                                    Toast.makeText(context, Loc.getText("practice_mode_reanalyzing"), Toast.LENGTH_SHORT).show()
-                                    AudioPlayerManager.togglePracticeMode(context, viewModel.repository, forceReanalyze = true)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Filled.GraphicEq,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(Loc.getText("open_waveform_editor"))
-                                    }
-                                },
-                                onClick = {
-                                    showPlayerMenu = false
-                                    showWaveformEditorDialog = true
-                                }
-                            )
-                            if (isTrackVideo) {
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = if (isVideoFocusModeState) Icons.Filled.CenterFocusStrong else Icons.Filled.FilterCenterFocus,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(18.dp),
-                                                tint = MaterialTheme.colorScheme.primary
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text(Loc.getText("video_focus_mode_title"))
-                                        }
-                                    },
-                                    onClick = {
-                                        showPlayerMenu = false
-                                        val isNowFocus = AudioPlayerManager.toggleVideoFocusMode()
-                                        val msg = if (isNowFocus) Loc.getText("video_focus_mode_on") else Loc.getText("video_focus_mode_off")
-                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                    }
-                                )
-                            }
-                        }
                     }
                 }
             }
