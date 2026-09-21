@@ -2057,6 +2057,10 @@ object AudioPlayerManager {
             if (_activeSubtitleCue.value != null) _activeSubtitleCue.value = null
             return
         }
+        // When practice pause is active, preserve the current/previous cue for speech imitation
+        if (_isPracticeMode.value && _isPracticePausing.value && _activeSubtitleCue.value != null) {
+            return
+        }
         val track = currentTrackValue
         val effectivePos = if (track != null && track.isVirtualScene && positionMs < track.startOffsetMs) {
             track.startOffsetMs + positionMs
@@ -2064,7 +2068,11 @@ object AudioPlayerManager {
             positionMs
         }
         val active = cues.firstOrNull { it.isTimed && it.startMs >= 0 && effectivePos >= it.startMs && effectivePos <= it.endMs }
-        _activeSubtitleCue.value = active
+        if (active != null) {
+            _activeSubtitleCue.value = active
+        } else if (!_isPracticeMode.value || !_isPracticePausing.value) {
+            _activeSubtitleCue.value = null
+        }
     }
 
     fun getCurrentSubtitlesRawText(): String {
@@ -2730,17 +2738,32 @@ object AudioPlayerManager {
             }
             practiceLastSegmentStartMs = boundary
             practiceNextBoundaryIndex++
-            triggerPracticePause(segmentLengthMs)
+            triggerPracticePause(segmentLengthMs, boundary)
         }
     }
 
-    private fun triggerPracticePause(segmentLengthMs: Long) {
+    private fun triggerPracticePause(segmentLengthMs: Long, boundaryMs: Long = 0L) {
         val multiplier = practicePauseMultiplier.coerceIn(0.25f, 4.0f)
         val pauseDurationMs = (segmentLengthMs * multiplier).toLong().coerceIn(1000L, 30000L)
         _isPracticePausing.value = true
         val totalSec = pauseDurationMs / 1000f
         _practicePauseTotalSeconds.value = totalSec
         _practicePauseRemainingSeconds.value = totalSec
+
+        // Ensure active subtitle cue points to the segment that just finished speaking
+        if (isSubtitlesEnabled.value) {
+            val cues = _subtitlesCues.value
+            if (cues.isNotEmpty()) {
+                val track = currentTrackValue
+                val physBoundary = if (track != null && track.isVirtualScene) track.startOffsetMs + boundaryMs else boundaryMs
+                val matchingCue = cues.find { cue ->
+                    Math.abs(cue.endMs - physBoundary) <= 600L || (physBoundary >= cue.startMs && physBoundary <= cue.endMs + 300L)
+                } ?: cues.lastOrNull { it.startMs <= physBoundary }
+                if (matchingCue != null) {
+                    _activeSubtitleCue.value = matchingCue
+                }
+            }
+        }
 
         coroutineScope.launch(Dispatchers.Main) {
             try {

@@ -5608,85 +5608,6 @@ fun AudioPlayerOverlay(
                     }
                 }
 
-                // Practice Mode Imitation Pause Notification Banner
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = isPracticePausing,
-                    enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandVertically(),
-                    exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically()
-                ) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f)
-                        ),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .background(MaterialTheme.colorScheme.primary, CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.RecordVoiceOver,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Column {
-                                    Text(
-                                        text = Loc.getText("practice_your_turn"),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                    Text(
-                                        text = "${String.format(java.util.Locale.US, "%.1f", practicePauseRemaining)}s",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-
-                            TextButton(
-                                onClick = { AudioPlayerManager.skipPracticePause() },
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.textButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.primary
-                                )
-                            ) {
-                                Text(
-                                    text = Loc.getText("practice_skip_pause"),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Icon(
-                                    imageVector = Icons.Filled.SkipNext,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-
                 // CONTROLLER BUTTONS
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -5806,76 +5727,7 @@ fun AudioPlayerOverlay(
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Practice Mode Status Pill (Only shown when Practice Mode is ACTIVE)
-                        val practiceSegmentsList by AudioPlayerManager.currentPracticeSegments.collectAsStateWithLifecycle()
-                        val currentPlayingTrack by AudioPlayerManager.currentTrack.collectAsStateWithLifecycle()
-                        val activeTrack = currentPlayingTrack ?: track
-                        val activePracticeSource = AudioPlayerManager.getActivePracticeSourceForTrack(activeTrack)
-
-                        if (isPracticeMode) {
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { showPracticeSetupSheet = true }
-                                    .testTag("pill_active_practice_status")
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = when (activePracticeSource) {
-                                                "MANUAL" -> Icons.Filled.GraphicEq
-                                                "SUBTITLES" -> Icons.Filled.Subtitles
-                                                else -> Icons.Filled.RecordVoiceOver
-                                            },
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "${when (activePracticeSource) {
-                                                "MANUAL" -> Loc.getText("practice_source_manual_short")
-                                                "SUBTITLES" -> Loc.getText("practice_source_subtitles_short")
-                                                else -> Loc.getText("practice_source_silence_short")
-                                            }}: ${practiceSegmentsList.size} ${Loc.getText("cuts_label")} • ${String.format(java.util.Locale.US, "%.2f", AudioPlayerManager.practicePauseMultiplier)}x",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                    }
-
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                    ) {
-                                        Text(
-                                            text = Loc.getText("tap_to_change_source"),
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Icon(
-                                            imageVector = Icons.Filled.ChevronRight,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
+                        // Secondary Tools Row (Speed, Autoplay, Practice Mode, Queue, Sleep Timer)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceAround,
@@ -6137,6 +5989,145 @@ fun AudioPlayerOverlay(
                                             showSleepDropdown = false
                                         }
                                     )
+                                }
+                            }
+                        }
+
+                        // Practice Mode Status Row (Placed directly UNDER the Secondary Tools Row)
+                        val practiceSegmentsList by AudioPlayerManager.currentPracticeSegments.collectAsStateWithLifecycle()
+                        val currentPlayingTrack by AudioPlayerManager.currentTrack.collectAsStateWithLifecycle()
+                        val activeTrack = currentPlayingTrack ?: track
+                        val activePracticeSource = AudioPlayerManager.getActivePracticeSourceForTrack(activeTrack)
+
+                        if (isPracticeMode) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isPracticePausing) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                                border = BorderStroke(1.dp, if (isPracticePausing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(38.dp)
+                                    .testTag("pill_active_practice_status")
+                            ) {
+                                if (isPracticePausing) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(20.dp)
+                                                    .background(MaterialTheme.colorScheme.primary, CircleShape),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.RecordVoiceOver,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                            }
+                                            Text(
+                                                text = Loc.getText("practice_your_turn"),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                lineHeight = 14.sp,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = "${String.format(java.util.Locale.US, "%.1f", practicePauseRemaining)}s",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                lineHeight = 14.sp,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+
+                                        Row(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .clickable { AudioPlayerManager.skipPracticePause() }
+                                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                        ) {
+                                            Text(
+                                                text = Loc.getText("practice_skip_pause"),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                lineHeight = 14.sp,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Icon(
+                                                imageVector = Icons.Filled.SkipNext,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clickable { showPracticeSetupSheet = true }
+                                            .padding(horizontal = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = when (activePracticeSource) {
+                                                    "MANUAL" -> Icons.Filled.GraphicEq
+                                                    "SUBTITLES" -> Icons.Filled.Subtitles
+                                                    else -> Icons.Filled.RecordVoiceOver
+                                                },
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Text(
+                                                text = "${when (activePracticeSource) {
+                                                    "MANUAL" -> Loc.getText("practice_source_manual_short")
+                                                    "SUBTITLES" -> Loc.getText("practice_source_subtitles_short")
+                                                    else -> Loc.getText("practice_source_silence_short")
+                                                }}: ${practiceSegmentsList.size} ${Loc.getText("cuts_label")} • ${String.format(java.util.Locale.US, "%.2f", AudioPlayerManager.practicePauseMultiplier)}x",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                lineHeight = 14.sp,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                        ) {
+                                            Text(
+                                                text = Loc.getText("tap_to_change_source"),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                lineHeight = 14.sp,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Icon(
+                                                imageVector = Icons.Filled.ChevronRight,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
