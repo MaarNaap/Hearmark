@@ -346,7 +346,7 @@ fun VocabularyReviewScreen(
                     onClick = {
                         viewModel.deleteQuizQuestion(target.id)
                         questionToDelete = null
-                        Toast.makeText(context, "Question deleted", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, Loc.getText("question_deleted_success"), Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) {

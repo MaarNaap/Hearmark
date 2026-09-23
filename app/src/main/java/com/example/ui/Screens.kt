@@ -9528,7 +9528,7 @@ fun CreateTaskScreen(
                 if (unselectedExistingLabels.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = if (Loc.currentLanguage == "ar") "وسوم مستخدمة حالياً (انقر للإضافة):" else "Currently used labels (click to add):",
+                        text = Loc.getText("currently_used_labels_hint"),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -12334,7 +12334,7 @@ fun AddNewVirtualSceneDialog(
                     value = titleText,
                     onValueChange = { titleText = it },
                     label = { Text(Loc.getText("scene_title_label")) },
-                    placeholder = { Text("Intro, Key Explanation, Discussion...") },
+                    placeholder = { Text(Loc.getText("scene_intro_placeholder")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -12650,7 +12650,10 @@ fun ReviewScenesDialog(
                     Button(
                         onClick = {
                             onDismiss()
-                            viewModel.startAiSceneDetection(parentTrack)
+                            viewModel.openAiHub(
+                                function = AiFunctionType.SCENES,
+                                track = parentTrack
+                            )
                         },
                         shape = RoundedCornerShape(12.dp)
                     ) {
@@ -12863,9 +12866,20 @@ fun UnifiedTrackDropdownMenu(
             )
             DropdownMenuItem(
                 text = { Text(Loc.getText("ai_scene_detection_option")) },
+                leadingIcon = {
+                    Icon(
+                        Icons.Filled.MovieCreation,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                },
                 onClick = {
                     onDismissRequest()
-                    viewModel.startAiSceneDetection(track)
+                    viewModel.openAiHub(
+                        function = AiFunctionType.SCENES,
+                        track = track
+                    )
                 }
             )
         }

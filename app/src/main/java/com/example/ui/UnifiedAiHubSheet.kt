@@ -47,6 +47,7 @@ import com.example.player.SubtitleParser
 enum class AiFunctionType {
     CHAT,
     SUBTITLES,
+    SCENES,
     QUIZ
 }
 
@@ -81,6 +82,7 @@ fun UnifiedAiHubSheet(
     val allowedContexts = remember(selectedFunction) {
         when (selectedFunction) {
             AiFunctionType.SUBTITLES -> listOf(AiContextType.TRACK)
+            AiFunctionType.SCENES -> listOf(AiContextType.TRACK)
             AiFunctionType.QUIZ -> listOf(AiContextType.TRACK, AiContextType.NOTEBOOK)
             AiFunctionType.CHAT -> listOf(AiContextType.FREE, AiContextType.TRACK, AiContextType.NOTEBOOK, AiContextType.TASK)
         }
@@ -92,6 +94,7 @@ fun UnifiedAiHubSheet(
             initialNotes != null -> AiContextType.NOTEBOOK
             initialTask != null -> AiContextType.TASK
             initialTrack != null -> AiContextType.TRACK
+            initialFunction == AiFunctionType.SUBTITLES || initialFunction == AiFunctionType.SCENES -> AiContextType.TRACK
             else -> null
         }
         mutableStateOf<AiContextType?>(initialCtx)
@@ -99,10 +102,10 @@ fun UnifiedAiHubSheet(
 
     // Ensure selectedContextType is always compatible with selectedFunction
     LaunchedEffect(selectedFunction) {
-        if (selectedContextType != null && !allowedContexts.contains(selectedContextType)) {
-            selectedContextType = if (selectedFunction == AiFunctionType.SUBTITLES) {
-                AiContextType.TRACK
-            } else if (allowedContexts.size == 1) {
+        if (selectedFunction == AiFunctionType.SUBTITLES || selectedFunction == AiFunctionType.SCENES) {
+            selectedContextType = AiContextType.TRACK
+        } else if (selectedContextType != null && !allowedContexts.contains(selectedContextType)) {
+            selectedContextType = if (allowedContexts.size == 1) {
                 allowedContexts.first()
             } else {
                 null
@@ -245,6 +248,7 @@ fun UnifiedAiHubSheet(
                                     imageVector = when (selectedFunction) {
                                         AiFunctionType.CHAT -> Icons.Filled.SmartToy
                                         AiFunctionType.SUBTITLES -> Icons.Filled.Subtitles
+                                        AiFunctionType.SCENES -> Icons.Filled.MovieCreation
                                         AiFunctionType.QUIZ -> Icons.AutoMirrored.Filled.HelpOutline
                                     },
                                     contentDescription = null,
@@ -255,6 +259,7 @@ fun UnifiedAiHubSheet(
                                     text = when (selectedFunction) {
                                         AiFunctionType.CHAT -> Loc.getText("ai_hub_function_chat")
                                         AiFunctionType.SUBTITLES -> Loc.getText("ai_hub_function_subtitles")
+                                        AiFunctionType.SCENES -> Loc.getText("ai_hub_function_scenes")
                                         AiFunctionType.QUIZ -> Loc.getText("ai_hub_function_quiz")
                                     },
                                     style = MaterialTheme.typography.bodyMedium,
@@ -311,6 +316,26 @@ fun UnifiedAiHubSheet(
                             },
                             onClick = {
                                 selectedFunction = AiFunctionType.SUBTITLES
+                                selectedContextType = AiContextType.TRACK
+                                functionMenuExpanded = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = Loc.getText("ai_hub_function_scenes"),
+                                    fontWeight = if (selectedFunction == AiFunctionType.SCENES) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.MovieCreation,
+                                    contentDescription = null,
+                                    tint = if (selectedFunction == AiFunctionType.SCENES) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            onClick = {
+                                selectedFunction = AiFunctionType.SCENES
                                 selectedContextType = AiContextType.TRACK
                                 functionMenuExpanded = false
                             }
@@ -589,13 +614,45 @@ fun UnifiedAiHubSheet(
                     }
 
                     AiContextType.TRACK -> {
-                        // Hierarchy Tree File Picker (Folders collapsed by default, with Collapse All / Expand All toggle)
-                        HierarchyFilePicker(
-                            folders = allFolders,
-                            tracks = allTracks,
-                            selectedTrack = selectedTrack,
-                            onTrackSelected = { selectedTrack = it }
-                        )
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            if (selectedFunction == AiFunctionType.SCENES) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.MovieCreation,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = Loc.getText("ai_hub_scenes_desc"),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Hierarchy Tree File Picker (Folders collapsed by default, with Collapse All / Expand All toggle)
+                            HierarchyFilePicker(
+                                folders = allFolders,
+                                tracks = allTracks,
+                                selectedTrack = selectedTrack,
+                                onTrackSelected = { selectedTrack = it }
+                            )
+                        }
                     }
 
                     AiContextType.NOTEBOOK -> {
@@ -645,6 +702,7 @@ fun UnifiedAiHubSheet(
                     imageVector = when (selectedFunction) {
                         AiFunctionType.CHAT -> Icons.Filled.Chat
                         AiFunctionType.SUBTITLES -> Icons.Filled.Subtitles
+                        AiFunctionType.SCENES -> Icons.Filled.MovieCreation
                         AiFunctionType.QUIZ -> Icons.Filled.PlayArrow
                     },
                     contentDescription = null,
@@ -655,6 +713,7 @@ fun UnifiedAiHubSheet(
                     text = when (selectedFunction) {
                         AiFunctionType.CHAT -> Loc.getText("ai_hub_function_chat")
                         AiFunctionType.SUBTITLES -> Loc.getText("ai_hub_function_subtitles")
+                        AiFunctionType.SCENES -> Loc.getText("ai_hub_scenes_action")
                         AiFunctionType.QUIZ -> Loc.getText("ai_hub_function_quiz")
                     },
                     fontWeight = FontWeight.Bold,
@@ -755,6 +814,18 @@ private fun executeAiAction(
                     Toast.makeText(context, err, Toast.LENGTH_LONG).show()
                 }
             )
+        }
+
+        AiFunctionType.SCENES -> {
+            if (track == null) {
+                Toast.makeText(context, Loc.getText("no_track_selected"), Toast.LENGTH_SHORT).show()
+                return
+            }
+            if (track.isVirtualScene) {
+                Toast.makeText(context, Loc.getText("cannot_segment_virtual_scene"), Toast.LENGTH_LONG).show()
+                return
+            }
+            viewModel.startAiSceneDetection(track)
         }
 
         AiFunctionType.QUIZ -> {
@@ -1048,7 +1119,7 @@ private fun FileTrackRowItem(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Icon(
-                imageVector = Icons.Filled.Audiotrack,
+                imageVector = getTrackFileIcon(track),
                 contentDescription = null,
                 tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(16.dp)

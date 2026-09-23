@@ -2211,6 +2211,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
                 // 1. Get subtitle cues
                 var cues: List<com.example.player.SubtitleCue> = emptyList()
+                var activeSubtitleContent = track.subtitleContent
+
                 if (!track.subtitleContent.isNullOrBlank()) {
                     cues = com.example.player.SubtitleParser.parseContent(track.subtitleContent, track.subtitleOffsetMs)
                 } else if (!track.subtitlePath.isNullOrBlank()) {
@@ -2219,6 +2221,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     val matching = com.example.player.SubtitleParser.findMatchingSubtitleFile(track.filePath)
                     if (matching != null && matching.exists()) {
                         cues = com.example.player.SubtitleParser.parseFile(matching, track.subtitleOffsetMs)
+                    }
+                }
+
+                // If no subtitles exist yet, automatically generate them with Gemini AI from the audio or video file!
+                if (cues.isEmpty()) {
+                    val mediaFile = File(track.filePath)
+                    if (mediaFile.exists() && mediaFile.canRead()) {
+                        sceneDetectionStatus.value = Loc.getText("ai_scene_generating_subtitles_first")
+                        val subResult = GeminiService.generateSubtitles(
+                            audioFile = mediaFile,
+                            existingSubtitleText = null,
+                            totalDurationMs = if (track.duration > 0) track.duration else 60000L,
+                            customApiKey = customGeminiApiKey,
+                            language = Loc.currentLanguage,
+                            onProgressUpdate = { progressText ->
+                                sceneDetectionStatus.value = progressText
+                            }
+                        )
+                        val generatedSrt = subResult.getOrNull()
+                        if (!generatedSrt.isNullOrBlank()) {
+                            activeSubtitleContent = generatedSrt
+                            repository.updateTrack(track.copy(subtitleContent = generatedSrt))
+                            if (AudioPlayerManager.currentTrack.value?.id == track.id) {
+                                AudioPlayerManager.setSubtitleContentForCurrentTrack(generatedSrt)
+                            }
+                            cues = com.example.player.SubtitleParser.parseContent(generatedSrt, track.subtitleOffsetMs)
+                        }
                     }
                 }
 
@@ -2291,7 +2320,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         isIndependent = false,
                         listenedSegments = "",
                         subtitlePath = track.subtitlePath,
-                        subtitleContent = track.subtitleContent,
+                        subtitleContent = activeSubtitleContent,
                         subtitleOffsetMs = track.subtitleOffsetMs,
                         startOffsetMs = scene.startMs,
                         endOffsetMs = scene.endMs,

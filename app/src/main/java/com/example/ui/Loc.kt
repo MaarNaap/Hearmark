@@ -908,6 +908,12 @@ object Loc {
         "ai_hub_function_chat" to mapOf("en" to "Chat", "ar" to "محادثة"),
         "ai_hub_function_subtitles" to mapOf("en" to "Generate Subtitles", "ar" to "توليد ترجمة"),
         "ai_hub_function_quiz" to mapOf("en" to "Generate Questions", "ar" to "توليد أسئلة"),
+        "ai_hub_function_scenes" to mapOf("en" to "Virtual Scenes", "ar" to "المشاهد الافتراضية"),
+        "ai_hub_action_scenes" to mapOf("en" to "Create Virtual Scenes", "ar" to "إنشاء المشاهد الافتراضية"),
+        "ai_hub_scenes_action" to mapOf("en" to "Create Virtual Scenes", "ar" to "إنشاء المشاهد الافتراضية"),
+        "ai_hub_scenes_desc" to mapOf("en" to "Divide this audio or video file into contextually complete scenes using Gemini AI. Each scene is saved in a dedicated scenes folder for focused listening and study.", "ar" to "تقسيم هذا الملف الصوتي أو المرئي إلى مشاهد سياقية متكاملة باستخدام الذكاء الاصطناعي، وحفظها داخل مجلد مستقل للاستماع والدراسة المركزة."),
+        "cannot_segment_virtual_scene" to mapOf("en" to "This track is already a virtual scene. Please select an original audio or video file.", "ar" to "هذا المقطع هو مشهد افتراضي بالفعل. يرجى اختيار ملف صوتي أو مرئي أصلي."),
+        "ai_scene_generating_subtitles_first" to mapOf("en" to "Extracting audio and generating subtitles with Gemini AI...", "ar" to "جاري استخراج الصوت وتوليد ملف الترجمة بواسطة الذكاء الاصطناعي..."),
         "ai_hub_context_files" to mapOf("en" to "Files", "ar" to "الملفات"),
         "ai_hub_context_notebook" to mapOf("en" to "Notebook", "ar" to "دفتر الملاحظات"),
         "ai_hub_context_tasks" to mapOf("en" to "Tasks", "ar" to "المهام"),
@@ -928,6 +934,28 @@ object Loc {
         "ai_hub_current_playing_badge" to mapOf("en" to "Playing Now", "ar" to "قيد التشغيل"),
         "ai_hub_notes_count_badge" to mapOf("en" to "%d notes selected", "ar" to "%d ملاحظة محددة"),
         "ai_hub_all_notes_badge" to mapOf("en" to "All Notes (%d)", "ar" to "كل الملاحظات (%d)"),
-        "ai_hub_independent_tracks" to mapOf("en" to "Tracks", "ar" to "المقاطع الفردية")
+        "ai_hub_independent_tracks" to mapOf("en" to "Tracks", "ar" to "المقاطع الفردية"),
+
+        // Additional missing and UI action keys
+        "close" to mapOf("en" to "Close", "ar" to "إغلاق"),
+        "done" to mapOf("en" to "Done", "ar" to "تم"),
+        "finish" to mapOf("en" to "Finish", "ar" to "إنهاء"),
+        "yes" to mapOf("en" to "Yes", "ar" to "نعم"),
+        "duration" to mapOf("en" to "Duration", "ar" to "المدة"),
+        "file_info_title" to mapOf("en" to "Audio File Details", "ar" to "تفاصيل الملف الصوتي"),
+        "file_path" to mapOf("en" to "File Path", "ar" to "مسار الملف"),
+        "name_header" to mapOf("en" to "Name", "ar" to "الاسم"),
+        "plays_count" to mapOf("en" to "Plays Count", "ar" to "مرات التشغيل"),
+        "correct_label" to mapOf("en" to "Correct", "ar" to "صحيحة"),
+        "filter_all" to mapOf("en" to "All Time", "ar" to "كل الوقت"),
+        "filter_today" to mapOf("en" to "Today", "ar" to "اليوم"),
+        "filter_week" to mapOf("en" to "Last 7 Days", "ar" to "آخر 7 أيام"),
+        "filter_month" to mapOf("en" to "Last 30 Days", "ar" to "آخر 30 يوماً"),
+        "filter_ninety" to mapOf("en" to "Last 90 Days", "ar" to "آخر 90 يوماً"),
+        "no_track_selected" to mapOf("en" to "No audio track selected", "ar" to "لم يتم تحديد أي مقطع صوتي"),
+        "unified_quiz_tab_notebook" to mapOf("en" to "Notebook Notes", "ar" to "ملاحظات الدفتر"),
+        "currently_used_labels_hint" to mapOf("en" to "Currently used labels (click to add):", "ar" to "وسوم مستخدمة حالياً (انقر للإضافة):"),
+        "scene_intro_placeholder" to mapOf("en" to "Intro, Key Explanation, Discussion...", "ar" to "مقدمة، شرح رئيسي، نقاش..."),
+        "question_deleted_success" to mapOf("en" to "Question deleted", "ar" to "تم حذف السؤال")
     )
 }
