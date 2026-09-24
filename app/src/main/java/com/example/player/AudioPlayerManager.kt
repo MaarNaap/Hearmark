@@ -2135,7 +2135,9 @@ object AudioPlayerManager {
         } else {
             positionMs
         }
-        val active = cues.firstOrNull { it.isTimed && it.startMs >= 0 && effectivePos >= it.startMs && effectivePos <= it.endMs }
+        val active = cues.firstOrNull { 
+            it.isTimed && it.startMs >= 0 && effectivePos >= it.startMs && (effectivePos < it.endMs || (it.id == cues.lastOrNull { c -> c.isTimed }?.id && effectivePos <= it.endMs))
+        }
         if (active != null) {
             _activeSubtitleCue.value = active
         } else if (!_isPracticeMode.value || !_isPracticePausing.value) {

@@ -21,7 +21,7 @@ object SubtitleParser {
         val trimmed = clean.trim()
         if (trimmed.isEmpty()) return emptyList()
 
-        val cues = when {
+        val rawCues = when {
             trimmed.contains("-->") -> {
                 val parsed = parseSrtOrVtt(trimmed)
                 if (parsed.isNotEmpty()) parsed else parsePlainText(trimmed)
@@ -33,8 +33,17 @@ object SubtitleParser {
             else -> parsePlainText(trimmed)
         }
 
-        if (cues.isEmpty()) {
+        if (rawCues.isEmpty()) {
             return parsePlainText(trimmed)
+        }
+
+        // Direct sequential chaining: make the start time of the next cue the end of the previous one
+        val timedIndices = rawCues.indices.filter { rawCues[it].isTimed && rawCues[it].startMs >= 0L }
+        val cues = rawCues.toMutableList()
+        for (i in 0 until timedIndices.size - 1) {
+            val currentIndex = timedIndices[i]
+            val nextIndex = timedIndices[i + 1]
+            cues[currentIndex] = cues[currentIndex].copy(endMs = cues[nextIndex].startMs)
         }
 
         if (offsetMs == 0L) return cues
@@ -110,7 +119,7 @@ object SubtitleParser {
                 val textLines = lines.subList(timeLineIndex + 1, lines.size)
                 val cueText = textLines.joinToString("\n").replace(Regex("<[^>]*>"), "").trim()
                 if (cueText.isNotBlank()) {
-                    list.add(SubtitleCue(id = index++, startMs = startMs, endMs = endMs.coerceAtLeast(startMs + 1000L), text = cueText))
+                    list.add(SubtitleCue(id = index++, startMs = startMs, endMs = endMs, text = cueText))
                 }
             } else {
                 // Untimed text block inside SRT file
@@ -135,7 +144,7 @@ object SubtitleParser {
                         list.add(SubtitleCue(
                             id = index++,
                             startMs = currentStart,
-                            endMs = currentEnd.coerceAtLeast(currentStart + 1000L),
+                            endMs = currentEnd,
                             text = currentText.joinToString("\n").trim()
                         ))
                         currentText.clear()
@@ -163,7 +172,7 @@ object SubtitleParser {
                 list.add(SubtitleCue(
                     id = index++,
                     startMs = currentStart,
-                    endMs = currentEnd.coerceAtLeast(currentStart + 1000L),
+                    endMs = currentEnd,
                     text = currentText.joinToString("\n").trim()
                 ))
             }
@@ -259,7 +268,7 @@ object SubtitleParser {
         for (i in timedCues.indices) {
             val cur = timedCues[i]
             val nextStart = if (i < timedCues.size - 1) timedCues[i + 1].startMs else cur.startMs + 5000L
-            cueEndTimes[cur.id] = (nextStart).coerceAtLeast(cur.startMs + 1000L)
+            cueEndTimes[cur.id] = nextStart
         }
 
         return list.map { cue ->
