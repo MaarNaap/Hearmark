@@ -1227,11 +1227,24 @@ class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
     suspend fun updateFolder(folder: Folder) = dao.updateFolder(folder)
 
     suspend fun deleteFolder(id: Long) {
-        dao.deleteFolder(id)
-        // Set its files as independent or delete them? Usually, let's delete tracks associated or make them missing
-        val tracks = dao.getTracksForFolder(id)
-        for (track in tracks) {
-            dao.deleteTrack(track)
+        val allFolders = dao.getAllFoldersDirect()
+        val allFolderIdsToDelete = getAllSubfolderIds(id, allFolders)
+        val allTracks = dao.getAllTracksFlow().firstOrNull() ?: emptyList()
+        val tracksToDelete = allTracks.filter { it.parentFolderId in allFolderIdsToDelete }
+
+        for (track in tracksToDelete) {
+            deleteTrack(track)
+        }
+
+        for (folderId in allFolderIdsToDelete) {
+            val folderObj = allFolders.find { it.id == folderId }
+            folderObj?.let {
+                try {
+                    val dir = File(it.folderPath)
+                    if (dir.exists()) dir.deleteRecursively()
+                } catch (_: Exception) {}
+            }
+            dao.deleteFolder(folderId)
         }
     }
 
@@ -1241,7 +1254,34 @@ class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
     suspend fun insertTrack(track: AudioTrack) = dao.insertTrack(track)
     suspend fun updateTrack(track: AudioTrack) = dao.updateTrack(track)
     suspend fun updateTrackPracticeSegments(trackId: Long, segments: String?) = dao.updateTrackPracticeSegments(trackId, segments)
-    suspend fun deleteTrack(track: AudioTrack) = dao.deleteTrack(track)
+    suspend fun deleteTrack(track: AudioTrack) {
+        // Delete any virtual scenes belonging to this track
+        val scenes = dao.getScenesForParentTrack(track.id)
+        for (scene in scenes) {
+            dao.deleteTrack(scene)
+        }
+        dao.deleteNotesForTrack(track.id)
+        dao.deleteQuizQuestionsForTrack(track.id)
+        dao.deleteTrack(track)
+
+        if (!track.isVirtualScene) {
+            try {
+                val allTracks = dao.getAllTracksFlow().firstOrNull() ?: emptyList()
+                val otherUsingPath = allTracks.any { it.id != track.id && it.filePath == track.filePath }
+                if (!otherUsingPath) {
+                    val f = File(track.filePath)
+                    if (f.exists()) f.delete()
+                }
+            } catch (_: Exception) {}
+
+            try {
+                track.subtitlePath?.let { subPath ->
+                    val sf = File(subPath)
+                    if (sf.exists()) sf.delete()
+                }
+            } catch (_: Exception) {}
+        }
+    }
     suspend fun deleteTrackById(id: Long) = dao.deleteTrackById(id)
     fun getScenesForParentTrackFlow(parentTrackId: Long) = dao.getScenesForParentTrackFlow(parentTrackId)
     suspend fun getScenesForParentTrack(parentTrackId: Long) = dao.getScenesForParentTrack(parentTrackId)

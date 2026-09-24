@@ -64,6 +64,8 @@ object Loc {
         "selected" to mapOf("en" to "Selected", "ar" to "تم تحديده"),
         "missing_file_warning" to mapOf("en" to "File deleted or missing on phone disk!", "ar" to "الملف محذوف أو مفقود من مساحة الهاتف الأصلية!"),
         "rebind_path" to mapOf("en" to "Rebind Path", "ar" to "إعادة ربط المسار"),
+        "delete_folder_title" to mapOf("en" to "Delete Folder", "ar" to "حذف المجلد"),
+        "delete_folder_confirm" to mapOf("en" to "Are you sure you want to delete this folder and all audio files inside it?", "ar" to "هل أنت متأكد من رغبتك في حذف هذا المجلد وجميع الملفات الصوتية بداخله؟"),
         "delete_history" to mapOf("en" to "Remove", "ar" to "حذف"),
 
         // Additional localized strings for Unified experience

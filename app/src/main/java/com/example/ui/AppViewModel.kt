@@ -613,8 +613,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val currentTracks = repository.dao.getAllTracksFlow().firstOrNull() ?: return@withContext
         val allHistory = repository.dao.getPlaybackHistoryFlow().firstOrNull() ?: emptyList()
         val historyGrouped = allHistory.groupBy { it.trackId }
+        val validFolderIds = refreshedFolders.map { it.id }.toSet()
         
         for (track in currentTracks) {
+            // Clean up any orphaned tracks left over from previously deleted folders
+            if (track.parentFolderId != null && !validFolderIds.contains(track.parentFolderId) && !track.isIndependent) {
+                repository.deleteTrack(track)
+                continue
+            }
+
             val file = File(track.filePath)
             val exists = file.exists()
             
@@ -1374,7 +1381,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         } else {
                             existingTrack.subtitlePath
                         }
-                        repository.updateTrack(existingTrack.copy(isMissing = false, subtitlePath = updatedSubPath))
+                        repository.updateTrack(existingTrack.copy(
+                            isMissing = false,
+                            subtitlePath = updatedSubPath,
+                            parentFolderId = folderId,
+                            isIndependent = false
+                        ))
                         existingCount++
                         return@forEach
                     }

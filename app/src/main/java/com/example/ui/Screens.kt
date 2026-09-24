@@ -3354,6 +3354,7 @@ fun FolderDetailsView(
 
     var showMenu by remember { mutableStateOf(false) }
     var showRenameFolderDialog by remember { mutableStateOf(false) }
+    var showDeleteFolderConfirmDialog by remember { mutableStateOf(false) }
     var folderToRename by remember { mutableStateOf<Folder?>(null) }
 
     var isBulkSelectMode by remember { mutableStateOf(false) }
@@ -3653,15 +3654,39 @@ fun FolderDetailsView(
                             text = { Text(Loc.getText("delete_history"), color = MaterialTheme.colorScheme.error) },
                             onClick = {
                                 showMenu = false
-                                coroutineScope.launch {
-                                    viewModel.repository.deleteFolder(currentFolderId)
-                                }
-                                handleBack()
+                                showDeleteFolderConfirmDialog = true
                             }
                         )
                     }
                 }
             }
+        }
+
+        if (showDeleteFolderConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteFolderConfirmDialog = false },
+                title = { Text(Loc.getText("delete_folder_title")) },
+                text = { Text(Loc.getText("delete_folder_confirm")) },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showDeleteFolderConfirmDialog = false
+                            coroutineScope.launch {
+                                viewModel.repository.deleteFolder(currentFolderId)
+                            }
+                            handleBack()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text(Loc.getText("delete"))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteFolderConfirmDialog = false }) {
+                        Text(Loc.getText("cancel"))
+                    }
+                }
+            )
         }
 
         if (!isBulkSelectMode) {
@@ -13335,6 +13360,7 @@ fun FolderTreeNodeItem(
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var isExpanded by remember { mutableStateOf(false) }
+    var showDeleteFolderConfirm by remember { mutableStateOf(false) }
     val isSelected = selectedFolderIds.contains(folder.id)
     val folderTracks by viewModel.repository.getTracksForFolderFlow(folder.id).collectAsStateWithLifecycle(emptyList())
     val childSubfolders by viewModel.getSubfolders(folder.id).collectAsStateWithLifecycle(emptyList())
@@ -13493,10 +13519,41 @@ fun FolderTreeNodeItem(
                                     onShowAssociatedTasks("FOLDER", folder.id, folder.folderName)
                                 }
                             )
+                            DropdownMenuItem(
+                                text = { Text(Loc.getText("delete"), color = MaterialTheme.colorScheme.error) },
+                                onClick = {
+                                    showMenu = false
+                                    showDeleteFolderConfirm = true
+                                }
+                            )
                         }
                     }
                 }
             }
+        }
+
+        if (showDeleteFolderConfirm) {
+            AlertDialog(
+                onDismissRequest = { showDeleteFolderConfirm = false },
+                title = { Text(Loc.getText("delete_folder_title")) },
+                text = { Text(Loc.getText("delete_folder_confirm")) },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showDeleteFolderConfirm = false
+                            viewModel.deleteFolder(folder.id)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text(Loc.getText("delete"))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteFolderConfirm = false }) {
+                        Text(Loc.getText("cancel"))
+                    }
+                }
+            )
         }
 
         if (isExpanded && childSubfolders.isNotEmpty()) {
