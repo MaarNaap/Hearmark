@@ -223,12 +223,6 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
             bottomBar = {
                 if (!isFullPlayerExpanded) {
                     Column {
-                        // PERSISTENT BACKGROUND AI TASK BANNER
-                        AiBackgroundStatusBar(
-                            viewModel = viewModel,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                        )
-
                         // PERSISTENT MINI-PLAYER BAR (Spotify style)
                         if (currentTrackState != null) {
                         Surface(
@@ -4815,14 +4809,6 @@ fun AudioPlayerOverlay(
                                 verticalArrangement = Arrangement.spacedBy(16.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                // Background AI Operation Status (if active)
-                                AiBackgroundStatusBar(
-                                    viewModel = viewModel,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp)
-                                )
-
                                 // Title of active track
                                 SmartFileNameText(
                             text = track.getDisplayTitle(),
