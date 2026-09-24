@@ -223,6 +223,12 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
             bottomBar = {
                 if (!isFullPlayerExpanded) {
                     Column {
+                        // PERSISTENT BACKGROUND AI TASK BANNER
+                        AiBackgroundStatusBar(
+                            viewModel = viewModel,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                        )
+
                         // PERSISTENT MINI-PLAYER BAR (Spotify style)
                         if (currentTrackState != null) {
                         Surface(
@@ -788,169 +794,7 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                     )
                 }
 
-                // AI SCENE DETECTION PROGRESS DIALOG
-                val isDetectingScenes by viewModel.isDetectingScenes.collectAsStateWithLifecycle()
-                val detectingTrackName by viewModel.detectingTrackName.collectAsStateWithLifecycle()
-                val sceneDetectionStatus by viewModel.sceneDetectionStatus.collectAsStateWithLifecycle()
-
-                if (isDetectingScenes) {
-                    Dialog(
-                        onDismissRequest = { /* Non-cancellable during AI scene analysis */ },
-                        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
-                    ) {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth(0.92f)
-                                .padding(16.dp),
-                            shape = RoundedCornerShape(24.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(64.dp)
-                                        .background(
-                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                                            CircleShape
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.AutoAwesome,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(32.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text(
-                                    text = Loc.getText("ai_scene_processing_title"),
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 17.sp
-                                    ),
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    textAlign = TextAlign.Center
-                                )
-                                if (!detectingTrackName.isNullOrBlank()) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = detectingTrackName!!,
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Medium
-                                        ),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(16.dp))
-                                LinearProgressIndicator(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(6.dp)
-                                        .clip(CircleShape),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                )
-                                Spacer(modifier = Modifier.height(14.dp))
-                                Text(
-                                    text = sceneDetectionStatus ?: Loc.getText("scenes_analyzing_status"),
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // AI SUBTITLE GENERATION PROGRESS DIALOG
-                val isGeneratingSubtitles by viewModel.isGeneratingSubtitles.collectAsStateWithLifecycle()
-                val subtitleGenerationStatus by viewModel.subtitleGenerationStatus.collectAsStateWithLifecycle()
-
-                if (isGeneratingSubtitles) {
-                    Dialog(
-                        onDismissRequest = { /* Non-cancellable during AI subtitle generation */ },
-                        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
-                    ) {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth(0.92f)
-                                .padding(16.dp),
-                            shape = RoundedCornerShape(24.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(64.dp)
-                                        .background(
-                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                                            CircleShape
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.ClosedCaption,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(32.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text(
-                                    text = Loc.getText("ai_creating_subtitles"),
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 17.sp
-                                    ),
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    textAlign = TextAlign.Center
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = Loc.getText("ai_create_subtitles_desc"),
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                LinearProgressIndicator(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(6.dp)
-                                        .clip(CircleShape),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                )
-                                Spacer(modifier = Modifier.height(14.dp))
-                                Text(
-                                    text = subtitleGenerationStatus.ifBlank { Loc.getText("ai_creating_subtitles") },
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    }
-                }
+                // AI operations run asynchronously in background via AiBackgroundStatusBar without blocking application interactions or audio playback
             }
         }
     }
@@ -4971,6 +4815,14 @@ fun AudioPlayerOverlay(
                                 verticalArrangement = Arrangement.spacedBy(16.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
+                                // Background AI Operation Status (if active)
+                                AiBackgroundStatusBar(
+                                    viewModel = viewModel,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp)
+                                )
+
                                 // Title of active track
                                 SmartFileNameText(
                             text = track.getDisplayTitle(),

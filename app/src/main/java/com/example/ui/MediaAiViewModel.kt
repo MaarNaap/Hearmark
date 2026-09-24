@@ -35,8 +35,21 @@ class MediaAiViewModel(
     private val _isGeneratingSubtitles = MutableStateFlow(false)
     val isGeneratingSubtitles: StateFlow<Boolean> = _isGeneratingSubtitles.asStateFlow()
 
+    private val _generatingTrack = MutableStateFlow<AudioTrack?>(null)
+    val generatingTrack: StateFlow<AudioTrack?> = _generatingTrack.asStateFlow()
+
     private val _subtitleGenerationStatus = MutableStateFlow("")
     val subtitleGenerationStatus: StateFlow<String> = _subtitleGenerationStatus.asStateFlow()
+
+    private var subtitleJob: kotlinx.coroutines.Job? = null
+
+    fun cancelSubtitleGeneration() {
+        subtitleJob?.cancel()
+        subtitleJob = null
+        _isGeneratingSubtitles.value = false
+        _generatingTrack.value = null
+        _subtitleGenerationStatus.value = ""
+    }
 
     fun openChatWithContext(contextSummary: AudioContextSummary? = null) {
         activeChatContext.value = contextSummary
@@ -106,13 +119,22 @@ class MediaAiViewModel(
         onSuccess: (() -> Unit)? = null,
         onError: ((String) -> Unit)? = null
     ) {
-        if (_isGeneratingSubtitles.value) return
         val track = AudioPlayerManager.currentTrack.value
         if (track == null) {
             val noTrackMsg = Loc.getText("no_track_selected") ?: "No audio track selected"
             onError?.invoke(noTrackMsg)
             return
         }
+        generateSubtitlesForTrack(track, contextSummary, onSuccess, onError)
+    }
+
+    fun generateSubtitlesForTrack(
+        track: AudioTrack,
+        contextSummary: AudioContextSummary? = null,
+        onSuccess: (() -> Unit)? = null,
+        onError: ((String) -> Unit)? = null
+    ) {
+        if (_isGeneratingSubtitles.value) return
 
         val audioFile = java.io.File(track.filePath)
         if (!audioFile.exists() || !audioFile.canRead()) {
@@ -127,50 +149,72 @@ class MediaAiViewModel(
         }
 
         _isGeneratingSubtitles.value = true
+        _generatingTrack.value = track
         _subtitleGenerationStatus.value = Loc.getText("ai_creating_subtitles")
 
-        val rawReference = AudioPlayerManager.getCurrentSubtitlesRawText()
+        val rawReference = if (AudioPlayerManager.currentTrack.value?.id == track.id) {
+            AudioPlayerManager.getCurrentSubtitlesRawText()
+        } else {
+            track.subtitleContent ?: ""
+        }
         val referenceSubtitles = if (rawReference.isNotBlank()) rawReference else null
 
-        viewModelScope.launch {
-            val result = GeminiService.generateSubtitles(
-                audioFile = audioFile,
-                existingSubtitleText = referenceSubtitles,
-                totalDurationMs = AudioPlayerManager.duration.value,
-                customApiKey = apiKeyProvider(),
-                language = languageProvider(),
-                onProgressUpdate = { progressText ->
-                    _subtitleGenerationStatus.value = progressText
-                }
-            )
+        val effectiveDuration = when {
+            AudioPlayerManager.currentTrack.value?.id == track.id && AudioPlayerManager.duration.value > 0 ->
+                AudioPlayerManager.duration.value
+            track.duration > 0 -> track.duration
+            else -> GeminiService.getMediaDurationMs(audioFile)
+        }
 
-            result.fold(
-                onSuccess = { cleanSrt ->
-                    AudioPlayerManager.setSubtitleContentForCurrentTrack(cleanSrt)
-                    val successMsg = Loc.getText("ai_subtitles_success")
-                    _chatMessages.value = _chatMessages.value + ChatMessage(
-                        role = "model",
-                        text = "✨ $successMsg"
-                    )
-                    _isGeneratingSubtitles.value = false
-                    _subtitleGenerationStatus.value = ""
-                    onSuccess?.invoke()
-                },
-                onFailure = { error ->
-                    val errorMsg = when {
-                        error.message == "MISSING_API_KEY" -> Loc.getText("missing_api_key_prompt")
-                        else -> String.format(Loc.getText("ai_subtitles_failed"), error.localizedMessage ?: "Unknown error")
+        subtitleJob?.cancel()
+        subtitleJob = viewModelScope.launch {
+            try {
+                val result = GeminiService.generateSubtitles(
+                    audioFile = audioFile,
+                    existingSubtitleText = referenceSubtitles,
+                    totalDurationMs = effectiveDuration,
+                    customApiKey = apiKeyProvider(),
+                    language = languageProvider(),
+                    onProgressUpdate = { progressText ->
+                        _subtitleGenerationStatus.value = progressText
                     }
-                    _chatMessages.value = _chatMessages.value + ChatMessage(
-                        role = "model",
-                        text = errorMsg,
-                        isError = true
-                    )
-                    _isGeneratingSubtitles.value = false
-                    _subtitleGenerationStatus.value = ""
-                    onError?.invoke(errorMsg)
-                }
-            )
+                )
+
+                result.fold(
+                    onSuccess = { cleanSrt ->
+                        AudioPlayerManager.setSubtitleContentForTrack(track.id, cleanSrt)
+                        val successMsg = Loc.getText("ai_subtitles_success")
+                        val displayTitle = track.getDisplayTitle()
+                        _chatMessages.value = _chatMessages.value + ChatMessage(
+                            role = "model",
+                            text = "✨ $successMsg ($displayTitle)"
+                        )
+                        _isGeneratingSubtitles.value = false
+                        _generatingTrack.value = null
+                        _subtitleGenerationStatus.value = ""
+                        onSuccess?.invoke()
+                    },
+                    onFailure = { error ->
+                        val errorMsg = when {
+                            error.message == "MISSING_API_KEY" -> Loc.getText("missing_api_key_prompt")
+                            else -> String.format(Loc.getText("ai_subtitles_failed"), error.localizedMessage ?: "Unknown error")
+                        }
+                        _chatMessages.value = _chatMessages.value + ChatMessage(
+                            role = "model",
+                            text = errorMsg,
+                            isError = true
+                        )
+                        _isGeneratingSubtitles.value = false
+                        _generatingTrack.value = null
+                        _subtitleGenerationStatus.value = ""
+                        onError?.invoke(errorMsg)
+                    }
+                )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                _isGeneratingSubtitles.value = false
+                _generatingTrack.value = null
+                _subtitleGenerationStatus.value = ""
+            }
         }
     }
 

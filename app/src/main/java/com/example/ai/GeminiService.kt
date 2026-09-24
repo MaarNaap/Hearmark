@@ -145,7 +145,24 @@ data class GeneratedNoteQuizItem(
 object GeminiService {
     private const val TAG = "GeminiService"
     private const val DEFAULT_MODEL = "gemini-3.5-flash"
+    private const val FALLBACK_MODEL = "gemini-flash-latest"
     private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+
+    private val uploadedFileCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
+
+    fun getMediaDurationMs(file: File): Long {
+        var retriever: android.media.MediaMetadataRetriever? = null
+        return try {
+            retriever = android.media.MediaMetadataRetriever()
+            retriever.setDataSource(file.absolutePath)
+            val time = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+            time?.toLongOrNull() ?: 0L
+        } catch (e: Exception) {
+            0L
+        } finally {
+            try { retriever?.release() } catch (ignored: Exception) {}
+        }
+    }
 
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
@@ -155,10 +172,10 @@ object GeminiService {
 
     // Dedicated client for large media uploads and long subtitle transcription streaming (e.g. 18+ min tracks)
     private val subtitleOkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(120, TimeUnit.SECONDS)
-        .writeTimeout(300, TimeUnit.SECONDS) // Up to 5 minutes to upload large media files
-        .readTimeout(300, TimeUnit.SECONDS)  // Up to 5 minutes between stream packets
-        .callTimeout(900, TimeUnit.SECONDS)  // Up to 15 minutes total max call duration
+        .connectTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(180, TimeUnit.SECONDS) // Up to 3 minutes to upload large media files
+        .readTimeout(180, TimeUnit.SECONDS)  // Up to 3 minutes between stream packets
+        .callTimeout(0, TimeUnit.SECONDS)    // No arbitrary global timeout cutoff
         .retryOnConnectionFailure(true)
         .build()
 
@@ -1140,6 +1157,14 @@ Take for granted: To fail to properly appreciate someone or something, especiall
         apiKey: String,
         onProgressUpdate: ((String) -> Unit)? = null
     ): String = withContext(Dispatchers.IO) {
+        val cacheKey = "${file.absolutePath}:${file.lastModified()}"
+        uploadedFileCache[cacheKey]?.let { (uri, time) ->
+            if (System.currentTimeMillis() - time < 24 * 3600 * 1000L) {
+                Log.d(TAG, "Reusing cached Gemini File URI: $uri")
+                return@withContext uri
+            }
+        }
+
         onProgressUpdate?.invoke("Uploading audio to Gemini server...")
         val initUrl = "https://generativelanguage.googleapis.com/upload/v1beta/files?key=$apiKey"
         val metadataJson = JSONObject().apply {
@@ -1204,6 +1229,7 @@ Take for granted: To fail to properly appreciate someone or something, especiall
             }
         }
 
+        uploadedFileCache[cacheKey] = Pair(fileUri, System.currentTimeMillis())
         fileUri
     }
 
@@ -1237,6 +1263,170 @@ Take for granted: To fail to properly appreciate someone or something, especiall
         return text
     }
 
+    private suspend fun executeSubtitleGenerationWithRetry(
+        rootJson: JSONObject,
+        resolvedApiKey: String,
+        preferredModel: String,
+        language: String,
+        chunkIdx: Int,
+        totalChunks: Int,
+        accumulatedCuesCount: Int,
+        onProgressUpdate: ((String) -> Unit)?
+    ): String = withContext(Dispatchers.IO) {
+        val maxAttempts = 3
+        var currentDelayMs = 2500L
+        var activeModel = preferredModel
+        var lastException: Exception? = null
+
+        val mediaType = "application/json; charset=utf-8".toMediaType()
+
+        for (attempt in 1..maxAttempts) {
+            try {
+                // If attempt 1 or 2 failed with 503/timeout, fallback to FALLBACK_MODEL on attempt 3
+                if (attempt == 3 && activeModel == DEFAULT_MODEL) {
+                    activeModel = FALLBACK_MODEL
+                }
+
+                val useStreaming = (attempt <= 2)
+
+                if (useStreaming) {
+                    val requestUrl = "$BASE_URL/$activeModel:streamGenerateContent?key=$resolvedApiKey&alt=sse"
+                    val requestBody = rootJson.toString().toRequestBody(mediaType)
+                    val request = Request.Builder().url(requestUrl).post(requestBody).build()
+
+                    val response = subtitleOkHttpClient.newCall(request).execute()
+                    val responseCode = response.code
+                    if (!response.isSuccessful) {
+                        val errBody = response.body?.string() ?: ""
+                        Log.e(TAG, "Gemini Subtitles stream failed (HTTP $responseCode, attempt $attempt): $errBody")
+                        throw Exception("HTTP $responseCode: $errBody")
+                    }
+
+                    val body = response.body ?: throw Exception("Empty response body from Gemini.")
+                    val reader = body.byteStream().bufferedReader(Charsets.UTF_8)
+                    val chunkRawText = StringBuilder()
+                    var streamedArrowCount = 0
+
+                    reader.useLines { lines ->
+                        for (line in lines) {
+                            if (line.startsWith("data: ")) {
+                                val jsonStr = line.substring(6).trim()
+                                if (jsonStr.isNotBlank() && jsonStr != "[DONE]") {
+                                    try {
+                                        val chunkJson = JSONObject(jsonStr)
+                                        val candidates = chunkJson.optJSONArray("candidates")
+                                        if (candidates != null && candidates.length() > 0) {
+                                            val candidate = candidates.getJSONObject(0)
+                                            val content = candidate.optJSONObject("content")
+                                            val parts = content?.optJSONArray("parts")
+                                            if (parts != null && parts.length() > 0) {
+                                                for (i in 0 until parts.length()) {
+                                                    val partText = parts.getJSONObject(i).optString("text", "")
+                                                    if (partText.isNotEmpty()) {
+                                                        chunkRawText.append(partText)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "Error parsing SSE chunk: ${e.message}")
+                                    }
+
+                                    val currentTotal = chunkRawText.toString()
+                                    val arrowCount = currentTotal.split("-->").size - 1
+                                    if (arrowCount > streamedArrowCount) {
+                                        streamedArrowCount = arrowCount
+                                        val totalLiveCues = accumulatedCuesCount + streamedArrowCount
+                                        val updateMsg = if (totalChunks > 1) {
+                                            if (language == "ar") {
+                                                "مزامنة الجزء (${chunkIdx + 1}/$totalChunks)... ($totalLiveCues مقطعاً)"
+                                            } else {
+                                                "Syncing chunk (${chunkIdx + 1}/$totalChunks)... ($totalLiveCues cues synced)"
+                                            }
+                                        } else {
+                                            if (language == "ar") {
+                                                "جارٍ توليد ومزامنة الترجمة... ($totalLiveCues مقطعاً)"
+                                            } else {
+                                                "Generating subtitles... ($totalLiveCues cues synced)"
+                                            }
+                                        }
+                                        onProgressUpdate?.invoke(updateMsg)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    val rawResult = chunkRawText.toString()
+                    if (rawResult.isNotBlank() && rawResult.contains("-->")) {
+                        return@withContext rawResult
+                    } else {
+                        throw Exception("Streaming returned incomplete subtitle output.")
+                    }
+                } else {
+                    // Non-streaming generateContent fallback: robust against SSE socket drops on long audio
+                    val fallbackMsg = if (language == "ar") "جارٍ إتمام معالجة الترجمة عبر خوادم الذكاء الاصطناعي..."
+                    else "Processing subtitles directly via Gemini API..."
+                    onProgressUpdate?.invoke(fallbackMsg)
+
+                    val requestUrl = "$BASE_URL/$activeModel:generateContent?key=$resolvedApiKey"
+                    val requestBody = rootJson.toString().toRequestBody(mediaType)
+                    val request = Request.Builder().url(requestUrl).post(requestBody).build()
+
+                    val response = subtitleOkHttpClient.newCall(request).execute()
+                    val responseCode = response.code
+                    val responseBody = response.body?.string() ?: ""
+
+                    if (!response.isSuccessful) {
+                        Log.e(TAG, "Gemini Subtitles generateContent failed (HTTP $responseCode): $responseBody")
+                        throw Exception("HTTP $responseCode: $responseBody")
+                    }
+
+                    val respJson = JSONObject(responseBody)
+                    val candidates = respJson.optJSONArray("candidates")
+                    val candidate = candidates?.optJSONObject(0)
+                    val parts = candidate?.optJSONObject("content")?.optJSONArray("parts")
+                    val rawResult = parts?.optJSONObject(0)?.optString("text", "") ?: ""
+
+                    if (rawResult.isNotBlank() && rawResult.contains("-->")) {
+                        return@withContext rawResult
+                    } else {
+                        throw Exception("Gemini returned invalid or empty subtitle text.")
+                    }
+                }
+            } catch (e: Exception) {
+                lastException = e
+                val msg = e.message ?: ""
+                val is503 = msg.contains("503") || msg.contains("overloaded", ignoreCase = true) || msg.contains("UNAVAILABLE", ignoreCase = true)
+                val is429 = msg.contains("429") || msg.contains("RESOURCE_EXHAUSTED", ignoreCase = true)
+                val isTimeout = e is java.net.SocketTimeoutException || msg.contains("timeout", ignoreCase = true) || e.cause is java.net.SocketTimeoutException
+                val isConnectionErr = e is java.io.IOException || msg.contains("connection", ignoreCase = true) || msg.contains("stream", ignoreCase = true)
+
+                val canRetry = (is503 || is429 || isTimeout || isConnectionErr) && attempt < maxAttempts
+
+                if (canRetry) {
+                    val waitSec = (currentDelayMs / 1000).toInt()
+                    val retryNotice = if (language == "ar") {
+                        if (is503) "خوادم Gemini مشغولة مؤقتاً (503)، جارٍ إعادة المحاولة تلقائياً خلال $waitSec ثوانٍ ($attempt/$maxAttempts)..."
+                        else if (isTimeout) "استغرق الاتصال وقتاً أطول، جارٍ إعادة المحاولة خلال $waitSec ثوانٍ ($attempt/$maxAttempts)..."
+                        else "جارٍ إعادة المحاولة تلقائياً خلال $waitSec ثوانٍ ($attempt/$maxAttempts)..."
+                    } else {
+                        if (is503) "Gemini servers are busy (503), retrying in ${waitSec}s ($attempt/$maxAttempts)..."
+                        else if (isTimeout) "Request timed out, retrying in ${waitSec}s ($attempt/$maxAttempts)..."
+                        else "Retrying in ${waitSec}s ($attempt/$maxAttempts)..."
+                    }
+                    onProgressUpdate?.invoke(retryNotice)
+                    Log.w(TAG, "Subtitle generation attempt $attempt failed with: $msg. Retrying in ${currentDelayMs}ms...")
+                    delay(currentDelayMs)
+                    currentDelayMs = (currentDelayMs * 1.8).toLong().coerceAtMost(10000L)
+                } else {
+                    throw e
+                }
+            }
+        }
+        throw lastException ?: Exception("Subtitle generation failed after $maxAttempts attempts.")
+    }
+
     suspend fun generateSubtitles(
         audioFile: File,
         existingSubtitleText: String? = null,
@@ -1257,11 +1447,20 @@ Take for granted: To fail to properly appreciate someone or something, especiall
 
         try {
             val mimeType = getMimeTypeForFile(audioFile)
-            val mediaPartJson = JSONObject()
 
-            // Files over 5MB use Gemini Files API for reliable upload and server-side processing
-            val maxInlineBytes = 5 * 1024 * 1024L // 5MB
-            if (audioFile.length() <= maxInlineBytes) {
+            // Determine accurate audio duration
+            val calculatedDurationMs = if (totalDurationMs > 0) totalDurationMs else getMediaDurationMs(audioFile)
+            val durationSeconds = if (calculatedDurationMs > 0) {
+                (calculatedDurationMs / 1000).toInt()
+            } else {
+                val approxSec = ((audioFile.length() / (128 * 1024 / 8))).toInt().coerceIn(60, 7200)
+                approxSec
+            }
+
+            val mediaPartJson = JSONObject()
+            // Files over 2MB or audio longer than 120 seconds use Gemini Files API for reliable upload and server-side processing
+            val maxInlineBytes = 2 * 1024 * 1024L // 2MB
+            if (audioFile.length() <= maxInlineBytes && durationSeconds <= 120) {
                 onProgressUpdate?.invoke(
                     if (language == "ar") "جارٍ قراءة الملف الصوتي..." else "Reading audio data..."
                 )
@@ -1272,6 +1471,8 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                     put("data", base64Data)
                 })
             } else {
+                val uploadProgressMsg = if (language == "ar") "جارٍ رفع المقطع إلى خوادم Gemini..." else "Uploading audio to Gemini server..."
+                onProgressUpdate?.invoke(uploadProgressMsg)
                 val fileUri = uploadFileToGemini(audioFile, mimeType, resolvedApiKey, onProgressUpdate)
                 mediaPartJson.put("fileData", JSONObject().apply {
                     put("mimeType", mimeType)
@@ -1286,25 +1487,15 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                 null
             }
 
-            // Estimate track duration in seconds
-            val durationSeconds = if (totalDurationMs > 0) {
-                (totalDurationMs / 1000).toInt()
-            } else {
-                // Approximate fallback: ~1 minute per 1MB for typical audio files if unknown
-                val approxSec = ((audioFile.length() / (128 * 1024 / 8))).toInt().coerceIn(60, 7200)
-                approxSec
-            }
-
-            // Time-Window Chunking:
-            // Break audio files longer than 4 minutes into 3-minute time windows (180s)
-            // with a small 2-second overlap to prevent sentence cutoff and eliminate time drift.
-            val chunkWindowSec = 180 // 3 minutes per chunk for pinpoint acoustic precision
+            // Up to 20 minutes (1200 seconds) is processed in a SINGLE pass for continuous accuracy and fast execution!
+            // This prevents arbitrary splitting of standard 10-11 minute audios into multiple failing chunks.
+            val singlePassMaxSeconds = 1200
             val chunkWindows = mutableListOf<Pair<Int, Int>>()
 
-            if (durationSeconds <= 240) {
-                // Short audio: single pass
+            if (durationSeconds <= singlePassMaxSeconds) {
                 chunkWindows.add(Pair(0, durationSeconds))
             } else {
+                val chunkWindowSec = 600 // 10 minutes per chunk for very long podcasts/lectures
                 var curStart = 0
                 while (curStart < durationSeconds) {
                     val curEnd = (curStart + chunkWindowSec).coerceAtMost(durationSeconds)
@@ -1330,8 +1521,8 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                         "Syncing chunk ${chunkIdx + 1}/$totalChunks [${SubtitleParser.formatShortTimeTag(winStartMs)} - ${SubtitleParser.formatShortTimeTag(winEndMs)}]..."
                     }
                 } else {
-                    if (language == "ar") "جارٍ الاتصال بالذكاء الاصطناعي وبدء توليد الترجمة..."
-                    else "Connecting to Gemini and initiating transcription..."
+                    if (language == "ar") "جارٍ تحليل الصوت وتوليد الترجمة بالذكاء الاصطناعي..."
+                    else "Analyzing audio and generating subtitles with AI..."
                 }
                 onProgressUpdate?.invoke(chunkProgressMsg)
 
@@ -1344,8 +1535,8 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                         append("- Transcribe ONLY the speech occurring from exactly [${SubtitleParser.formatShortTimeTag(winStartMs)}] (${SubtitleParser.formatSrtTimestamp(winStartMs)}) to [${SubtitleParser.formatShortTimeTag(winEndMs)}] (${SubtitleParser.formatSrtTimestamp(winEndMs)}).\n")
                         append("- Do NOT include speech occurring before ${SubtitleParser.formatSrtTimestamp(winStartMs)} or after ${SubtitleParser.formatSrtTimestamp(winEndMs)}.\n")
                         append("- All subtitle cues in this pass MUST have absolute timestamps within ${SubtitleParser.formatSrtTimestamp(winStartMs)} and ${SubtitleParser.formatSrtTimestamp(winEndMs)}.\n\n")
-                    } else if (totalDurationMs > 0) {
-                        append("TOTAL TRACK DURATION: ${SubtitleParser.formatSrtTimestamp(totalDurationMs)}\n\n")
+                    } else if (calculatedDurationMs > 0) {
+                        append("TOTAL TRACK DURATION: ${SubtitleParser.formatSrtTimestamp(calculatedDurationMs)}\n\n")
                     }
 
                     append("MANDATORY ACOUSTIC TIMING RULES (SHARP ACCURACY):\n")
@@ -1363,7 +1554,6 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                         append("3. REFERENCE TRANSCRIPT (WORDING ONLY):\n")
                         append("   - Use the text below strictly for correct words, spelling, vocabulary, and sentence structure:\n")
                         append("--- REFERENCE TRANSCRIPT START ---\n")
-                        // If long, pass relevant text or full clean transcript
                         append(cleanReferenceText.trim())
                         append("\n--- REFERENCE TRANSCRIPT END ---\n")
                         append("   - DO NOT copy or infer timestamps from any previous subtitles. Determine start and end timestamps purely by listening to the speech audio waveform.\n\n")
@@ -1398,83 +1588,23 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                         })
                     })
                     put("generationConfig", JSONObject().apply {
-                        put("temperature", 0.0) // Deterministic zero temperature for maximum timing consistency
+                        put("temperature", 0.1)
                         put("maxOutputTokens", 65536)
                     })
                 }
 
-                val requestUrl = "$BASE_URL/$modelName:streamGenerateContent?key=$resolvedApiKey&alt=sse"
-                val mediaType = "application/json; charset=utf-8".toMediaType()
-                val requestBody = rootJson.toString().toRequestBody(mediaType)
+                val chunkRawText = executeSubtitleGenerationWithRetry(
+                    rootJson = rootJson,
+                    resolvedApiKey = resolvedApiKey,
+                    preferredModel = modelName,
+                    language = language,
+                    chunkIdx = chunkIdx,
+                    totalChunks = totalChunks,
+                    accumulatedCuesCount = allAccumulatedCues.size,
+                    onProgressUpdate = onProgressUpdate
+                )
 
-                val request = Request.Builder()
-                    .url(requestUrl)
-                    .post(requestBody)
-                    .build()
-
-                val response = subtitleOkHttpClient.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    val errBody = response.body?.string() ?: ""
-                    Log.e(TAG, "Gemini Subtitle Generation failed on chunk $chunkIdx: ${response.code} -> $errBody")
-                    return@withContext Result.failure(Exception("HTTP ${response.code}: $errBody"))
-                }
-
-                val body = response.body ?: throw Exception("Empty response body from Gemini.")
-                val reader = body.byteStream().bufferedReader(Charsets.UTF_8)
-                val chunkRawText = StringBuilder()
-                var streamedArrowCount = 0
-
-                reader.useLines { lines ->
-                    for (line in lines) {
-                        if (line.startsWith("data: ")) {
-                            val jsonStr = line.substring(6).trim()
-                            if (jsonStr.isNotBlank() && jsonStr != "[DONE]") {
-                                try {
-                                    val chunkJson = JSONObject(jsonStr)
-                                    val candidates = chunkJson.optJSONArray("candidates")
-                                    if (candidates != null && candidates.length() > 0) {
-                                        val candidate = candidates.getJSONObject(0)
-                                        val content = candidate.optJSONObject("content")
-                                        val parts = content?.optJSONArray("parts")
-                                        if (parts != null && parts.length() > 0) {
-                                            for (i in 0 until parts.length()) {
-                                                val partText = parts.getJSONObject(i).optString("text", "")
-                                                if (partText.isNotEmpty()) {
-                                                    chunkRawText.append(partText)
-                                                }
-                                            }
-                                        }
-                                    }
-                                } catch (e: Exception) {
-                                    Log.w(TAG, "Error parsing SSE chunk: ${e.message}")
-                                }
-
-                                val currentTotal = chunkRawText.toString()
-                                val arrowCount = currentTotal.split("-->").size - 1
-                                if (arrowCount > streamedArrowCount) {
-                                    streamedArrowCount = arrowCount
-                                    val totalLiveCues = allAccumulatedCues.size + streamedArrowCount
-                                    val updateMsg = if (totalChunks > 1) {
-                                        if (language == "ar") {
-                                            "مزامنة الجزء (${chunkIdx + 1}/$totalChunks)... ($totalLiveCues مقطعاً)"
-                                        } else {
-                                            "Syncing chunk (${chunkIdx + 1}/$totalChunks)... ($totalLiveCues cues synced)"
-                                        }
-                                    } else {
-                                        if (language == "ar") {
-                                            "جارٍ توليد ومزامنة الترجمة... ($totalLiveCues مقطعاً)"
-                                        } else {
-                                            "Generating subtitles... ($totalLiveCues cues synced)"
-                                        }
-                                    }
-                                    onProgressUpdate?.invoke(updateMsg)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                val cleanedChunkSrt = cleanSrtOutput(chunkRawText.toString())
+                val cleanedChunkSrt = cleanSrtOutput(chunkRawText)
                 val parsedChunkCues = SubtitleParser.parseContent(cleanedChunkSrt)
                 for (cue in parsedChunkCues) {
                     if (cue.isTimed && cue.startMs >= 0L) {
@@ -1491,17 +1621,30 @@ Take for granted: To fail to properly appreciate someone or something, especiall
             Result.success(finalSrt)
         } catch (e: Exception) {
             Log.e(TAG, "Exception during generateSubtitles", e)
+            val msg = e.message ?: ""
             val isTimeout = e is java.net.SocketTimeoutException ||
-                e.message?.contains("timeout", ignoreCase = true) == true ||
+                msg.contains("timeout", ignoreCase = true) ||
                 e.cause is java.net.SocketTimeoutException
-            val friendlyError = if (isTimeout) {
-                if (language == "ar") {
-                    "استغرق توليد الترجمة للمقطع الطويل وقتاً إضافياً وتوقف الاتصال، يرجى التحقق من جودة الإنترنت والمحاولة مجدداً."
-                } else {
-                    "Subtitle generation timed out while processing long audio. Please verify your internet connection and try again."
+            val is503 = msg.contains("503") || msg.contains("overloaded", ignoreCase = true) || msg.contains("UNAVAILABLE", ignoreCase = true)
+
+            val friendlyError = when {
+                is503 -> {
+                    if (language == "ar") {
+                        "خوادم Gemini مشغولة حالياً (HTTP 503). يرجى الانتظار لحظات ثم إعادة المحاولة."
+                    } else {
+                        "Gemini servers are currently experiencing high load (HTTP 503). Please wait a moment and try again."
+                    }
                 }
-            } else {
-                e.localizedMessage ?: "Unknown error"
+                isTimeout -> {
+                    if (language == "ar") {
+                        "استغرق اتصال الشبكة وقتاً أطول من المتوقع، يرجى التحقق من اتصال الإنترنت وإعادة المحاولة."
+                    } else {
+                        "Network connection timed out while processing audio. Please verify your internet connection and try again."
+                    }
+                }
+                else -> {
+                    e.localizedMessage ?: "Unknown error"
+                }
             }
             Result.failure(Exception(friendlyError))
         }

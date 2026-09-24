@@ -2192,17 +2192,31 @@ object AudioPlayerManager {
     }
 
     fun setSubtitleContentForCurrentTrack(content: String) {
-        val track = currentTrackValue ?: return
+        val trackId = currentTrackValue?.id ?: return
+        setSubtitleContentForTrack(trackId, content)
+    }
+
+    fun setSubtitleContentForTrack(targetTrackId: Long, content: String) {
+        val repo = repository ?: return
         coroutineScope.launch(Dispatchers.IO) {
-            val updated = track.copy(subtitleContent = content)
-            repository?.updateTrack(updated)
-            updateTrackState { updated }
-            loadSubtitlesForTrack(updated)
-            if (segmentSource == "SUBTITLES" || _isPracticeMode.value) {
-                val repo = repository
-                val ctx = appContext
-                if (repo != null && ctx != null) {
-                    reanalyzePracticeSegmentsInternal(updated, ctx, repo, silent = false)
+            val current = currentTrackValue
+            if (current != null && (current.id == targetTrackId || current.parentTrackId == targetTrackId)) {
+                val updated = current.copy(subtitleContent = content)
+                repo.updateTrack(updated)
+                updateTrackState { updated }
+                loadSubtitlesForTrack(updated)
+                if (segmentSource == "SUBTITLES" || _isPracticeMode.value) {
+                    val ctx = appContext
+                    if (ctx != null) {
+                        reanalyzePracticeSegmentsInternal(updated, ctx, repo, silent = false)
+                    }
+                }
+            } else {
+                // Background update: persist to database so track has subtitles ready when played later
+                val targetTrack = repo.getTrackById(targetTrackId)
+                if (targetTrack != null) {
+                    val updated = targetTrack.copy(subtitleContent = content)
+                    repo.updateTrack(updated)
                 }
             }
         }

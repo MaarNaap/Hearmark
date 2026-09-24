@@ -956,6 +956,11 @@ object Loc {
         "unified_quiz_tab_notebook" to mapOf("en" to "Notebook Notes", "ar" to "ملاحظات الدفتر"),
         "currently_used_labels_hint" to mapOf("en" to "Currently used labels (click to add):", "ar" to "وسوم مستخدمة حالياً (انقر للإضافة):"),
         "scene_intro_placeholder" to mapOf("en" to "Intro, Key Explanation, Discussion...", "ar" to "مقدمة، شرح رئيسي، نقاش..."),
-        "question_deleted_success" to mapOf("en" to "Question deleted", "ar" to "تم حذف السؤال")
+        "question_deleted_success" to mapOf("en" to "Question deleted", "ar" to "تم حذف السؤال"),
+        "ai_generating_subtitles_background" to mapOf("en" to "Generating subtitles in background...", "ar" to "جاري توليد الترجمة في الخلفية..."),
+        "ai_scenes_background" to mapOf("en" to "Detecting scenes in background...", "ar" to "جاري تقسيم المشاهد في الخلفية..."),
+        "ai_background_badge" to mapOf("en" to "Background", "ar" to "بالخلفية"),
+        "ai_cancel_task" to mapOf("en" to "Cancel", "ar" to "إلغاء"),
+        "ai_task_running_bg_hint" to mapOf("en" to "Running in background • You can play files and use the app normally", "ar" to "تعمل في الخلفية • يمكنك تشغيل المقاطع واستخدام التطبيق كالمعتاد")
     )
 }

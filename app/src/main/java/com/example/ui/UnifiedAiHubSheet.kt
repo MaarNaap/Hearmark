@@ -215,6 +215,12 @@ fun UnifiedAiHubSheet(
                 thickness = 0.5.dp
             )
 
+            // Active Background AI Operation Indicator (if any is already running)
+            AiBackgroundStatusBar(
+                viewModel = viewModel,
+                modifier = Modifier.fillMaxWidth()
+            )
+
             // TWO DROPDOWN MENUS IN ONE ROW (Function first, Context second filtered by Function)
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -802,13 +808,21 @@ private fun executeAiAction(
                 Toast.makeText(context, Loc.getText("no_track_selected"), Toast.LENGTH_SHORT).show()
                 return
             }
-            if (AudioPlayerManager.currentTrack.value?.id != track.id) {
-                viewModel.selectAndPlay(track)
-            }
-            viewModel.generateSubtitlesForCurrentTrack(
-                contextSummary = AudioContextSummary(trackTitle = track.getDisplayTitle()),
+            val trackTitle = track.getDisplayTitle()
+            Toast.makeText(
+                context,
+                Loc.getText("ai_generating_subtitles_background"),
+                Toast.LENGTH_SHORT
+            ).show()
+            viewModel.generateSubtitlesForTrack(
+                track = track,
+                contextSummary = AudioContextSummary(trackTitle = trackTitle),
                 onSuccess = {
-                    Toast.makeText(context, Loc.getText("ai_subtitles_success"), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        context,
+                        "✓ " + Loc.getText("ai_subtitles_success") + ": $trackTitle",
+                        Toast.LENGTH_LONG
+                    ).show()
                 },
                 onError = { err ->
                     Toast.makeText(context, err, Toast.LENGTH_LONG).show()
@@ -825,6 +839,12 @@ private fun executeAiAction(
                 Toast.makeText(context, Loc.getText("cannot_segment_virtual_scene"), Toast.LENGTH_LONG).show()
                 return
             }
+            val trackTitle = track.getDisplayTitle()
+            Toast.makeText(
+                context,
+                Loc.getText("ai_scenes_background"),
+                Toast.LENGTH_SHORT
+            ).show()
             viewModel.startAiSceneDetection(track)
         }
 

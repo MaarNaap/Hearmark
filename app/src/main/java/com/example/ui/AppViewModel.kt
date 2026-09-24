@@ -145,13 +145,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // Subtitle Generation State & Actions (Delegated to mediaAiViewModel)
     val isGeneratingSubtitles: StateFlow<Boolean> get() = mediaAiViewModel.isGeneratingSubtitles
+    val subtitleGeneratingTrack: StateFlow<AudioTrack?> get() = mediaAiViewModel.generatingTrack
     val subtitleGenerationStatus: StateFlow<String> get() = mediaAiViewModel.subtitleGenerationStatus
+
+    fun cancelSubtitleGeneration() = mediaAiViewModel.cancelSubtitleGeneration()
 
     fun generateSubtitlesForCurrentTrack(
         contextSummary: AudioContextSummary? = null,
         onSuccess: (() -> Unit)? = null,
         onError: ((String) -> Unit)? = null
     ) = mediaAiViewModel.generateSubtitlesForCurrentTrack(contextSummary, onSuccess, onError)
+
+    fun generateSubtitlesForTrack(
+        track: AudioTrack,
+        contextSummary: AudioContextSummary? = null,
+        onSuccess: (() -> Unit)? = null,
+        onError: ((String) -> Unit)? = null
+    ) = mediaAiViewModel.generateSubtitlesForTrack(track, contextSummary, onSuccess, onError)
 
     fun openChatWithContext(contextSummary: AudioContextSummary? = null) = mediaAiViewModel.openChatWithContext(contextSummary)
     fun closeChatDialog() = mediaAiViewModel.closeChatDialog()
@@ -2200,9 +2210,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val isDetectingScenes = MutableStateFlow(false)
     val detectingTrackName = MutableStateFlow<String?>(null)
     val sceneDetectionStatus = MutableStateFlow<String?>(null)
+    private var sceneDetectionJob: kotlinx.coroutines.Job? = null
+
+    fun cancelSceneDetection() {
+        sceneDetectionJob?.cancel()
+        sceneDetectionJob = null
+        isDetectingScenes.value = false
+        detectingTrackName.value = null
+        sceneDetectionStatus.value = null
+    }
 
     fun startAiSceneDetection(track: AudioTrack, onSuccess: ((folderId: Long, sceneCount: Int) -> Unit)? = null) {
-        viewModelScope.launch(Dispatchers.IO) {
+        sceneDetectionJob?.cancel()
+        sceneDetectionJob = viewModelScope.launch(Dispatchers.IO) {
             val context = getApplication<Application>()
             try {
                 isDetectingScenes.value = true
@@ -2232,7 +2252,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         val subResult = GeminiService.generateSubtitles(
                             audioFile = mediaFile,
                             existingSubtitleText = null,
-                            totalDurationMs = if (track.duration > 0) track.duration else 60000L,
+                            totalDurationMs = if (track.duration > 0) track.duration else GeminiService.getMediaDurationMs(mediaFile),
                             customApiKey = customGeminiApiKey,
                             language = Loc.currentLanguage,
                             onProgressUpdate = { progressText ->
@@ -2242,10 +2262,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         val generatedSrt = subResult.getOrNull()
                         if (!generatedSrt.isNullOrBlank()) {
                             activeSubtitleContent = generatedSrt
-                            repository.updateTrack(track.copy(subtitleContent = generatedSrt))
-                            if (AudioPlayerManager.currentTrack.value?.id == track.id) {
-                                AudioPlayerManager.setSubtitleContentForCurrentTrack(generatedSrt)
-                            }
+                            AudioPlayerManager.setSubtitleContentForTrack(track.id, generatedSrt)
                             cues = com.example.player.SubtitleParser.parseContent(generatedSrt, track.subtitleOffsetMs)
                         }
                     }
@@ -2338,6 +2355,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     val successMsg = String.format(Locale.getDefault(), Loc.getText("ai_scenes_created_success"), detectedScenes.size, folderName)
                     Toast.makeText(context, successMsg, Toast.LENGTH_LONG).show()
                     onSuccess?.invoke(folderId, detectedScenes.size)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                withContext(Dispatchers.Main) {
+                    isDetectingScenes.value = false
+                    detectingTrackName.value = null
+                    sceneDetectionStatus.value = null
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
