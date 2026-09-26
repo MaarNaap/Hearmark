@@ -334,15 +334,36 @@ object AudioPlayerManager {
         }
     }
 
+    @Synchronized
+    fun persistCurrentPlayListeningTime() {
+        accumulateActiveListeningTime()
+        accumulatePracticePauseTime()
+        val delta = sessionActualListeningMs
+        if (delta <= 0L) return
+        sessionActualListeningMs = 0L
+        val track = currentTrackValue ?: return
+        val newTotal = track.currentPlayActualListeningMs + delta
+        val updatedTrack = track.copy(currentPlayActualListeningMs = newTotal)
+        currentTrackValue = updatedTrack
+        _currentTrack.value = updatedTrack
+        coroutineScope.launch(Dispatchers.IO) {
+            repository?.updateTrack(updatedTrack)
+        }
+    }
+
     private fun syncCurrentSessionHistory(isFinishing: Boolean = false) {
         val track = currentTrackValue ?: return
         accumulateActiveListeningTime()
         accumulatePracticePauseTime()
 
-        val actualMs = sessionActualListeningMs
-        val shouldRecord = isThresholdTriggeredForCurrentSession || (_isPracticeMode.value && actualMs >= 4000L)
+        // Total actual listening duration for THIS PLAY of the track across all sessions
+        val totalActualMs = track.currentPlayActualListeningMs + sessionActualListeningMs
+        val shouldRecord = isThresholdTriggeredForCurrentSession || (_isPracticeMode.value && totalActualMs >= 4000L)
         if (!shouldRecord && currentSessionHistoryId == null) {
             if (isFinishing) {
+                // When finishing an uncompleted session (e.g. paused at 20% or 80%),
+                // flush session listening time into the track so it is retained for future sessions!
+                persistCurrentPlayListeningTime()
                 sessionActualListeningMs = 0L
                 currentSessionHistoryId = null
             }
@@ -350,7 +371,7 @@ object AudioPlayerManager {
         }
 
         val historyId = currentSessionHistoryId ?: 0L
-        val recordedActual = if (actualMs > 0L) actualMs else track.duration
+        val recordedActual = if (totalActualMs > 0L) totalActualMs else track.duration
         val speed = _playbackSpeed.value
 
         coroutineScope.launch(Dispatchers.IO) {
@@ -865,12 +886,25 @@ object AudioPlayerManager {
                 return
             }
 
+            // 1. Sync & finish previous track session if one was active
+            if (currentTrackValue != null) {
+                persistCurrentPlayListeningTime()
+                saveCurrentPositionProgress()
+                syncCurrentSessionHistory(isFinishing = true)
+            }
+
             // Stop current playback
             mediaPlayer?.release()
             mediaPlayer = null
 
+            // Reset stopwatch and tracking for the new track
+            sessionActualListeningMs = 0L
+            currentSessionHistoryId = null
+            lastActivePlayTimestamp = System.currentTimeMillis()
+            lastPracticePauseTimestamp = 0L
+
             val initialTrack = if (track.getProgressPercent() >= 100) {
-                val reset = track.copy(listenedSegments = "", lastPosition = 0L)
+                val reset = track.copy(listenedSegments = "", lastPosition = 0L, currentPlayActualListeningMs = 0L)
                 coroutineScope.launch(Dispatchers.IO) {
                     repository?.updateTrack(reset)
                 }
@@ -884,13 +918,6 @@ object AudioPlayerManager {
             _duration.value = initialTrack.duration
             isThresholdTriggeredForCurrentSession = initialTrack.getProgressPercent() >= completionThreshold
             completedTaskIdsForCurrentSession.clear()
-            
-            // Sync previous session history if any, then reset for this track session
-            syncCurrentSessionHistory(isFinishing = true)
-            sessionActualListeningMs = 0L
-            currentSessionHistoryId = null
-            lastActivePlayTimestamp = System.currentTimeMillis()
-            lastPracticePauseTimestamp = 0L
             
             // Pre-populate completedTaskIdsForCurrentSession with tasks for which the threshold has already been met
             repository?.let { repo ->
@@ -1198,6 +1225,7 @@ object AudioPlayerManager {
         _practicePauseRemainingSeconds.value = 0f
         accumulateActiveListeningTime()
         lastActivePlayTimestamp = 0L
+        saveCurrentPositionProgress()
         syncCurrentSessionHistory(isFinishing = true)
         lastTrackedPositionMs = null
         try {
@@ -1423,6 +1451,9 @@ object AudioPlayerManager {
                     val isPlaying = try { mp?.isPlaying == true } catch (e: Exception) { false }
                     if (mp != null && isPlaying) {
                         accumulateActiveListeningTime()
+                        if (sessionActualListeningMs >= 5000L) {
+                            persistCurrentPlayListeningTime()
+                        }
                         val physicalPos = try { mp.currentPosition.toLong() } catch (e: Exception) { -1L }
                         if (physicalPos < 0L) {
                             delay(200)
@@ -1569,6 +1600,7 @@ object AudioPlayerManager {
     }
 
     fun saveCurrentPositionProgress() {
+        persistCurrentPlayListeningTime()
         val pos = _currentPosition.value
         coroutineScope.launch(Dispatchers.IO) {
             updateTrackState { t -> t.copy(lastPosition = pos) }
@@ -1617,7 +1649,8 @@ object AudioPlayerManager {
                 updateTrackState { t ->
                     t.copy(
                         lastPosition = 0L,
-                        listenedSegments = ""
+                        listenedSegments = "",
+                        currentPlayActualListeningMs = 0L
                     )
                 }
                 isThresholdTriggeredForCurrentSession = false
