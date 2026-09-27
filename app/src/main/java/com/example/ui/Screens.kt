@@ -272,8 +272,9 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                                                 modifier = Modifier.size(12.dp)
                                             )
                                             Spacer(modifier = Modifier.width(3.dp))
+                                            val miniPlayerLiveTrack = allTracksList.find { it.id == currentTrackState?.id } ?: currentTrackState
                                             Text(
-                                                text = "${currentTrackState!!.playCount}",
+                                                text = "${miniPlayerLiveTrack?.playCount ?: 0}",
                                                 fontSize = 11.sp,
                                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                                             )
@@ -1907,7 +1908,7 @@ fun HomeView(
                                 .background(MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f))
                         ) {
                             // Reach coverage bar (max historical reach with custom Canvas segments)
-                            val segmentsColor = MaterialTheme.colorScheme.primary
+                            val segmentsColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
                             val cursorColor = MaterialTheme.colorScheme.onPrimaryContainer
                             Canvas(modifier = Modifier.fillMaxSize()) {
                                 if (numSegments > 0) {
@@ -4121,9 +4122,13 @@ fun AudioPlayerOverlay(
         }
     }
 
+    // Observe all tracks to ensure single source of truth with the library
+    val allTracksList by viewModel.tracks.collectAsStateWithLifecycle()
+    val liveTrack = allTracksList.find { it.id == track.id } ?: AudioPlayerManager.currentTrack.collectAsStateWithLifecycle().value ?: track
+
     // Display total listened segments percentage
-    val completedSegmentsCount = track.getListenedCount()
-    val maxListenedPercent = track.getProgressPercent()
+    val completedSegmentsCount = liveTrack.getListenedCount()
+    val maxListenedPercent = liveTrack.getProgressPercent()
 
     var isDraggingState by remember { mutableStateOf(false) }
     var dragPercentState by remember { mutableStateOf(0f) }
@@ -4151,7 +4156,6 @@ fun AudioPlayerOverlay(
     }
 
     val allNotesList by viewModel.notes.collectAsStateWithLifecycle()
-    val allTracksList by viewModel.tracks.collectAsStateWithLifecycle()
     val trackNotes = remember(allNotesList, allTracksList, track.id, track.isVirtualScene, track.parentTrackId, track.startOffsetMs, track.duration) {
         if (track.isVirtualScene) {
             val sceneStart = track.startOffsetMs
@@ -4880,7 +4884,7 @@ fun AudioPlayerOverlay(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "${track.playCount}",
+                                    text = "${liveTrack.playCount}",
                                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                                     fontWeight = FontWeight.Medium
@@ -5697,9 +5701,9 @@ fun AudioPlayerOverlay(
 
                     val currentNeedlePercent = if (isDraggingState) dragPercentState else (if (durationState > 0) playPositionState.toFloat() / durationState.toFloat() else 0f)
 
-                    val numSegments = track.getAdaptiveNumSegments()
-                    val listenedRanges = remember(track.listenedSegments, numSegments) {
-                        val bitSet = track.getListenedBitSet(numSegments)
+                    val numSegments = liveTrack.getAdaptiveNumSegments()
+                    val listenedRanges = remember(liveTrack.listenedSegments, numSegments) {
+                        val bitSet = liveTrack.getListenedBitSet(numSegments)
                         val ranges = mutableListOf<IntRange>()
                         var start = -1
                         var prev = -1
@@ -5736,7 +5740,7 @@ fun AudioPlayerOverlay(
                                 .clip(RoundedCornerShape(2.5.dp))
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                         ) {
-                            val segmentsColor = MaterialTheme.colorScheme.primary
+                            val segmentsColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
                             val noteMarkerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
                             Canvas(modifier = Modifier.fillMaxSize()) {
                                 if (numSegments > 0) {

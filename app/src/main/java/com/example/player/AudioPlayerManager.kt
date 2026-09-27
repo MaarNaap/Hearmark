@@ -941,7 +941,7 @@ object AudioPlayerManager {
             val initialTrack = if (isTrackCompleted) {
                 val reset = track.copy(listenedSegments = "", lastPosition = 0L, currentPlayActualListeningMs = 0L)
                 coroutineScope.launch(Dispatchers.IO) {
-                    updateTrackState { t -> if (t.id == reset.id) reset else t }
+                    repository?.updateTrack(reset)
                 }
                 reset
             } else {
@@ -954,8 +954,16 @@ object AudioPlayerManager {
             initialSessionProgressPercent = initialTrack.getProgressPercent()
             isThresholdTriggeredForCurrentSession = false
             completedTaskIdsForCurrentSession.clear()
+
+            // Keep in-memory queue in sync with authoritative track
+            val updatedQueue = currentQueue.toMutableList()
+            val qIdx = updatedQueue.indexOfFirst { it.id == initialTrack.id }
+            if (qIdx != -1) {
+                updatedQueue[qIdx] = initialTrack
+                currentQueue = updatedQueue
+            }
             
-            // Pre-populate completedTaskIdsForCurrentSession with tasks for which the threshold has already been met
+            // Fetch authoritative track from Room DB to sync playCount and segments asynchronously
             repository?.let { repo ->
                 coroutineScope.launch(Dispatchers.IO) {
                     try {
@@ -963,13 +971,26 @@ object AudioPlayerManager {
                         if (dbTrack != null) {
                             val dbAccumulated = dbTrack.currentPlayActualListeningMs
                             val currentAcc = trackAccumulatedListeningMsMap[track.id] ?: 0L
-                            if (dbAccumulated > currentAcc) {
-                                trackAccumulatedListeningMsMap[track.id] = dbAccumulated
-                                withContext(Dispatchers.Main) {
-                                    if (currentTrackValue?.id == dbTrack.id) {
-                                        val updated = currentTrackValue?.copy(currentPlayActualListeningMs = dbAccumulated) ?: dbTrack
-                                        currentTrackValue = updated
-                                        _currentTrack.value = updated
+                            val finalAcc = maxOf(dbAccumulated, currentAcc)
+                            trackAccumulatedListeningMsMap[track.id] = finalAcc
+                            val isComp = dbTrack.getProgressPercent() >= 100
+                            val updated = if (isComp) {
+                                dbTrack.copy(listenedSegments = "", lastPosition = 0L, currentPlayActualListeningMs = 0L)
+                            } else {
+                                dbTrack.copy(currentPlayActualListeningMs = finalAcc)
+                            }
+                            if (isComp) {
+                                repo.updateTrack(updated)
+                            }
+                            withContext(Dispatchers.Main) {
+                                if (currentTrackValue?.id == dbTrack.id) {
+                                    currentTrackValue = updated
+                                    _currentTrack.value = updated
+                                    val qIndex = currentQueue.indexOfFirst { it.id == updated.id }
+                                    if (qIndex != -1) {
+                                        val qCopy = currentQueue.toMutableList()
+                                        qCopy[qIndex] = updated
+                                        currentQueue = qCopy
                                     }
                                 }
                             }
@@ -1268,6 +1289,11 @@ object AudioPlayerManager {
         persistCurrentPlayListeningTime()
         saveCurrentPositionProgress()
         syncCurrentSessionHistory(isFinishing = false)
+        currentTrackValue?.let { trk ->
+            if (trk.getProgressPercent() >= 100) {
+                handleFullProgressReset(trk, resetPosition = false)
+            }
+        }
     }
 
     fun stop() {
@@ -1281,6 +1307,11 @@ object AudioPlayerManager {
         persistCurrentPlayListeningTime()
         saveCurrentPositionProgress()
         syncCurrentSessionHistory(isFinishing = true)
+        currentTrackValue?.let { trk ->
+            if (trk.getProgressPercent() >= 100) {
+                handleFullProgressReset(trk, resetPosition = true)
+            }
+        }
         isSeeking = false
         lastTrackedPositionMs = null
         try {
@@ -1666,6 +1697,10 @@ object AudioPlayerManager {
                                         handleThresholdReached()
                                     }
                                     checkAndTriggerTaskSpecificProgress(currentTrack, progressPercent)
+
+                                    if (progressPercent >= 100) {
+                                        handleFullProgressReset(currentTrack, resetPosition = false)
+                                    }
                                 }
                             }
                         }
@@ -1688,6 +1723,39 @@ object AudioPlayerManager {
         val pos = _currentPosition.value
         coroutineScope.launch(Dispatchers.IO) {
             updateTrackState { t -> t.copy(lastPosition = pos) }
+        }
+    }
+
+    private fun handleFullProgressReset(track: AudioTrack, resetPosition: Boolean = false) {
+        coroutineScope.launch(Dispatchers.IO) {
+            if (!isThresholdTriggeredForCurrentSession) {
+                isThresholdTriggeredForCurrentSession = true
+                updateTrackState { t -> t.copy(playCount = t.playCount + 1) }
+                updateAssociatedTasks(track.id)
+            }
+            syncCurrentSessionHistory(isFinishing = resetPosition)
+
+            activeTrackSegmentTrackId = null
+            activeTrackSegmentsBitSet.clear()
+            trackAccumulatedListeningMsMap[track.id] = 0L
+            initialSessionProgressPercent = 0
+            isThresholdTriggeredForCurrentSession = false
+            completedTaskIdsForCurrentSession.clear()
+
+            updateTrackState { t ->
+                if (resetPosition) {
+                    t.copy(
+                        lastPosition = 0L,
+                        listenedSegments = "",
+                        currentPlayActualListeningMs = 0L
+                    )
+                } else {
+                    t.copy(
+                        listenedSegments = "",
+                        currentPlayActualListeningMs = 0L
+                    )
+                }
+            }
         }
     }
 
@@ -1776,17 +1844,7 @@ object AudioPlayerManager {
 
             val isFullyListened = progressPercent >= 100
             if (isFullyListened) {
-                // Reset segments and position back to 0% after reaching 100% maximum listening progress
-                trackAccumulatedListeningMsMap[track.id] = 0L
-                updateTrackState { t ->
-                    t.copy(
-                        lastPosition = 0L,
-                        listenedSegments = "",
-                        currentPlayActualListeningMs = 0L
-                    )
-                }
-                isThresholdTriggeredForCurrentSession = false
-                completedTaskIdsForCurrentSession.clear()
+                handleFullProgressReset(currentTrack, resetPosition = true)
             } else {
                 // Keep partial progress intact, only rewind playhead to beginning
                 updateTrackState { t ->

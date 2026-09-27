@@ -654,15 +654,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             
+            val isOverCompleted = track.getProgressPercent() >= 100
+            val desiredSegments = if (isOverCompleted) "" else track.listenedSegments
+            val desiredListeningMs = if (isOverCompleted) 0L else track.currentPlayActualListeningMs
+            val desiredLastPos = if (isOverCompleted) 0L else track.lastPosition
+            val isSegmentsResetChanged = (track.listenedSegments != desiredSegments) || (track.currentPlayActualListeningMs != desiredListeningMs)
+
             val isMissingChanged = track.isMissing != !exists
             val isPlayCountChanged = track.playCount != desiredPlayCount
             val isSubPathChanged = track.subtitlePath != updatedSubPath
             
-            if (isMissingChanged || isPlayCountChanged || isSubPathChanged) {
+            if (isMissingChanged || isPlayCountChanged || isSubPathChanged || isSegmentsResetChanged) {
                 repository.updateTrack(track.copy(
                     isMissing = !exists,
                     playCount = desiredPlayCount,
-                    subtitlePath = updatedSubPath
+                    subtitlePath = updatedSubPath,
+                    listenedSegments = desiredSegments,
+                    currentPlayActualListeningMs = desiredListeningMs,
+                    lastPosition = desiredLastPos
                 ))
             }
         }
