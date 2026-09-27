@@ -381,8 +381,8 @@ object AudioPlayerManager {
         // Total actual listening duration for THIS PLAY of the track across all sessions
         val accumulatedSoFar = trackAccumulatedListeningMsMap[track.id] ?: track.currentPlayActualListeningMs
         val totalActualMs = accumulatedSoFar + sessionActualListeningMs
-        val shouldRecord = isThresholdTriggeredForCurrentSession || (_isPracticeMode.value && totalActualMs >= 4000L)
-        if (!shouldRecord && currentSessionHistoryId == null) {
+        val shouldRecord = isThresholdTriggeredForCurrentSession
+        if (!shouldRecord) {
             if (isFinishing) {
                 // When finishing an uncompleted session (e.g. paused at 20% or 80%),
                 // flush session listening time into the track so it is retained for future sessions!
@@ -1118,6 +1118,7 @@ object AudioPlayerManager {
                 }
             }
             mediaPlayer?.start()
+            lastActivePlayTimestamp = System.currentTimeMillis()
             val effectiveDuration = if (track.isVirtualScene) {
                 _duration.value
             } else {
@@ -1513,6 +1514,9 @@ object AudioPlayerManager {
         } catch (e: Exception) {
             Log.w(TAG, "startProgressTracking initial pos error: ${e.message}")
         }
+        if (lastActivePlayTimestamp <= 0L) {
+            lastActivePlayTimestamp = System.currentTimeMillis()
+        }
         progressTrackingJob = coroutineScope.launch(Dispatchers.IO) {
             while (isActive) {
                 try {
@@ -1581,11 +1585,6 @@ object AudioPlayerManager {
                                             hadNewSegments = true
                                         }
                                     }
-                                } else {
-                                    if (!isSeeking && !bitSet.get(currentSeg)) {
-                                        bitSet.set(currentSeg)
-                                        hadNewSegments = true
-                                    }
                                 }
                                 lastTrackedPositionMs = physicalPos
 
@@ -1640,11 +1639,6 @@ object AudioPlayerManager {
                                             bitSet.set(s)
                                             hadNewSegments = true
                                         }
-                                    }
-                                } else {
-                                    if (!isSeeking && !bitSet.get(currentSeg)) {
-                                        bitSet.set(currentSeg)
-                                        hadNewSegments = true
                                     }
                                 }
                                 lastTrackedPositionMs = physicalPos

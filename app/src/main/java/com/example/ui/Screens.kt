@@ -1466,16 +1466,16 @@ fun SubtitlesPageContent(
                                             Surface(
                                                 shape = RoundedCornerShape(6.dp),
                                                 color = if (isDarkBg) {
-                                                    if (isActive) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.35f)
+                                                    Color.Black.copy(alpha = 0.25f)
                                                 } else {
-                                                    if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
+                                                    if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f)
                                                 },
                                                 border = BorderStroke(
                                                     0.5.dp,
                                                     if (isDarkBg) {
-                                                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f) else Color(0xFF334155).copy(alpha = 0.30f)
+                                                        Color(0xFF1E293B).copy(alpha = 0.50f)
                                                     } else {
-                                                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.25f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f)
                                                     }
                                                 )
                                             ) {
@@ -1485,19 +1485,19 @@ fun SubtitlesPageContent(
                                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                                 ) {
                                                     val timestampColor = if (isDarkBg) {
-                                                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.70f) else Color(0xFF64748B)
+                                                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.55f) else Color(0xFF475569)
                                                     } else {
-                                                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.50f)
+                                                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.60f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.40f)
                                                     }
                                                     Icon(
                                                         imageVector = Icons.Filled.AccessTime,
                                                         contentDescription = null,
-                                                        modifier = Modifier.size(10.dp),
+                                                        modifier = Modifier.size(9.dp),
                                                         tint = timestampColor
                                                     )
                                                     Text(
                                                         text = formatDuration(cue.startMs),
-                                                        fontSize = 10.sp,
+                                                        fontSize = 9.5.sp,
                                                         fontWeight = if (isCurrentSearchMatch) FontWeight.Bold else FontWeight.Normal,
                                                         color = timestampColor
                                                     )
@@ -1594,7 +1594,7 @@ fun SubtitlesPageContent(
                                         lineHeightMultiplier = 1.4,
                                         fontWeight = if (isActive || isCurrentSearchMatch) FontWeight.SemiBold else FontWeight.Normal,
                                         textColor = if (isDarkBg) {
-                                            if (isActive) Color.White else Color(0xFFF1F5F9)
+                                            if (isActive) Color.White else Color(0xFFF8FAFC)
                                         } else {
                                             if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                         },
@@ -1628,7 +1628,7 @@ fun SubtitlesPageContent(
                                     fontSize = fontSize,
                                     lineHeightMultiplier = 1.5,
                                     fontWeight = FontWeight.Normal,
-                                    textColor = if (isDarkBg) Color(0xFFF1F5F9) else MaterialTheme.colorScheme.onSurface,
+                                    textColor = if (isDarkBg) Color(0xFFF8FAFC) else MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 16.dp, vertical = 12.dp)
@@ -1908,6 +1908,7 @@ fun HomeView(
                         ) {
                             // Reach coverage bar (max historical reach with custom Canvas segments)
                             val segmentsColor = MaterialTheme.colorScheme.primary
+                            val cursorColor = MaterialTheme.colorScheme.onPrimaryContainer
                             Canvas(modifier = Modifier.fillMaxSize()) {
                                 if (numSegments > 0) {
                                     val segmentWidth = size.width / numSegments
@@ -1915,20 +1916,21 @@ fun HomeView(
                                         val startX = range.first * segmentWidth
                                         val rangeWidth = (range.last - range.first + 1) * segmentWidth
                                         drawRect(
-                                            color = segmentsColor.copy(alpha = 0.35f),
+                                            color = segmentsColor,
                                             topLeft = androidx.compose.ui.geometry.Offset(x = startX, y = 0f),
                                             size = androidx.compose.ui.geometry.Size(width = rangeWidth, height = size.height)
                                         )
                                     }
                                 }
+                                if (playbackFraction > 0f) {
+                                    val cursorX = (playbackFraction.coerceIn(0f, 1f) * size.width).coerceIn(0f, size.width)
+                                    drawCircle(
+                                        color = cursorColor,
+                                        radius = size.height * 0.8f,
+                                        center = androidx.compose.ui.geometry.Offset(x = cursorX, y = size.height / 2f)
+                                    )
+                                }
                             }
-                            // Playback progress bar (current play cursor)
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .fillMaxWidth(fraction = playbackFraction.coerceIn(0.01f, 1f))
-                                    .background(MaterialTheme.colorScheme.primary)
-                            )
                         }
                         
                         Spacer(modifier = Modifier.height(5.dp))
@@ -4605,38 +4607,42 @@ fun AudioPlayerOverlay(
                         )
                     }
 
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
-                        modifier = Modifier.clickable {
-                            AudioPlayerManager.setFocusMode(false)
-                        }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    if (isPracticeMode) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
+                            modifier = Modifier.clickable {
+                                AudioPlayerManager.setFocusMode(false)
+                            }
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary)
-                            )
-                            Text(
-                                text = if (isPracticeMode) Loc.getText("practice_mode") else Loc.getText("video_focus_mode_title"),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = Loc.getText("exit_focus_mode"),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(14.dp)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary)
+                                )
+                                Text(
+                                    text = Loc.getText("practice_mode"),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = Loc.getText("exit_focus_mode"),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
                         }
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
                     }
 
                     Box(modifier = Modifier.size(38.dp))
@@ -5739,7 +5745,7 @@ fun AudioPlayerOverlay(
                                         val startX = range.first * segmentWidth
                                         val rangeWidth = (range.last - range.first + 1) * segmentWidth
                                         drawRect(
-                                            color = segmentsColor.copy(alpha = 0.22f),
+                                            color = segmentsColor,
                                             topLeft = androidx.compose.ui.geometry.Offset(x = startX, y = 0f),
                                             size = androidx.compose.ui.geometry.Size(width = rangeWidth, height = size.height)
                                         )
@@ -5768,12 +5774,6 @@ fun AudioPlayerOverlay(
                                     }
                                 }
                             }
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .fillMaxWidth(currentNeedlePercent.coerceIn(0f, 1f))
-                                    .background(MaterialTheme.colorScheme.primary)
-                            )
                         }
 
                         val thumbSize = 10.dp
