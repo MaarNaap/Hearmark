@@ -1,0 +1,84 @@
+package com.example
+
+import org.json.JSONArray
+import org.json.JSONObject
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
+class BackupRestoreParsingTest {
+
+    @Test
+    fun testBomStripping() {
+        val rawWithBom = "\uFEFF{\"version\": 1, \"tasks\": []}"
+        val clean = rawWithBom.trim().removePrefix("\uFEFF").trim()
+        assertTrue(clean.startsWith("{"))
+        val obj = JSONObject(clean)
+        assertEquals(1, obj.getInt("version"))
+    }
+
+    @Test
+    fun testJsonArrayRootDetection() {
+        val rawArray = "[{\"title\": \"Task 1\", \"targetType\": \"PLAY_COUNT\"}]"
+        assertTrue(rawArray.trim().startsWith("["))
+        val arr = JSONArray(rawArray)
+        assertEquals(1, arr.length())
+        val item = arr.getJSONObject(0)
+        assertEquals("Task 1", item.getString("title"))
+    }
+
+    @Test
+    fun testEnvelopeUnpacking() {
+        val rawWithDataEnvelope = "{\"data\": {\"playbackHistory\": [{\"trackName\": \"Track 1\"}]}}"
+        val root = JSONObject(rawWithDataEnvelope)
+        val effective = if (root.has("data") && root.optJSONObject("data") != null) root.optJSONObject("data")!! else root
+        assertTrue(effective.has("playbackHistory"))
+        assertEquals(1, effective.getJSONArray("playbackHistory").length())
+    }
+
+    @Test
+    fun testFlexibleTypesInJsonObject() {
+        val json = JSONObject("""
+            {
+                "id": "42",
+                "customThreshold": "85",
+                "playbackSpeed": "1.5",
+                "isCompleted": "true",
+                "nullField": null
+            }
+        """.trimIndent())
+
+        val idStr = json.opt("id")
+        val idLong = when (idStr) {
+            is Number -> idStr.toLong()
+            is String -> idStr.trim().toLongOrNull()
+            else -> null
+        }
+        assertEquals(42L, idLong)
+
+        val threshold = when (val t = json.opt("customThreshold")) {
+            is Number -> t.toInt()
+            is String -> t.trim().toIntOrNull()
+            else -> null
+        }
+        assertEquals(85, threshold)
+
+        val speed = when (val s = json.opt("playbackSpeed")) {
+            is Number -> s.toDouble()
+            is String -> s.trim().toDoubleOrNull()
+            else -> null
+        }
+        assertEquals(1.5, speed ?: 0.0, 0.001)
+
+        val completed = when (val c = json.opt("isCompleted")) {
+            is Boolean -> c
+            is String -> c.trim().lowercase() == "true"
+            else -> false
+        }
+        assertTrue(completed)
+    }
+}

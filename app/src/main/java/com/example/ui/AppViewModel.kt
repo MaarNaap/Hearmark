@@ -1887,6 +1887,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 obj.put("tags", note.tags)
                 obj.put("createdAt", note.createdAt)
                 obj.put("updatedAt", note.updatedAt)
+                if (note.targetWord != null) obj.put("targetWord", note.targetWord)
+                if (note.meaning != null) obj.put("meaning", note.meaning)
+                if (note.contextSentence != null) obj.put("contextSentence", note.contextSentence)
                 notesArray.put(obj)
             }
             root.put("notes", notesArray)
@@ -1902,6 +1905,35 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
             root.put("noteTags", tagsArray)
 
+            val labelsArray = org.json.JSONArray()
+            taskLabels.value.forEach { label ->
+                val obj = org.json.JSONObject()
+                obj.put("id", label.id)
+                obj.put("name", label.name)
+                obj.put("createdAt", label.createdAt)
+                labelsArray.put(obj)
+            }
+            root.put("taskLabels", labelsArray)
+
+            val vocabArray = org.json.JSONArray()
+            allVocabularyItems.value.forEach { v ->
+                val obj = org.json.JSONObject()
+                obj.put("id", v.id)
+                obj.put("targetWord", v.targetWord)
+                obj.put("meaning", v.meaning)
+                obj.put("contextSentence", v.contextSentence)
+                if (v.noteId != null) obj.put("noteId", v.noteId)
+                if (v.trackId != null) obj.put("trackId", v.trackId)
+                if (v.timestampMs != null) obj.put("timestampMs", v.timestampMs)
+                obj.put("timesReviewed", v.timesReviewed)
+                obj.put("timesCorrect", v.timesCorrect)
+                obj.put("isMastered", v.isMastered)
+                if (v.lastReviewedAt != null) obj.put("lastReviewedAt", v.lastReviewedAt)
+                obj.put("createdAt", v.createdAt)
+                vocabArray.put(obj)
+            }
+            root.put("vocabularyItems", vocabArray)
+
             outputStream.write(root.toString(2).toByteArray(Charsets.UTF_8))
             outputStream.flush()
             true
@@ -1912,111 +1944,518 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun restoreBackupFromJson(inputStream: java.io.InputStream) {
+        val jsonBytes = try {
+            inputStream.use { it.readBytes() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+        if (jsonBytes == null || jsonBytes.isEmpty()) {
+            viewModelScope.launch(Dispatchers.Main) {
+                val context = getApplication<Application>()
+                Toast.makeText(context, Loc.getText("restore_failed"), Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+        val offset = if (jsonBytes.size >= 3 &&
+            jsonBytes[0] == 0xEF.toByte() &&
+            jsonBytes[1] == 0xBB.toByte() &&
+            jsonBytes[2] == 0xBF.toByte()
+        ) 3 else 0
+        val jsonString = String(jsonBytes, offset, jsonBytes.size - offset, Charsets.UTF_8)
+        restoreBackupFromJsonString(jsonString)
+    }
+
+    fun restoreBackupFromJsonString(jsonString: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val jsonString = inputStream.bufferedReader().use { it.readText() }
-                val root = org.json.JSONObject(jsonString)
-
-                // Restore playback history
-                if (root.has("playbackHistory")) {
-                    val historyArray = root.getJSONArray("playbackHistory")
-                    for (i in 0 until historyArray.length()) {
-                        val obj = historyArray.getJSONObject(i)
-                        val history = PlaybackHistory(
-                            id = if (obj.has("id")) obj.getLong("id") else 0L,
-                            trackId = obj.optLong("trackId", 0L),
-                            trackName = obj.optString("trackName", "Track"),
-                            completedAt = obj.optLong("completedAt", System.currentTimeMillis()),
-                            durationMs = obj.optLong("durationMs", 0L),
-                            playbackSpeed = obj.optDouble("playbackSpeed", 1.0).toFloat(),
-                            actualListenedMs = obj.optLong("actualListenedMs", 0L),
-                            activeTasks = obj.optString("activeTasks", "")
-                        )
-                        repository.insertPlaybackHistory(history)
+                val cleanJson = jsonString.trim().removePrefix("\uFEFF").trim()
+                if (cleanJson.isBlank()) {
+                    withContext(Dispatchers.Main) {
+                        val context = getApplication<Application>()
+                        Toast.makeText(context, Loc.getText("restore_failed"), Toast.LENGTH_LONG).show()
                     }
+                    return@launch
                 }
 
-                // Restore tasks
-                if (root.has("tasks")) {
-                    val tasksArray = root.getJSONArray("tasks")
-                    for (i in 0 until tasksArray.length()) {
-                        val obj = tasksArray.getJSONObject(i)
-                        val task = Task(
-                            id = if (obj.has("id")) obj.getLong("id") else 0L,
-                            title = obj.optString("title", "Task"),
-                            sourceType = obj.optString("sourceType", "TRACKS"),
-                            sourceId = if (obj.has("sourceId") && !obj.isNull("sourceId")) obj.getLong("sourceId") else null,
-                            targetType = obj.optString("targetType", "PLAY_COUNT"),
-                            targetValue = obj.optInt("targetValue", 1),
-                            scheduledDays = obj.optString("scheduledDays", ""),
-                            reminderTime = obj.optString("reminderTime", "08:00 AM"),
-                            startDate = obj.optLong("startDate", System.currentTimeMillis()),
-                            endDate = if (obj.has("endDate") && !obj.isNull("endDate")) obj.getLong("endDate") else null,
-                            isCompleted = obj.optBoolean("isCompleted", false),
-                            status = obj.optString("status", "ACTIVE"),
-                            customThreshold = if (obj.has("customThreshold") && !obj.isNull("customThreshold")) obj.getInt("customThreshold") else null,
-                            labels = obj.optString("labels", ""),
-                            dailyTargetValue = if (obj.has("dailyTargetValue") && !obj.isNull("dailyTargetValue")) obj.getInt("dailyTargetValue") else null
-                        )
-                        repository.insertTask(task)
+                fun optLongSafe(obj: org.json.JSONObject, vararg keys: String, defaultVal: Long = 0L): Long {
+                    for (k in keys) {
+                        if (obj.has(k) && !obj.isNull(k)) {
+                            val v = obj.opt(k)
+                            when (v) {
+                                is Number -> return v.toLong()
+                                is String -> v.trim().toLongOrNull()?.let { return it }
+                            }
+                        }
                     }
+                    return defaultVal
                 }
 
-                // Restore progress
-                if (root.has("taskProgress")) {
-                    val progressArray = root.getJSONArray("taskProgress")
-                    for (i in 0 until progressArray.length()) {
-                        val obj = progressArray.getJSONObject(i)
+                fun optNullableLongSafe(obj: org.json.JSONObject, vararg keys: String): Long? {
+                    for (k in keys) {
+                        if (obj.has(k) && !obj.isNull(k)) {
+                            val v = obj.opt(k)
+                            when (v) {
+                                is Number -> return v.toLong()
+                                is String -> v.trim().toLongOrNull()?.let { return it }
+                            }
+                        }
+                    }
+                    return null
+                }
+
+                fun optIntSafe(obj: org.json.JSONObject, vararg keys: String, defaultVal: Int = 0): Int {
+                    for (k in keys) {
+                        if (obj.has(k) && !obj.isNull(k)) {
+                            val v = obj.opt(k)
+                            when (v) {
+                                is Number -> return v.toInt()
+                                is String -> v.trim().toIntOrNull()?.let { return it }
+                            }
+                        }
+                    }
+                    return defaultVal
+                }
+
+                fun optNullableIntSafe(obj: org.json.JSONObject, vararg keys: String): Int? {
+                    for (k in keys) {
+                        if (obj.has(k) && !obj.isNull(k)) {
+                            val v = obj.opt(k)
+                            when (v) {
+                                is Number -> return v.toInt()
+                                is String -> v.trim().toIntOrNull()?.let { return it }
+                            }
+                        }
+                    }
+                    return null
+                }
+
+                fun optStringSafe(obj: org.json.JSONObject, vararg keys: String, defaultVal: String = ""): String {
+                    for (k in keys) {
+                        if (obj.has(k) && !obj.isNull(k)) {
+                            val s = obj.optString(k, "").trim()
+                            if (s.isNotEmpty() && s != "null") return s
+                        }
+                    }
+                    return defaultVal
+                }
+
+                fun optNullableStringSafe(obj: org.json.JSONObject, vararg keys: String): String? {
+                    for (k in keys) {
+                        if (obj.has(k) && !obj.isNull(k)) {
+                            val s = obj.optString(k, "").trim()
+                            if (s.isNotEmpty() && s != "null") return s
+                        }
+                    }
+                    return null
+                }
+
+                fun optDoubleSafe(obj: org.json.JSONObject, vararg keys: String, defaultVal: Double = 1.0): Double {
+                    for (k in keys) {
+                        if (obj.has(k) && !obj.isNull(k)) {
+                            val v = obj.opt(k)
+                            when (v) {
+                                is Number -> return v.toDouble()
+                                is String -> v.trim().toDoubleOrNull()?.let { return it }
+                            }
+                        }
+                    }
+                    return defaultVal
+                }
+
+                fun optBooleanSafe(obj: org.json.JSONObject, vararg keys: String, defaultVal: Boolean = false): Boolean {
+                    for (k in keys) {
+                        if (obj.has(k) && !obj.isNull(k)) {
+                            val v = obj.opt(k)
+                            when (v) {
+                                is Boolean -> return v
+                                is Number -> return v.toInt() != 0
+                                is String -> {
+                                    val s = v.trim().lowercase()
+                                    if (s == "true" || s == "1") return true
+                                    if (s == "false" || s == "0") return false
+                                }
+                            }
+                        }
+                    }
+                    return defaultVal
+                }
+
+                var historyCount = 0
+                var tasksCount = 0
+                var progressCount = 0
+                var tagsCount = 0
+                var notesCount = 0
+                var labelsCount = 0
+                var dailyProgressCount = 0
+                var vocabCount = 0
+
+                suspend fun parseHistoryItem(obj: org.json.JSONObject) {
+                    val id = optLongSafe(obj, "id", defaultVal = 0L)
+                    val trackId = optLongSafe(obj, "trackId", "track_id", defaultVal = 0L)
+                    val trackName = optStringSafe(obj, "trackName", "track_name", "title", "name", defaultVal = "Track")
+                    val completedAt = optLongSafe(obj, "completedAt", "completed_at", "timestamp", "date", defaultVal = System.currentTimeMillis())
+                    val durationMs = optLongSafe(obj, "durationMs", "duration_ms", "duration", defaultVal = 0L)
+                    val playbackSpeed = optDoubleSafe(obj, "playbackSpeed", "playback_speed", "speed", defaultVal = 1.0).toFloat()
+                    val actualListenedMs = optLongSafe(obj, "actualListenedMs", "actual_listened_ms", "listenedMs", defaultVal = 0L)
+                    val activeTasks = optStringSafe(obj, "activeTasks", "active_tasks", defaultVal = "")
+
+                    val history = PlaybackHistory(
+                        id = id,
+                        trackId = trackId,
+                        trackName = trackName,
+                        completedAt = completedAt,
+                        durationMs = durationMs,
+                        playbackSpeed = playbackSpeed,
+                        actualListenedMs = actualListenedMs,
+                        activeTasks = activeTasks
+                    )
+                    repository.insertPlaybackHistory(history)
+                    historyCount++
+                }
+
+                suspend fun parseTaskItem(obj: org.json.JSONObject) {
+                    val id = optLongSafe(obj, "id", defaultVal = 0L)
+                    val title = optStringSafe(obj, "title", "taskName", "name", defaultVal = "Task")
+                    val sourceType = optStringSafe(obj, "sourceType", "source_type", defaultVal = "TRACKS")
+                    val sourceId = optNullableLongSafe(obj, "sourceId", "source_id")
+                    val targetType = optStringSafe(obj, "targetType", "target_type", defaultVal = "PLAY_COUNT")
+                    val targetValue = optIntSafe(obj, "targetValue", "target_value", defaultVal = 1).coerceAtLeast(1)
+                    val scheduledDays = optStringSafe(obj, "scheduledDays", "scheduled_days", defaultVal = "")
+                    val reminderTime = optStringSafe(obj, "reminderTime", "reminder_time", defaultVal = "08:00 AM")
+                    val startDate = optLongSafe(obj, "startDate", "start_date", defaultVal = System.currentTimeMillis())
+                    val endDate = optNullableLongSafe(obj, "endDate", "end_date")
+                    val isCompleted = optBooleanSafe(obj, "isCompleted", "is_completed", "completed", defaultVal = false)
+                    val status = optStringSafe(obj, "status", defaultVal = if (isCompleted) "COMPLETED" else "ACTIVE")
+                    val customThreshold = optNullableIntSafe(obj, "customThreshold", "custom_threshold")
+                    val labels = optStringSafe(obj, "labels", defaultVal = "")
+                    val dailyTargetValue = optNullableIntSafe(obj, "dailyTargetValue", "daily_target_value")
+
+                    val task = Task(
+                        id = id,
+                        title = title,
+                        sourceType = sourceType,
+                        sourceId = sourceId,
+                        targetType = targetType,
+                        targetValue = targetValue,
+                        scheduledDays = scheduledDays,
+                        reminderTime = reminderTime,
+                        startDate = startDate,
+                        endDate = endDate,
+                        isCompleted = isCompleted,
+                        status = status,
+                        customThreshold = customThreshold,
+                        labels = labels,
+                        dailyTargetValue = dailyTargetValue
+                    )
+                    repository.insertTask(task)
+                    tasksCount++
+                }
+
+                suspend fun parseTaskProgressItem(obj: org.json.JSONObject) {
+                    val taskId = optLongSafe(obj, "taskId", "task_id", defaultVal = 0L)
+                    val trackId = optLongSafe(obj, "trackId", "track_id", defaultVal = 0L)
+                    val completedPlayCount = optIntSafe(obj, "completedPlayCount", "completed_play_count", defaultVal = 0)
+                    val completedDays = optStringSafe(obj, "completedDays", "completed_days", defaultVal = "")
+                    val isTrackCompleted = optBooleanSafe(obj, "isTrackCompleted", "is_track_completed", defaultVal = false)
+
+                    if (taskId > 0L) {
                         val p = TaskTrackProgress(
-                            taskId = obj.optLong("taskId", 0L),
-                            trackId = obj.optLong("trackId", 0L),
-                            completedPlayCount = obj.optInt("completedPlayCount", 0),
-                            completedDays = obj.optString("completedDays", ""),
-                            isTrackCompleted = obj.optBoolean("isTrackCompleted", false)
+                            taskId = taskId,
+                            trackId = trackId,
+                            completedPlayCount = completedPlayCount,
+                            completedDays = completedDays,
+                            isTrackCompleted = isTrackCompleted
                         )
                         repository.insertTaskProgress(p)
+                        progressCount++
                     }
                 }
 
-                // Restore note tags
-                if (root.has("noteTags")) {
-                    val tagsArray = root.getJSONArray("noteTags")
-                    for (i in 0 until tagsArray.length()) {
-                        val obj = tagsArray.getJSONObject(i)
-                        val name = obj.optString("name", "").trim()
+                suspend fun parseNoteItem(obj: org.json.JSONObject) {
+                    val id = optLongSafe(obj, "id", defaultVal = 0L)
+                    val text = optStringSafe(obj, "text", "content", "quote", defaultVal = "")
+                    val comment = optStringSafe(obj, "comment", "translation", "explanation", "meaning", defaultVal = "")
+                    val trackId = optNullableLongSafe(obj, "trackId", "track_id")
+                    val trackName = optNullableStringSafe(obj, "trackName", "track_name")
+                    val folderId = optNullableLongSafe(obj, "folderId", "folder_id")
+                    val folderName = optNullableStringSafe(obj, "folderName", "folder_name")
+                    val startTimestampMs = optLongSafe(obj, "startTimestampMs", "start_timestamp_ms", "startTime", defaultVal = 0L)
+                    val endTimestampMs = optLongSafe(obj, "endTimestampMs", "end_timestamp_ms", "endTime", defaultVal = 0L)
+                    val originStartMs = optNullableLongSafe(obj, "originStartMs", "origin_start_ms")
+                    val tags = optStringSafe(obj, "tags", defaultVal = "")
+                    val createdAt = optLongSafe(obj, "createdAt", "created_at", defaultVal = System.currentTimeMillis())
+                    val updatedAt = optLongSafe(obj, "updatedAt", "updated_at", defaultVal = System.currentTimeMillis())
+                    val targetWord = optNullableStringSafe(obj, "targetWord", "target_word", "word")
+                    val meaning = optNullableStringSafe(obj, "meaning", "definition")
+                    val contextSentence = optNullableStringSafe(obj, "contextSentence", "context_sentence", "sentence")
+
+                    if (text.isNotBlank() || comment.isNotBlank() || !targetWord.isNullOrBlank()) {
+                        val note = Note(
+                            id = id,
+                            text = text,
+                            comment = comment,
+                            trackId = trackId,
+                            trackName = trackName,
+                            folderId = folderId,
+                            folderName = folderName,
+                            startTimestampMs = startTimestampMs,
+                            endTimestampMs = endTimestampMs,
+                            originStartMs = originStartMs,
+                            tags = tags,
+                            createdAt = createdAt,
+                            updatedAt = updatedAt,
+                            targetWord = targetWord,
+                            meaning = meaning,
+                            contextSentence = contextSentence
+                        )
+                        repository.insertNote(note)
+                        notesCount++
+                    }
+                }
+
+                suspend fun parseNoteTagItem(item: Any?) {
+                    if (item is org.json.JSONObject) {
+                        val name = optStringSafe(item, "name", "tag", "tagName")
                         if (name.isNotEmpty()) {
-                            repository.insertTag(name, if (obj.has("colorHex") && !obj.isNull("colorHex")) obj.getString("colorHex") else null)
+                            val colorHex = optNullableStringSafe(item, "colorHex", "color_hex", "color")
+                            repository.insertTag(name, colorHex)
+                            tagsCount++
+                        }
+                    } else if (item is String && item.isNotBlank()) {
+                        repository.insertTag(item.trim(), null)
+                        tagsCount++
+                    }
+                }
+
+                suspend fun parseTaskLabelItem(item: Any?) {
+                    val name = when (item) {
+                        is org.json.JSONObject -> optStringSafe(item, "name", "label", "title")
+                        is String -> item.trim()
+                        else -> ""
+                    }
+                    if (name.isNotEmpty()) {
+                        repository.dao.insertTaskLabel(TaskLabel(name = name))
+                        labelsCount++
+                    }
+                }
+
+                suspend fun parseDailyProgressItem(obj: org.json.JSONObject) {
+                    val taskId = optLongSafe(obj, "taskId", "task_id", defaultVal = 0L)
+                    val date = optStringSafe(obj, "date", defaultVal = "")
+                    val completedPlayCount = optIntSafe(obj, "completedPlayCount", "completed_play_count", defaultVal = 0)
+                    if (taskId > 0L && date.isNotEmpty()) {
+                        repository.insertTaskDailyProgress(TaskDailyProgress(taskId = taskId, date = date, completedPlayCount = completedPlayCount))
+                        dailyProgressCount++
+                    }
+                }
+
+                suspend fun parseVocabItem(obj: org.json.JSONObject) {
+                    val targetWord = optStringSafe(obj, "targetWord", "target_word", "word")
+                    val meaning = optStringSafe(obj, "meaning", "definition")
+                    if (targetWord.isNotBlank()) {
+                        val item = VocabularyItem(
+                            id = optLongSafe(obj, "id", defaultVal = 0L),
+                            targetWord = targetWord,
+                            meaning = meaning,
+                            contextSentence = optStringSafe(obj, "contextSentence", "context_sentence", defaultVal = ""),
+                            noteId = optNullableLongSafe(obj, "noteId", "note_id"),
+                            trackId = optNullableLongSafe(obj, "trackId", "track_id"),
+                            timestampMs = optNullableLongSafe(obj, "timestampMs", "timestamp_ms"),
+                            timesReviewed = optIntSafe(obj, "timesReviewed", "times_reviewed", defaultVal = 0),
+                            timesCorrect = optIntSafe(obj, "timesCorrect", "times_correct", defaultVal = 0),
+                            isMastered = optBooleanSafe(obj, "isMastered", "is_mastered", defaultVal = false),
+                            lastReviewedAt = optNullableLongSafe(obj, "lastReviewedAt", "last_reviewed_at"),
+                            createdAt = optLongSafe(obj, "createdAt", "created_at", defaultVal = System.currentTimeMillis())
+                        )
+                        repository.insertVocabularyItem(item)
+                        vocabCount++
+                    }
+                }
+
+                if (cleanJson.startsWith("[")) {
+                    val arr = org.json.JSONArray(cleanJson)
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.optJSONObject(i) ?: continue
+                        try {
+                            if (obj.has("targetType") || obj.has("target_type") || obj.has("scheduledDays") || obj.has("scheduled_days")) {
+                                parseTaskItem(obj)
+                            } else if (obj.has("actualListenedMs") || obj.has("actual_listened_ms") || obj.has("completedAt") || obj.has("completed_at")) {
+                                parseHistoryItem(obj)
+                            } else if (obj.has("startTimestampMs") || obj.has("start_timestamp_ms") || obj.has("originStartMs") || (obj.has("comment") && obj.has("text"))) {
+                                parseNoteItem(obj)
+                            } else if (obj.has("completedPlayCount") && obj.has("taskId") && obj.has("trackId")) {
+                                parseTaskProgressItem(obj)
+                            } else if (obj.has("targetWord") || obj.has("target_word")) {
+                                parseVocabItem(obj)
+                            } else if (obj.has("taskId") && obj.has("date")) {
+                                parseDailyProgressItem(obj)
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                } else {
+                    val root = org.json.JSONObject(cleanJson)
+                    val effectiveRoot = when {
+                        root.has("data") && root.optJSONObject("data") != null -> root.optJSONObject("data")!!
+                        root.has("backup") && root.optJSONObject("backup") != null -> root.optJSONObject("backup")!!
+                        root.has("hearmark") && root.optJSONObject("hearmark") != null -> root.optJSONObject("hearmark")!!
+                        root.has("content") && root.optJSONObject("content") != null -> root.optJSONObject("content")!!
+                        root.has("export") && root.optJSONObject("export") != null -> root.optJSONObject("export")!!
+                        else -> root
+                    }
+
+                    // 1. Playback history
+                    val historyArr = effectiveRoot.optJSONArray("playbackHistory")
+                        ?: effectiveRoot.optJSONArray("playback_history")
+                        ?: effectiveRoot.optJSONArray("history")
+                        ?: effectiveRoot.optJSONArray("historyList")
+                        ?: effectiveRoot.optJSONArray("playbackRecords")
+                        ?: effectiveRoot.optJSONArray("stats")
+                    if (historyArr != null) {
+                        for (i in 0 until historyArr.length()) {
+                            try {
+                                val obj = historyArr.optJSONObject(i) ?: continue
+                                parseHistoryItem(obj)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    }
+
+                    // 2. Tasks
+                    val tasksArr = effectiveRoot.optJSONArray("tasks")
+                        ?: effectiveRoot.optJSONArray("taskList")
+                        ?: effectiveRoot.optJSONArray("task_list")
+                        ?: effectiveRoot.optJSONArray("allTasks")
+                        ?: effectiveRoot.optJSONArray("all_tasks")
+                    if (tasksArr != null) {
+                        for (i in 0 until tasksArr.length()) {
+                            try {
+                                val obj = tasksArr.optJSONObject(i) ?: continue
+                                parseTaskItem(obj)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    }
+
+                    // 3. Task Progress
+                    val progressArr = effectiveRoot.optJSONArray("taskProgress")
+                        ?: effectiveRoot.optJSONArray("task_progress")
+                        ?: effectiveRoot.optJSONArray("progress")
+                        ?: effectiveRoot.optJSONArray("allTaskProgress")
+                    if (progressArr != null) {
+                        for (i in 0 until progressArr.length()) {
+                            try {
+                                val obj = progressArr.optJSONObject(i) ?: continue
+                                parseTaskProgressItem(obj)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    }
+
+                    // 4. Notes
+                    val notesArr = effectiveRoot.optJSONArray("notes")
+                        ?: effectiveRoot.optJSONArray("noteList")
+                        ?: effectiveRoot.optJSONArray("notesList")
+                        ?: effectiveRoot.optJSONArray("note_list")
+                        ?: effectiveRoot.optJSONArray("allNotes")
+                        ?: effectiveRoot.optJSONArray("notebook")
+                    if (notesArr != null) {
+                        for (i in 0 until notesArr.length()) {
+                            try {
+                                val obj = notesArr.optJSONObject(i) ?: continue
+                                parseNoteItem(obj)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    }
+
+                    // 5. Note Tags
+                    val tagsArr = effectiveRoot.optJSONArray("noteTags")
+                        ?: effectiveRoot.optJSONArray("note_tags")
+                        ?: effectiveRoot.optJSONArray("tags")
+                        ?: effectiveRoot.optJSONArray("tagList")
+                    if (tagsArr != null) {
+                        for (i in 0 until tagsArr.length()) {
+                            try {
+                                parseNoteTagItem(tagsArr.opt(i))
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    }
+
+                    // 6. Task Labels
+                    val labelsArr = effectiveRoot.optJSONArray("taskLabels")
+                        ?: effectiveRoot.optJSONArray("task_labels")
+                        ?: effectiveRoot.optJSONArray("labels")
+                        ?: effectiveRoot.optJSONArray("labelList")
+                    if (labelsArr != null) {
+                        for (i in 0 until labelsArr.length()) {
+                            try {
+                                parseTaskLabelItem(labelsArr.opt(i))
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    }
+
+                    // 7. Daily Progress
+                    val dailyArr = effectiveRoot.optJSONArray("taskDailyProgress")
+                        ?: effectiveRoot.optJSONArray("task_daily_progress")
+                        ?: effectiveRoot.optJSONArray("dailyProgress")
+                        ?: effectiveRoot.optJSONArray("daily_progress")
+                    if (dailyArr != null) {
+                        for (i in 0 until dailyArr.length()) {
+                            try {
+                                val obj = dailyArr.optJSONObject(i) ?: continue
+                                parseDailyProgressItem(obj)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    }
+
+                    // 8. Vocabulary
+                    val vocabArr = effectiveRoot.optJSONArray("vocabularyItems")
+                        ?: effectiveRoot.optJSONArray("vocabulary_items")
+                        ?: effectiveRoot.optJSONArray("vocabulary")
+                        ?: effectiveRoot.optJSONArray("vocab")
+                        ?: effectiveRoot.optJSONArray("words")
+                    if (vocabArr != null) {
+                        for (i in 0 until vocabArr.length()) {
+                            try {
+                                val obj = vocabArr.optJSONObject(i) ?: continue
+                                parseVocabItem(obj)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
                         }
                     }
                 }
 
-                // Restore notes
-                if (root.has("notes")) {
-                    val notesArray = root.getJSONArray("notes")
-                    for (i in 0 until notesArray.length()) {
-                        val obj = notesArray.getJSONObject(i)
-                        val note = Note(
-                            id = if (obj.has("id")) obj.getLong("id") else 0L,
-                            text = obj.optString("text", ""),
-                            comment = obj.optString("comment", ""),
-                            trackId = if (obj.has("trackId") && !obj.isNull("trackId")) obj.getLong("trackId") else null,
-                            trackName = if (obj.has("trackName") && !obj.isNull("trackName")) obj.getString("trackName") else null,
-                            folderId = if (obj.has("folderId") && !obj.isNull("folderId")) obj.getLong("folderId") else null,
-                            folderName = if (obj.has("folderName") && !obj.isNull("folderName")) obj.getString("folderName") else null,
-                            startTimestampMs = obj.optLong("startTimestampMs", 0L),
-                            endTimestampMs = obj.optLong("endTimestampMs", 0L),
-                            originStartMs = if (obj.has("originStartMs") && !obj.isNull("originStartMs")) obj.getLong("originStartMs") else null,
-                            tags = obj.optString("tags", ""),
-                            createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                            updatedAt = obj.optLong("updatedAt", System.currentTimeMillis())
-                        )
-                        repository.insertNote(note)
+                // If tasks were restored, sync labels
+                if (tasksCount > 0) {
+                    try {
+                        repository.syncAndCleanTaskLabels()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
                 }
 
+                val totalRestored = historyCount + tasksCount + progressCount + notesCount + tagsCount + labelsCount + dailyProgressCount + vocabCount
                 withContext(Dispatchers.Main) {
                     val context = getApplication<Application>()
-                    Toast.makeText(context, Loc.getText("restore_success"), Toast.LENGTH_LONG).show()
+                    if (totalRestored > 0 || cleanJson.contains("Hearmark", ignoreCase = true) || cleanJson.contains("version", ignoreCase = true)) {
+                        Toast.makeText(context, "${Loc.getText("restore_success")} ($totalRestored records)", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(context, Loc.getText("restore_failed"), Toast.LENGTH_LONG).show()
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

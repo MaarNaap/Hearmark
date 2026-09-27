@@ -511,6 +511,7 @@ object Loc {
         "backup_restore_title" to mapOf("en" to "💾 Backup & Restore (Stats & Tasks)", "ar" to "💾 النسخ الاحتياطي والاستعادة (الإحصائيات والمهام)"),
         "backup_restore_desc" to mapOf("en" to "Export your listening statistics, tasks, and history to a JSON file to backup or restore later.", "ar" to "قم بتصدير إحصائيات الاستماع والمهام والسجلات إلى ملف JSON للاحتفاظ بها واستعادتها لاحقاً عند الحاجة."),
         "backup_success" to mapOf("en" to "Backup exported successfully!", "ar" to "تم تصدير النسخة الاحتياطية بنجاح!"),
+        "backup_failed" to mapOf("en" to "Failed to export JSON backup file.", "ar" to "تعذر تصدير ملف النسخة الاحتياطية."),
         "restore_success" to mapOf("en" to "Backup restored successfully!", "ar" to "تمت استعادة البيانات بنجاح!"),
         "restore_failed" to mapOf("en" to "Failed to read JSON backup file.", "ar" to "تعذر قراءة أو استعادة ملف النسخة الاحتياطية."),
         "player_tab" to mapOf("en" to "Player", "ar" to "المشغل"),
