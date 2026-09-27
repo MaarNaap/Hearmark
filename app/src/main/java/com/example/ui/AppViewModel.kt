@@ -433,6 +433,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             repository.syncAndCleanTaskLabels()
         }
 
+        // Automatic backup snapshot & silent recovery guard
+        viewModelScope.launch(Dispatchers.IO) {
+            delay(2000L) // Wait for initial database flows to load
+            val tasksEmpty = allTasks.value.isEmpty()
+            val historyEmpty = playbackHistory.value.isEmpty()
+            val notesEmpty = notes.value.isEmpty()
+
+            if (tasksEmpty && historyEmpty && notesEmpty) {
+                val latestSnapshot = com.example.util.AutoBackupManager.getLatestAutoBackupString(application)
+                if (!latestSnapshot.isNullOrBlank()) {
+                    Log.i("AppViewModel", "Database empty on launch. Automatically recovering from latest snapshot...")
+                    restoreBackupFromJsonString(latestSnapshot)
+                }
+            } else {
+                triggerAutoBackup()
+            }
+        }
+
         // Asynchronously extract and cache track metadata for easy real-time searching by title/artist
         viewModelScope.launch(Dispatchers.IO) {
             tracks.collect { trackList ->
@@ -2465,6 +2483,38 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+    }
+
+    fun triggerAutoBackup() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (allTasks.value.isEmpty() && playbackHistory.value.isEmpty() && notes.value.isEmpty()) {
+                    return@launch
+                }
+                val byteArrayOutputStream = java.io.ByteArrayOutputStream()
+                val success = exportBackupToJson(byteArrayOutputStream)
+                if (success) {
+                    val jsonStr = byteArrayOutputStream.toString(Charsets.UTF_8.name())
+                    com.example.util.AutoBackupManager.saveAutoBackup(getApplication(), jsonStr)
+                }
+            } catch (e: Exception) {
+                Log.e("AppViewModel", "Auto-backup failed", e)
+            }
+        }
+    }
+
+    fun restoreLatestAutoBackup(onResult: (Boolean, String) -> Unit) {
+        val json = com.example.util.AutoBackupManager.getLatestAutoBackupString(getApplication())
+        if (!json.isNullOrBlank()) {
+            restoreBackupFromJsonString(json)
+            onResult(true, Loc.getText("auto_restore_success"))
+        } else {
+            onResult(false, Loc.getText("auto_restore_no_snapshot"))
+        }
+    }
+
+    fun getAutoBackupLastModified(): Long? {
+        return com.example.util.AutoBackupManager.getLatestAutoBackupTimestamp(getApplication())
     }
 
     // --- NOTEBOOK OPERATIONS ---

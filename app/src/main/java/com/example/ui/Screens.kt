@@ -11120,6 +11120,31 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
                         Text("📥 " + Loc.getText("restore_backup_json"), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+
+                Text(Loc.getText("auto_backup_title"), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(Loc.getText("auto_backup_desc"), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                val lastAutoBackupTime = remember { viewModel.getAutoBackupLastModified() }
+                if (lastAutoBackupTime != null) {
+                    val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(lastAutoBackupTime))
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text("ℹ️ " + Loc.getText("latest_auto_snapshot_label") + " $dateFormatted", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                FilledTonalButton(
+                    onClick = {
+                        viewModel.restoreLatestAutoBackup { success, msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(38.dp)
+                ) {
+                    Text(Loc.getText("restore_auto_snapshot_btn"), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
 
