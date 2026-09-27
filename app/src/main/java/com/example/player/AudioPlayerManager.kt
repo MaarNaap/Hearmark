@@ -262,6 +262,8 @@ object AudioPlayerManager {
     private var lastActivePlayTimestamp: Long = 0L
     private var lastPracticePauseTimestamp: Long = 0L
     private var currentSessionHistoryId: Long? = null
+    // Thread-safe map tracking accumulated listening time (ms) for the current play in progress of each track across sessions
+    private val trackAccumulatedListeningMsMap = java.util.concurrent.ConcurrentHashMap<Long, Long>()
 
     // In-memory cached bitset of listened segments for the active track to eliminate string parsing/splitting on playback ticks
     private var activeTrackSegmentTrackId: Long? = null
@@ -315,8 +317,8 @@ object AudioPlayerManager {
         if (lastActivePlayTimestamp > 0L) {
             val now = System.currentTimeMillis()
             val delta = now - lastActivePlayTimestamp
-            if (delta in 1..4000) {
-                sessionActualListeningMs += delta
+            if (delta > 0L) {
+                sessionActualListeningMs += minOf(delta, 10000L)
             }
             lastActivePlayTimestamp = now
         }
@@ -327,8 +329,8 @@ object AudioPlayerManager {
         if (lastPracticePauseTimestamp > 0L) {
             val now = System.currentTimeMillis()
             val delta = now - lastPracticePauseTimestamp
-            if (delta in 1..4000) {
-                sessionActualListeningMs += delta
+            if (delta > 0L) {
+                sessionActualListeningMs += minOf(delta, 10000L)
             }
             lastPracticePauseTimestamp = now
         }
@@ -339,15 +341,29 @@ object AudioPlayerManager {
         accumulateActiveListeningTime()
         accumulatePracticePauseTime()
         val delta = sessionActualListeningMs
+        val track = currentTrackValue ?: return
         if (delta <= 0L) return
         sessionActualListeningMs = 0L
-        val track = currentTrackValue ?: return
-        val newTotal = track.currentPlayActualListeningMs + delta
+        val prevTotal = trackAccumulatedListeningMsMap[track.id] ?: track.currentPlayActualListeningMs
+        val newTotal = prevTotal + delta
+        trackAccumulatedListeningMsMap[track.id] = newTotal
+
         val updatedTrack = track.copy(currentPlayActualListeningMs = newTotal)
         currentTrackValue = updatedTrack
         _currentTrack.value = updatedTrack
+
+        // Update in queue
+        val index = currentQueue.indexOfFirst { it.id == updatedTrack.id }
+        if (index != -1) {
+            val updatedQueue = currentQueue.toMutableList()
+            updatedQueue[index] = updatedTrack
+            currentQueue = updatedQueue
+        }
+
         coroutineScope.launch(Dispatchers.IO) {
-            repository?.updateTrack(updatedTrack)
+            updateTrackState { t ->
+                if (t.id == track.id) t.copy(currentPlayActualListeningMs = newTotal) else t
+            }
         }
     }
 
@@ -357,7 +373,8 @@ object AudioPlayerManager {
         accumulatePracticePauseTime()
 
         // Total actual listening duration for THIS PLAY of the track across all sessions
-        val totalActualMs = track.currentPlayActualListeningMs + sessionActualListeningMs
+        val accumulatedSoFar = trackAccumulatedListeningMsMap[track.id] ?: track.currentPlayActualListeningMs
+        val totalActualMs = accumulatedSoFar + sessionActualListeningMs
         val shouldRecord = isThresholdTriggeredForCurrentSession || (_isPracticeMode.value && totalActualMs >= 4000L)
         if (!shouldRecord && currentSessionHistoryId == null) {
             if (isFinishing) {
@@ -903,14 +920,26 @@ object AudioPlayerManager {
             lastActivePlayTimestamp = System.currentTimeMillis()
             lastPracticePauseTimestamp = 0L
 
-            val initialTrack = if (track.getProgressPercent() >= 100) {
+            val isTrackCompleted = track.getProgressPercent() >= 100
+            val initialAccumulatedMs = if (isTrackCompleted) {
+                0L
+            } else {
+                maxOf(
+                    trackAccumulatedListeningMsMap[track.id] ?: 0L,
+                    currentTrackValue?.takeIf { it.id == track.id }?.currentPlayActualListeningMs ?: 0L,
+                    track.currentPlayActualListeningMs
+                )
+            }
+            trackAccumulatedListeningMsMap[track.id] = initialAccumulatedMs
+
+            val initialTrack = if (isTrackCompleted) {
                 val reset = track.copy(listenedSegments = "", lastPosition = 0L, currentPlayActualListeningMs = 0L)
                 coroutineScope.launch(Dispatchers.IO) {
-                    repository?.updateTrack(reset)
+                    updateTrackState { t -> if (t.id == reset.id) reset else t }
                 }
                 reset
             } else {
-                track
+                track.copy(currentPlayActualListeningMs = initialAccumulatedMs)
             }
 
             currentTrackValue = initialTrack
@@ -924,11 +953,17 @@ object AudioPlayerManager {
                 coroutineScope.launch(Dispatchers.IO) {
                     try {
                         val dbTrack = repo.getTrackById(track.id)
-                        if (dbTrack != null && dbTrack != track) {
-                            withContext(Dispatchers.Main) {
-                                if (currentTrackValue?.id == dbTrack.id) {
-                                    currentTrackValue = dbTrack
-                                    _currentTrack.value = dbTrack
+                        if (dbTrack != null) {
+                            val dbAccumulated = dbTrack.currentPlayActualListeningMs
+                            val currentAcc = trackAccumulatedListeningMsMap[track.id] ?: 0L
+                            if (dbAccumulated > currentAcc) {
+                                trackAccumulatedListeningMsMap[track.id] = dbAccumulated
+                                withContext(Dispatchers.Main) {
+                                    if (currentTrackValue?.id == dbTrack.id) {
+                                        val updated = currentTrackValue?.copy(currentPlayActualListeningMs = dbAccumulated) ?: dbTrack
+                                        currentTrackValue = updated
+                                        _currentTrack.value = updated
+                                    }
                                 }
                             }
                         }
@@ -1212,7 +1247,8 @@ object AudioPlayerManager {
         updateMediaSessionPlaybackState()
         showNotification()
         
-        // Persist progress position inside database instantly on pause
+        // Persist progress position and active listening time inside database instantly on pause
+        persistCurrentPlayListeningTime()
         saveCurrentPositionProgress()
         syncCurrentSessionHistory(isFinishing = false)
     }
@@ -1225,6 +1261,7 @@ object AudioPlayerManager {
         _practicePauseRemainingSeconds.value = 0f
         accumulateActiveListeningTime()
         lastActivePlayTimestamp = 0L
+        persistCurrentPlayListeningTime()
         saveCurrentPositionProgress()
         syncCurrentSessionHistory(isFinishing = true)
         lastTrackedPositionMs = null
@@ -1451,7 +1488,7 @@ object AudioPlayerManager {
                     val isPlaying = try { mp?.isPlaying == true } catch (e: Exception) { false }
                     if (mp != null && isPlaying) {
                         accumulateActiveListeningTime()
-                        if (sessionActualListeningMs >= 5000L) {
+                        if (sessionActualListeningMs >= 3000L) {
                             persistCurrentPlayListeningTime()
                         }
                         val physicalPos = try { mp.currentPosition.toLong() } catch (e: Exception) { -1L }
@@ -1638,6 +1675,7 @@ object AudioPlayerManager {
             if (!isThresholdTriggeredForCurrentSession) {
                 handleThresholdReached()
             }
+            persistCurrentPlayListeningTime()
             syncCurrentSessionHistory(isFinishing = true)
 
             activeTrackSegmentTrackId = null
@@ -1646,6 +1684,7 @@ object AudioPlayerManager {
             val isFullyListened = (currentTrackValue?.getProgressPercent() ?: 0) >= 100
             if (isFullyListened) {
                 // Reset segments and position back to 0% after reaching 100% maximum listening progress
+                trackAccumulatedListeningMsMap[track.id] = 0L
                 updateTrackState { t ->
                     t.copy(
                         lastPosition = 0L,
@@ -2081,6 +2120,7 @@ object AudioPlayerManager {
                 if (currentTrackId != -1L) {
                     val track = repo.getTrackById(currentTrackId)
                     if (track != null) {
+                        trackAccumulatedListeningMsMap[track.id] = track.currentPlayActualListeningMs
                         // Let's make sure the track isn't missing
                         val file = File(track.filePath)
                         if (file.exists()) {
