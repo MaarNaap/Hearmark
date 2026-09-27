@@ -1735,7 +1735,6 @@ fun HomeView(
                 val activeAssociatedTrackIds = allTaskProgress.filter { it.taskId in activeTaskIds }.map { it.trackId }.toSet()
                 val unassociatedIncompleteCandidates = tracks.filter {
                     it.lastPosition > 0 &&
-                    it.getProgressPercent() < 100 &&
                     it.id !in activeAssociatedTrackIds
                 }.sortedByDescending { it.lastPosition }
 

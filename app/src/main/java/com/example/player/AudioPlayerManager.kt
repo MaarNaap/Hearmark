@@ -1126,7 +1126,8 @@ object AudioPlayerManager {
             } else {
                 if (_duration.value > 0) _duration.value else track.duration
             }
-            val activeTrack = track.copy(duration = effectiveDuration)
+            val baseTrack = currentTrackValue ?: initialTrack
+            val activeTrack = baseTrack.copy(duration = effectiveDuration)
             currentTrackValue = activeTrack
             _currentTrack.value = activeTrack
             lastTrackedPositionMs = if (track.isVirtualScene) (track.startOffsetMs + track.lastPosition) else track.lastPosition
