@@ -5,7 +5,7 @@ import java.io.File
 import java.util.regex.Pattern
 
 data class SubtitleCue(
-    val id: Int,
+    val id: Int = 0,
     val startMs: Long,
     val endMs: Long,
     val text: String,

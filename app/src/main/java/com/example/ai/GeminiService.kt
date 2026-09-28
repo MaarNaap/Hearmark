@@ -57,6 +57,167 @@ object GeminiService {
         .retryOnConnectionFailure(true)
         .build()
 
+    fun extractAudioFromVideoIfPossible(videoFile: File): File {
+        val ext = videoFile.extension.lowercase()
+        val isVideo = ext in listOf("mp4", "mkv", "mov", "webm", "3gp", "avi", "m4v")
+        if (!isVideo) return videoFile
+
+        // If file is smaller than 12MB, uploading directly is already very fast
+        if (videoFile.length() < 12 * 1024 * 1024L) {
+            return videoFile
+        }
+
+        val cacheDir = videoFile.parentFile ?: File(System.getProperty("java.io.tmpdir") ?: "/tmp")
+        val audioOut = File(cacheDir, "extracted_${videoFile.nameWithoutExtension}_${videoFile.lastModified()}.m4a")
+        if (audioOut.exists() && audioOut.length() > 1024) {
+            Log.d(TAG, "Reusing already extracted audio: ${audioOut.absolutePath}")
+            return audioOut
+        }
+
+        var extractor: android.media.MediaExtractor? = null
+        var muxer: android.media.MediaMuxer? = null
+        try {
+            extractor = android.media.MediaExtractor()
+            extractor.setDataSource(videoFile.absolutePath)
+            var audioTrackIdx = -1
+            var format: android.media.MediaFormat? = null
+
+            for (i in 0 until extractor.trackCount) {
+                val f = extractor.getTrackFormat(i)
+                val mime = f.getString(android.media.MediaFormat.KEY_MIME) ?: ""
+                if (mime.startsWith("audio/")) {
+                    audioTrackIdx = i
+                    format = f
+                    break
+                }
+            }
+
+            if (audioTrackIdx != -1 && format != null) {
+                extractor.selectTrack(audioTrackIdx)
+                muxer = android.media.MediaMuxer(
+                    audioOut.absolutePath,
+                    android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
+                )
+                val muxerTrackIdx = muxer.addTrack(format)
+                muxer.start()
+
+                val maxBuf = if (format.containsKey(android.media.MediaFormat.KEY_MAX_INPUT_SIZE)) {
+                    format.getInteger(android.media.MediaFormat.KEY_MAX_INPUT_SIZE)
+                } else {
+                    256 * 1024
+                }
+                val buf = java.nio.ByteBuffer.allocate(maxBuf.coerceAtLeast(64 * 1024))
+                val bufInfo = android.media.MediaCodec.BufferInfo()
+
+                while (true) {
+                    bufInfo.offset = 0
+                    bufInfo.size = extractor.readSampleData(buf, 0)
+                    if (bufInfo.size < 0) break
+                    bufInfo.presentationTimeUs = extractor.sampleTime
+                    bufInfo.flags = extractor.sampleFlags
+                    muxer.writeSampleData(muxerTrackIdx, buf, bufInfo)
+                    extractor.advance()
+                }
+
+                muxer.stop()
+                muxer.release()
+                muxer = null
+                extractor.release()
+                extractor = null
+
+                if (audioOut.exists() && audioOut.length() > 1024) {
+                    Log.i(TAG, "Successfully demuxed audio from large video: original=${videoFile.length()} bytes -> audio=${audioOut.length()} bytes")
+                    return audioOut
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Direct audio extraction from video failed or not supported, using original file: ${e.message}")
+            try { audioOut.delete() } catch (_: Exception) {}
+        } finally {
+            try { extractor?.release() } catch (_: Exception) {}
+            try { muxer?.release() } catch (_: Exception) {}
+        }
+        return videoFile
+    }
+
+    suspend fun executeGeminiPostWithRetry(
+        urlBuilder: (model: String) -> String,
+        payload: JSONObject,
+        primaryModel: String = DEFAULT_MODEL,
+        fallbackModel: String = FALLBACK_MODEL,
+        maxAttempts: Int = 3,
+        client: OkHttpClient = okHttpClient,
+        language: String = "en",
+        onProgressUpdate: ((String) -> Unit)? = null
+    ): Pair<Int, String> = withContext(Dispatchers.IO) {
+        val mediaType = "application/json; charset=utf-8".toMediaType()
+        val requestBodyString = payload.toString()
+        var currentModel = primaryModel
+        var lastCode = -1
+        var lastBody = ""
+        var lastException: Exception? = null
+        var delayMs = 1500L
+
+        for (attempt in 1..maxAttempts) {
+            try {
+                if (attempt == 2 && currentModel == primaryModel) {
+                    currentModel = fallbackModel
+                }
+                val url = urlBuilder(currentModel)
+                val body = requestBodyString.toRequestBody(mediaType)
+                val request = Request.Builder().url(url).post(body).build()
+
+                val response = client.newCall(request).execute()
+                lastCode = response.code
+                lastBody = response.body?.string() ?: ""
+
+                if (response.isSuccessful) {
+                    return@withContext Pair(lastCode, lastBody)
+                }
+
+                val is503 = lastCode == 503 || lastBody.contains("overloaded", ignoreCase = true) || lastBody.contains("UNAVAILABLE", ignoreCase = true)
+                val is429 = lastCode == 429 || lastBody.contains("RESOURCE_EXHAUSTED", ignoreCase = true) || lastBody.contains("quota", ignoreCase = true)
+                val is404 = lastCode == 404
+                val is5xx = lastCode in 500..599
+
+                Log.w(TAG, "Gemini POST failed (HTTP $lastCode, model $currentModel, attempt $attempt): $lastBody")
+
+                if (attempt < maxAttempts && (is503 || is429 || is404 || is5xx)) {
+                    currentModel = fallbackModel
+                    val retryMsg = if (language == "ar") {
+                        "خادم الذكاء الاصطناعي مشغول مؤقتاً، جارٍ التبديل للنموذج البديل وإعادة المحاولة (${attempt + 1}/$maxAttempts)..."
+                    } else {
+                        "AI server busy (HTTP $lastCode), switching to backup model and retrying (${attempt + 1}/$maxAttempts)..."
+                    }
+                    onProgressUpdate?.invoke(retryMsg)
+                    delay(delayMs)
+                    delayMs = (delayMs * 1.8).toLong().coerceAtMost(8000L)
+                    continue
+                } else {
+                    return@withContext Pair(lastCode, lastBody)
+                }
+            } catch (e: Exception) {
+                lastException = e
+                Log.w(TAG, "Gemini POST exception (model $currentModel, attempt $attempt): ${e.message}")
+                if (attempt < maxAttempts) {
+                    currentModel = fallbackModel
+                    val retryMsg = if (language == "ar") {
+                        "جارٍ إعادة المحاولة تلقائياً بعد انقطاع الاتصال (${attempt + 1}/$maxAttempts)..."
+                    } else {
+                        "Connection interrupted, retrying with backup model (${attempt + 1}/$maxAttempts)..."
+                    }
+                    onProgressUpdate?.invoke(retryMsg)
+                    delay(delayMs)
+                    delayMs = (delayMs * 1.8).toLong().coerceAtMost(8000L)
+                } else {
+                    throw e
+                }
+            }
+        }
+        if (lastException != null) throw lastException
+        Pair(lastCode, lastBody)
+    }
+
     fun resolveApiKey(customApiKey: String?): String {
         return when {
             !customApiKey.isNullOrBlank() -> customApiKey.trim()
@@ -140,23 +301,22 @@ object GeminiService {
             contentsArray.put(currentTurnObj)
             rootJson.put("contents", contentsArray)
 
-            val requestUrl = "$BASE_URL/$modelName:generateContent?key=$resolvedApiKey"
-            val mediaType = "application/json; charset=utf-8".toMediaType()
-            val requestBody = rootJson.toString().toRequestBody(mediaType)
+            genConfig.put("maxOutputTokens", 8192)
 
-            val request = Request.Builder()
-                .url(requestUrl)
-                .post(requestBody)
-                .build()
+            val (code, responseBody) = executeGeminiPostWithRetry(
+                urlBuilder = { m -> "$BASE_URL/$m:generateContent?key=$resolvedApiKey" },
+                payload = rootJson,
+                primaryModel = modelName,
+                fallbackModel = FALLBACK_MODEL,
+                maxAttempts = 3,
+                client = okHttpClient,
+                language = language
+            )
 
-            val response = okHttpClient.newCall(request).execute()
-            val responseBody = response.body?.string() ?: ""
-
-            if (!response.isSuccessful) {
-                Log.e(TAG, "Gemini API call failed with code: ${response.code}, body: $responseBody")
-                return@withContext Result.failure(
-                    Exception("HTTP ${response.code}: $responseBody")
-                )
+            if (code !in 200..299) {
+                Log.e(TAG, "Gemini API call failed with code: $code, body: $responseBody")
+                val cleanErrorMsg = parseGeminiErrorMessage(code, responseBody, language)
+                return@withContext Result.failure(Exception(cleanErrorMsg))
             }
 
             val respJson = JSONObject(responseBody)
@@ -168,10 +328,15 @@ object GeminiService {
             val firstCandidate = candidates.getJSONObject(0)
             val content = firstCandidate.optJSONObject("content")
             val parts = content?.optJSONArray("parts")
-            val firstPart = parts?.optJSONObject(0)
-            val textResult = firstPart?.optString("text")
+            val replyBuilder = StringBuilder()
+            if (parts != null) {
+                for (p in 0 until parts.length()) {
+                    replyBuilder.append(parts.getJSONObject(p).optString("text", ""))
+                }
+            }
+            val textResult = replyBuilder.toString()
 
-            if (textResult.isNullOrBlank()) {
+            if (textResult.isBlank()) {
                 return@withContext Result.failure(Exception("Empty text in Gemini response."))
             }
 
@@ -182,20 +347,193 @@ object GeminiService {
         }
     }
 
+    fun cleanJsonText(rawText: String): String {
+        var text = rawText.trim()
+        if (text.startsWith("```json", ignoreCase = true)) {
+            text = text.substring(7).trim()
+        } else if (text.startsWith("```")) {
+            text = text.substring(3).trim()
+        }
+        if (text.endsWith("```")) {
+            text = text.substring(0, text.length - 3).trim()
+        }
+        val trailingFence = text.lastIndexOf("```")
+        if (trailingFence != -1 && trailingFence > 10) {
+            text = text.substring(0, trailingFence).trim()
+        }
+        return text
+    }
+
+    private fun parseScenesFromJSONArray(jsonArray: JSONArray): List<DetectedScene> {
+        val list = mutableListOf<DetectedScene>()
+        for (i in 0 until jsonArray.length()) {
+            val sceneObj = jsonArray.optJSONObject(i) ?: continue
+            val sceneNumber = sceneObj.optInt("sceneNumber", i + 1)
+            var title = sceneObj.optString("title", "Scene ${i + 1}").trim()
+            if (title.isBlank()) title = "Scene ${i + 1}"
+
+            var startMs = sceneObj.optLong("startMs", -1L)
+            var endMs = sceneObj.optLong("endMs", -1L)
+            val summary = sceneObj.optString("summary", "")
+
+            if (startMs < 0) {
+                val sec = sceneObj.optDouble("start", sceneObj.optDouble("startSec", 0.0))
+                startMs = (sec * 1000).toLong()
+            }
+            if (endMs < 0) {
+                val sec = sceneObj.optDouble("end", sceneObj.optDouble("endSec", 0.0))
+                endMs = (sec * 1000).toLong()
+            }
+
+            if (endMs <= startMs) {
+                endMs = startMs + 120_000L
+            }
+
+            list.add(
+                DetectedScene(
+                    sceneNumber = sceneNumber,
+                    title = title,
+                    startMs = startMs.coerceAtLeast(0L),
+                    endMs = endMs,
+                    summary = summary
+                )
+            )
+        }
+        return list
+    }
+
+    private fun extractScenesWithRegex(text: String): List<DetectedScene> {
+        val result = mutableListOf<DetectedScene>()
+        val scenePattern = Regex(
+            """\{[^{}]*?"title"\s*:\s*"([^"]+)"[^{}]*?"start(?:Ms)?"\s*:\s*(\d+)[^{}]*?"end(?:Ms)?"\s*:\s*(\d+)[^{}]*?\}""",
+            RegexOption.DOT_MATCHES_ALL
+        )
+        var matchIdx = 1
+        for (match in scenePattern.findAll(text)) {
+            try {
+                val title = match.groupValues[1].trim()
+                val start = match.groupValues[2].toLongOrNull() ?: 0L
+                val end = match.groupValues[3].toLongOrNull() ?: (start + 60000L)
+                result.add(
+                    DetectedScene(
+                        sceneNumber = matchIdx++,
+                        title = title,
+                        startMs = start,
+                        endMs = end
+                    )
+                )
+            } catch (_: Exception) {}
+        }
+        return result
+    }
+
+    fun parseScenesResiliently(rawText: String, totalDurationMs: Long): List<DetectedScene> {
+        val cleaned = cleanJsonText(rawText)
+        var rawScenes = emptyList<DetectedScene>()
+
+        // 1. Standard JSONObject with "scenes" array
+        try {
+            val jsonObject = JSONObject(cleaned)
+            val scenesArray = jsonObject.optJSONArray("scenes")
+            if (scenesArray != null && scenesArray.length() > 0) {
+                rawScenes = parseScenesFromJSONArray(scenesArray)
+            }
+        } catch (_: Exception) {}
+
+        // 2. Direct JSONArray
+        if (rawScenes.isEmpty()) {
+            try {
+                val jsonArray = JSONArray(cleaned)
+                if (jsonArray.length() > 0) {
+                    rawScenes = parseScenesFromJSONArray(jsonArray)
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 3. Substring between outermost { and }
+        if (rawScenes.isEmpty()) {
+            try {
+                val firstBrace = cleaned.indexOf('{')
+                val lastBrace = cleaned.lastIndexOf('}')
+                if (firstBrace != -1 && lastBrace > firstBrace) {
+                    val sub = cleaned.substring(firstBrace, lastBrace + 1)
+                    val jsonObject = JSONObject(sub)
+                    val scenesArray = jsonObject.optJSONArray("scenes")
+                    if (scenesArray != null && scenesArray.length() > 0) {
+                        rawScenes = parseScenesFromJSONArray(scenesArray)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 4. Substring between outermost [ and ]
+        if (rawScenes.isEmpty()) {
+            try {
+                val firstBrace = cleaned.indexOf('[')
+                val lastBrace = cleaned.lastIndexOf(']')
+                if (firstBrace != -1 && lastBrace > firstBrace) {
+                    val sub = cleaned.substring(firstBrace, lastBrace + 1)
+                    val jsonArray = JSONArray(sub)
+                    if (jsonArray.length() > 0) {
+                        rawScenes = parseScenesFromJSONArray(jsonArray)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 5. Progressive Regex fallback for truncated or loosely-formatted outputs
+        if (rawScenes.isEmpty()) {
+            rawScenes = extractScenesWithRegex(cleaned)
+        }
+
+        if (rawScenes.isEmpty()) {
+            return emptyList()
+        }
+
+        // Sort & Normalize boundaries
+        val sorted = rawScenes.sortedBy { it.startMs }
+        val validatedList = mutableListOf<DetectedScene>()
+
+        for (i in sorted.indices) {
+            val current = sorted[i]
+            val actualStart = if (i == 0) 0L else current.startMs
+            val actualEnd = if (i == sorted.size - 1) {
+                if (totalDurationMs > 0) maxOf(current.endMs, totalDurationMs) else current.endMs
+            } else {
+                val nextStart = sorted[i + 1].startMs
+                if (current.endMs <= actualStart || current.endMs > nextStart) nextStart else current.endMs
+            }
+
+            // Strip leading numbering from title if already provided by AI (e.g. "001 - Title" -> "Title")
+            val cleanTitle = current.title
+                .replaceFirst(Regex("""^\s*(\d{1,3}|Scene\s*\d{1,3})\s*[-:.]?\s*""", RegexOption.IGNORE_CASE), "")
+                .ifBlank { "Scene ${i + 1}" }
+
+            validatedList.add(
+                DetectedScene(
+                    sceneNumber = i + 1,
+                    title = cleanTitle,
+                    startMs = actualStart,
+                    endMs = maxOf(actualEnd, actualStart + 3000L),
+                    summary = current.summary
+                )
+            )
+        }
+
+        return validatedList
+    }
+
     suspend fun detectScenes(
         transcriptCues: List<SubtitleCue>,
         totalDurationMs: Long,
         mediaTitle: String,
         customApiKey: String? = null,
         language: String = "en",
-        modelName: String = DEFAULT_MODEL
+        modelName: String = DEFAULT_MODEL,
+        onProgressUpdate: ((String) -> Unit)? = null
     ): Result<List<DetectedScene>> = withContext(Dispatchers.IO) {
         try {
-            val resolvedApiKey = when {
-                !customApiKey.isNullOrBlank() -> customApiKey.trim()
-                try { BuildConfig.GEMINI_API_KEY.isNotBlank() && BuildConfig.GEMINI_API_KEY != "MY_GEMINI_API_KEY" } catch (e: Exception) { false } -> BuildConfig.GEMINI_API_KEY
-                else -> ""
-            }
+            val resolvedApiKey = resolveApiKey(customApiKey)
 
             if (resolvedApiKey.isBlank()) {
                 return@withContext Result.failure(IllegalStateException("MISSING_API_KEY"))
@@ -204,6 +542,11 @@ object GeminiService {
             if (transcriptCues.isEmpty()) {
                 return@withContext Result.failure(IllegalArgumentException("No transcript cues provided."))
             }
+
+            onProgressUpdate?.invoke(
+                if (language == "ar") "جارٍ إعداد النص وتحليل المشاهد بالذكاء الاصطناعي..."
+                else "Preparing transcript and analyzing scenes with AI..."
+            )
 
             val (systemInstruction, prompt) = GeminiPrompts.buildSceneDetectionPrompt(
                 transcriptCues = transcriptCues,
@@ -229,24 +572,25 @@ object GeminiService {
                 put("generationConfig", JSONObject().apply {
                     put("responseMimeType", "application/json")
                     put("temperature", 0.2)
+                    put("maxOutputTokens", 65536)
                 })
             }
 
-            val requestUrl = "$BASE_URL/$modelName:generateContent?key=$resolvedApiKey"
-            val mediaType = "application/json; charset=utf-8".toMediaType()
-            val requestBody = rootJson.toString().toRequestBody(mediaType)
+            val (code, responseBody) = executeGeminiPostWithRetry(
+                urlBuilder = { m -> "$BASE_URL/$m:generateContent?key=$resolvedApiKey" },
+                payload = rootJson,
+                primaryModel = modelName,
+                fallbackModel = FALLBACK_MODEL,
+                maxAttempts = 3,
+                client = subtitleOkHttpClient,
+                language = language,
+                onProgressUpdate = onProgressUpdate
+            )
 
-            val request = Request.Builder()
-                .url(requestUrl)
-                .post(requestBody)
-                .build()
-
-            val response = okHttpClient.newCall(request).execute()
-            val responseBody = response.body?.string() ?: ""
-
-            if (!response.isSuccessful) {
-                Log.e(TAG, "Gemini Scene Detection failed: ${response.code} -> $responseBody")
-                return@withContext Result.failure(Exception("HTTP ${response.code}: $responseBody"))
+            if (code !in 200..299) {
+                Log.e(TAG, "Gemini Scene Detection failed: $code -> $responseBody")
+                val cleanErrorMsg = parseGeminiErrorMessage(code, responseBody, language)
+                return@withContext Result.failure(Exception(cleanErrorMsg))
             }
 
             val respJson = JSONObject(responseBody)
@@ -258,108 +602,34 @@ object GeminiService {
             val firstCandidate = candidates.getJSONObject(0)
             val content = firstCandidate.optJSONObject("content")
             val parts = content?.optJSONArray("parts")
-            val firstPart = parts?.optJSONObject(0)
-            var rawText = firstPart?.optString("text") ?: ""
+            val rawTextBuilder = StringBuilder()
+            if (parts != null) {
+                for (pIdx in 0 until parts.length()) {
+                    rawTextBuilder.append(parts.getJSONObject(pIdx).optString("text", ""))
+                }
+            }
+            val rawText = rawTextBuilder.toString()
 
             if (rawText.isBlank()) {
                 return@withContext Result.failure(Exception("Empty text response for scene detection."))
             }
 
-            // Strip any accidental markdown formatting
-            rawText = rawText.trim()
-            if (rawText.startsWith("```json")) {
-                rawText = rawText.removePrefix("```json").trim()
-            }
-            if (rawText.startsWith("```")) {
-                rawText = rawText.removePrefix("```").trim()
-            }
-            if (rawText.endsWith("```")) {
-                rawText = rawText.removeSuffix("```").trim()
-            }
-
-            val scenesJsonArray: JSONArray = if (rawText.startsWith("{")) {
-                val jsonObject = JSONObject(rawText)
-                jsonObject.optJSONArray("scenes") ?: JSONArray()
-            } else if (rawText.startsWith("[")) {
-                JSONArray(rawText)
-            } else {
-                return@withContext Result.failure(Exception("Unexpected response format from AI."))
-            }
-
-            val rawScenes = mutableListOf<DetectedScene>()
-            for (i in 0 until scenesJsonArray.length()) {
-                val sceneObj = scenesJsonArray.getJSONObject(i)
-                val sceneNumber = sceneObj.optInt("sceneNumber", i + 1)
-                var title = sceneObj.optString("title", "Scene ${i + 1}").trim()
-                if (title.isBlank()) title = "Scene ${i + 1}"
-                
-                var startMs = sceneObj.optLong("startMs", -1L)
-                var endMs = sceneObj.optLong("endMs", -1L)
-                val summary = sceneObj.optString("summary", "")
-
-                // Fallbacks if formatted in seconds
-                if (startMs < 0) {
-                    val sec = sceneObj.optDouble("start", sceneObj.optDouble("startSec", 0.0))
-                    startMs = (sec * 1000).toLong()
-                }
-                if (endMs < 0) {
-                    val sec = sceneObj.optDouble("end", sceneObj.optDouble("endSec", 0.0))
-                    endMs = (sec * 1000).toLong()
-                }
-
-                if (endMs <= startMs) {
-                    endMs = startMs + 120_000L
-                }
-
-                rawScenes.add(
-                    DetectedScene(
-                        sceneNumber = sceneNumber,
-                        title = title,
-                        startMs = startMs.coerceAtLeast(0L),
-                        endMs = endMs,
-                        summary = summary
-                    )
-                )
-            }
-
-            if (rawScenes.isEmpty()) {
-                return@withContext Result.failure(Exception("AI did not return any scene items."))
-            }
-
-            // Sort & Normalize boundaries
-            val sorted = rawScenes.sortedBy { it.startMs }
-            val validatedList = mutableListOf<DetectedScene>()
-
-            for (i in sorted.indices) {
-                val current = sorted[i]
-                val actualStart = if (i == 0) 0L else current.startMs
-                val actualEnd = if (i == sorted.size - 1) {
-                    if (totalDurationMs > 0) maxOf(current.endMs, totalDurationMs) else current.endMs
-                } else {
-                    val nextStart = sorted[i + 1].startMs
-                    if (current.endMs <= actualStart || current.endMs > nextStart) nextStart else current.endMs
-                }
-
-                // Strip leading numbering from title if already provided by AI (e.g. "001 - Title" -> "Title")
-                val cleanTitle = current.title
-                    .replaceFirst(Regex("^\\s*(\\d{1,3}|Scene\\s*\\d{1,3})\\s*[-:.]?\\s*", RegexOption.IGNORE_CASE), "")
-                    .ifBlank { "Scene ${i + 1}" }
-
-                validatedList.add(
-                    DetectedScene(
-                        sceneNumber = i + 1,
-                        title = cleanTitle,
-                        startMs = actualStart,
-                        endMs = maxOf(actualEnd, actualStart + 3000L),
-                        summary = current.summary
-                    )
-                )
+            val validatedList = parseScenesResiliently(rawText, totalDurationMs)
+            if (validatedList.isEmpty()) {
+                return@withContext Result.failure(Exception("AI did not return any valid scene items."))
             }
 
             Result.success(validatedList)
         } catch (e: Exception) {
             Log.e(TAG, "Exception during detectScenes", e)
-            Result.failure(e)
+            val friendlyMsg = when {
+                e is java.net.SocketTimeoutException -> {
+                    if (language == "ar") "استغرق تحليل المشاهد وقتاً طويلاً. يرجى المحاولة مرة أخرى."
+                    else "Scene detection request timed out. Please try again."
+                }
+                else -> e.message ?: "Failed to detect scenes"
+            }
+            Result.failure(Exception(friendlyMsg))
         }
     }
 
@@ -419,24 +689,23 @@ object GeminiService {
                 put("generationConfig", JSONObject().apply {
                     put("responseMimeType", "application/json")
                     put("temperature", temperature)
+                    put("maxOutputTokens", 16384)
                 })
             }
 
-            val requestUrl = "$BASE_URL/$modelName:generateContent?key=$resolvedApiKey"
-            val mediaType = "application/json; charset=utf-8".toMediaType()
-            val requestBody = rootJson.toString().toRequestBody(mediaType)
+            val (code, responseBody) = executeGeminiPostWithRetry(
+                urlBuilder = { m -> "$BASE_URL/$m:generateContent?key=$resolvedApiKey" },
+                payload = rootJson,
+                primaryModel = modelName,
+                fallbackModel = FALLBACK_MODEL,
+                maxAttempts = 3,
+                client = okHttpClient,
+                language = language
+            )
 
-            val request = Request.Builder()
-                .url(requestUrl)
-                .post(requestBody)
-                .build()
-
-            val response = okHttpClient.newCall(request).execute()
-            val responseBody = response.body?.string() ?: ""
-
-            if (!response.isSuccessful) {
-                Log.e(TAG, "Gemini Unified Quiz Generation failed: ${response.code} -> $responseBody")
-                val cleanErrorMsg = parseGeminiErrorMessage(response.code, responseBody, language)
+            if (code !in 200..299) {
+                Log.e(TAG, "Gemini Unified Quiz Generation failed: $code -> $responseBody")
+                val cleanErrorMsg = parseGeminiErrorMessage(code, responseBody, language)
                 return@withContext Result.failure(Exception(cleanErrorMsg))
             }
 
@@ -449,32 +718,37 @@ object GeminiService {
             val firstCandidate = candidates.getJSONObject(0)
             val content = firstCandidate.optJSONObject("content")
             val parts = content?.optJSONArray("parts")
-            val firstPart = parts?.optJSONObject(0)
-            var rawText = firstPart?.optString("text") ?: ""
+            val rawTextBuilder = StringBuilder()
+            if (parts != null) {
+                for (p in 0 until parts.length()) {
+                    rawTextBuilder.append(parts.getJSONObject(p).optString("text", ""))
+                }
+            }
+            val rawText = rawTextBuilder.toString()
 
             if (rawText.isBlank()) {
                 return@withContext Result.failure(Exception("Empty text response for quiz."))
             }
 
-            // Strip markdown code fences
-            rawText = rawText.trim()
-            if (rawText.startsWith("```json")) {
-                rawText = rawText.removePrefix("```json").trim()
-            }
-            if (rawText.startsWith("```")) {
-                rawText = rawText.removePrefix("```").trim()
-            }
-            if (rawText.endsWith("```")) {
-                rawText = rawText.removeSuffix("```").trim()
-            }
-
-            val questionsJsonArray: JSONArray = if (rawText.startsWith("{")) {
-                val jsonObj = JSONObject(rawText)
+            val cleanedJson = cleanJsonText(rawText)
+            val questionsJsonArray: JSONArray = if (cleanedJson.startsWith("{")) {
+                val jsonObj = JSONObject(cleanedJson)
                 jsonObj.optJSONArray("questions") ?: JSONArray()
-            } else if (rawText.startsWith("[")) {
-                JSONArray(rawText)
+            } else if (cleanedJson.startsWith("[")) {
+                JSONArray(cleanedJson)
             } else {
-                return@withContext Result.failure(Exception("Unexpected response format from AI."))
+                val fBrace = cleanedJson.indexOf('{')
+                val lBrace = cleanedJson.lastIndexOf('}')
+                if (fBrace != -1 && lBrace > fBrace) {
+                    try {
+                        val jsonObj = JSONObject(cleanedJson.substring(fBrace, lBrace + 1))
+                        jsonObj.optJSONArray("questions") ?: JSONArray()
+                    } catch (_: Exception) {
+                        JSONArray()
+                    }
+                } else {
+                    return@withContext Result.failure(Exception("Unexpected response format from AI."))
+                }
             }
 
             val resultList = mutableListOf<UnifiedQuizItem>()
@@ -671,7 +945,7 @@ object GeminiService {
             503 -> if (language == "ar") "نموذج الذكاء الاصطناعي مشغول حالياً. يرجى المحاولة بعد قليل." else "The AI model is currently busy. Please try again shortly."
             429 -> if (language == "ar") "تم الوصول إلى الحد الأقصى لطلبات الذكاء الاصطناعي. يرجى الانتظار قليلاً ثم المحاولة." else "AI request rate limit reached. Please wait a moment and try again."
             400, 401, 403 -> if (language == "ar") "يرجى التحقق من صلاحية مفتاح Gemini API في الإعدادات." else "Please verify your Gemini API key in Settings."
-            else -> if (language == "ar") "فشل توليد الأسئلة ($code). يرجى المحاولة مرة أخرى." else "Failed to generate questions (HTTP $code). Please try again."
+            else -> if (language == "ar") "فشلت العملية ($code). يرجى المحاولة مرة أخرى." else "Request failed (HTTP $code). Please try again."
         }
     }
 
@@ -749,9 +1023,9 @@ object GeminiService {
         val fileName = fileObj.optString("name")
         var state = fileObj.optString("state", "ACTIVE")
 
-        // Audio & video files on Gemini Files API may take a few seconds to process
+        // Audio & video files on Gemini Files API may take a few moments to process
         var attempts = 0
-        while (state.equals("PROCESSING", ignoreCase = true) && attempts < 45) {
+        while (state.equals("PROCESSING", ignoreCase = true) && attempts < 90) {
             delay(2000)
             attempts++
             onProgressUpdate?.invoke("Processing audio on server... (${attempts * 2}s)")
@@ -769,6 +1043,10 @@ object GeminiService {
                     throw Exception("Gemini server failed to process uploaded audio file.")
                 }
             }
+        }
+
+        if (state.equals("PROCESSING", ignoreCase = true)) {
+            throw Exception("Server media processing timed out. Please try again.")
         }
 
         uploadedFileCache[cacheKey] = Pair(fileUri, System.currentTimeMillis())
@@ -824,8 +1102,8 @@ object GeminiService {
 
         for (attempt in 1..maxAttempts) {
             try {
-                // If attempt 1 or 2 failed with 503/timeout, fallback to FALLBACK_MODEL on attempt 3
-                if (attempt == 3 && activeModel == DEFAULT_MODEL) {
+                // If attempt 1 failed with 503/timeout, fallback to FALLBACK_MODEL immediately on attempt 2
+                if (attempt >= 2 && activeModel == DEFAULT_MODEL) {
                     activeModel = FALLBACK_MODEL
                 }
 
@@ -928,7 +1206,13 @@ object GeminiService {
                     val candidates = respJson.optJSONArray("candidates")
                     val candidate = candidates?.optJSONObject(0)
                     val parts = candidate?.optJSONObject("content")?.optJSONArray("parts")
-                    val rawResult = parts?.optJSONObject(0)?.optString("text", "") ?: ""
+                    val rawBuilder = StringBuilder()
+                    if (parts != null) {
+                        for (p in 0 until parts.length()) {
+                            rawBuilder.append(parts.getJSONObject(p).optString("text", ""))
+                        }
+                    }
+                    val rawResult = rawBuilder.toString()
 
                     if (rawResult.isNotBlank() && rawResult.contains("-->")) {
                         return@withContext rawResult
@@ -988,25 +1272,26 @@ object GeminiService {
         }
 
         try {
-            val mimeType = getMimeTypeForFile(audioFile)
+            val effectiveMediaFile = extractAudioFromVideoIfPossible(audioFile)
+            val mimeType = getMimeTypeForFile(effectiveMediaFile)
 
             // Determine accurate audio duration
-            val calculatedDurationMs = if (totalDurationMs > 0) totalDurationMs else getMediaDurationMs(audioFile)
+            val calculatedDurationMs = if (totalDurationMs > 0) totalDurationMs else getMediaDurationMs(effectiveMediaFile)
             val durationSeconds = if (calculatedDurationMs > 0) {
                 (calculatedDurationMs / 1000).toInt()
             } else {
-                val approxSec = ((audioFile.length() / (128 * 1024 / 8))).toInt().coerceIn(60, 7200)
+                val approxSec = ((effectiveMediaFile.length() / (128 * 1024 / 8))).toInt().coerceIn(60, 7200)
                 approxSec
             }
 
             val mediaPartJson = JSONObject()
             // Files over 2MB or audio longer than 120 seconds use Gemini Files API for reliable upload and server-side processing
             val maxInlineBytes = 2 * 1024 * 1024L // 2MB
-            if (audioFile.length() <= maxInlineBytes && durationSeconds <= 120) {
+            if (effectiveMediaFile.length() <= maxInlineBytes && durationSeconds <= 120) {
                 onProgressUpdate?.invoke(
                     if (language == "ar") "جارٍ قراءة الملف الصوتي..." else "Reading audio data..."
                 )
-                val bytes = audioFile.readBytes()
+                val bytes = effectiveMediaFile.readBytes()
                 val base64Data = Base64.encodeToString(bytes, Base64.NO_WRAP)
                 mediaPartJson.put("inlineData", JSONObject().apply {
                     put("mimeType", mimeType)
@@ -1015,7 +1300,7 @@ object GeminiService {
             } else {
                 val uploadProgressMsg = if (language == "ar") "جارٍ رفع المقطع إلى خوادم Gemini..." else "Uploading audio to Gemini server..."
                 onProgressUpdate?.invoke(uploadProgressMsg)
-                val fileUri = uploadFileToGemini(audioFile, mimeType, resolvedApiKey, onProgressUpdate)
+                val fileUri = uploadFileToGemini(effectiveMediaFile, mimeType, resolvedApiKey, onProgressUpdate)
                 mediaPartJson.put("fileData", JSONObject().apply {
                     put("mimeType", mimeType)
                     put("fileUri", fileUri)

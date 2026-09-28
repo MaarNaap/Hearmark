@@ -65,6 +65,15 @@ fun AppViewModel.startAiSceneDetection(track: AudioTrack, onSuccess: ((folderId:
                         activeSubtitleContent = generatedSrt
                         AudioPlayerManager.setSubtitleContentForTrack(track.id, generatedSrt)
                         cues = com.example.player.SubtitleParser.parseContent(generatedSrt, track.subtitleOffsetMs)
+                    } else if (subResult.isFailure) {
+                        val subError = subResult.exceptionOrNull()?.message ?: Loc.getText("ai_scene_no_subtitles_error")
+                        withContext(Dispatchers.Main) {
+                            isDetectingScenes.value = false
+                            detectingTrackName.value = null
+                            sceneDetectionStatus.value = null
+                            Toast.makeText(context, "${Loc.getText("ai_scene_detection_failed")}: $subError", Toast.LENGTH_LONG).show()
+                        }
+                        return@launch
                     }
                 }
             }
@@ -88,7 +97,10 @@ fun AppViewModel.startAiSceneDetection(track: AudioTrack, onSuccess: ((folderId:
                 totalDurationMs = totalDuration,
                 mediaTitle = track.fileName,
                 customApiKey = customGeminiApiKey,
-                language = langCode
+                language = langCode,
+                onProgressUpdate = { progressText ->
+                    sceneDetectionStatus.value = progressText
+                }
             )
 
             val detectedScenes = result.getOrNull()
