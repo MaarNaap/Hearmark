@@ -76,6 +76,27 @@ interface AppDao {
     @Query("SELECT * FROM audio_tracks WHERE parentTrackId = :parentTrackId ORDER BY sceneNumber ASC, startOffsetMs ASC")
     suspend fun getScenesForParentTrack(parentTrackId: Long): List<AudioTrack>
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTracks(tracks: List<AudioTrack>): List<Long>
+
+    @Query("DELETE FROM audio_tracks WHERE parentTrackId = :parentTrackId")
+    suspend fun deleteScenesForParentTrack(parentTrackId: Long)
+
+    @Transaction
+    suspend fun replaceScenesForParentTrack(parentTrackId: Long, newScenes: List<AudioTrack>): List<Long> {
+        val oldScenes = getScenesForParentTrack(parentTrackId)
+        for (old in oldScenes) {
+            deleteNotesForTrack(old.id)
+            deleteQuizQuestionsForTrack(old.id)
+        }
+        deleteScenesForParentTrack(parentTrackId)
+        return if (newScenes.isNotEmpty()) {
+            insertTracks(newScenes)
+        } else {
+            emptyList()
+        }
+    }
+
     // Playlists
     @Query("SELECT * FROM playlists ORDER BY name ASC")
     fun getAllPlaylistsFlow(): Flow<List<Playlist>>

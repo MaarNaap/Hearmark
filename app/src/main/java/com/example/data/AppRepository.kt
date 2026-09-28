@@ -99,6 +99,8 @@ class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
     suspend fun deleteTrackById(id: Long) = dao.deleteTrackById(id)
     fun getScenesForParentTrackFlow(parentTrackId: Long) = dao.getScenesForParentTrackFlow(parentTrackId)
     suspend fun getScenesForParentTrack(parentTrackId: Long) = dao.getScenesForParentTrack(parentTrackId)
+    suspend fun replaceVirtualScenes(parentTrackId: Long, newScenes: List<AudioTrack>) = dao.replaceScenesForParentTrack(parentTrackId, newScenes)
+    suspend fun insertTracks(tracks: List<AudioTrack>) = dao.insertTracks(tracks)
     fun getTracksForFolderFlow(folderId: Long) = dao.getTracksForFolderFlow(folderId)
     suspend fun getTracksForFolder(folderId: Long) = dao.getTracksForFolder(folderId)
 

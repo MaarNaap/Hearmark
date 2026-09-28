@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.example.data.AudioTrack
+import com.example.player.AudioPlayerManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -254,15 +255,23 @@ fun AppViewModel.importScenesFromJson(
             }
 
             val existingScenes = repository.getScenesForParentTrack(parentTrack.id)
+            val existingSceneIds = existingScenes.map { it.id }.toSet()
+
+            // If audio player is currently playing one of the scenes being replaced, safely switch back to parent track
+            val currentPlaying = AudioPlayerManager.currentTrack.value
+            if (currentPlaying != null && (currentPlaying.id in existingSceneIds || (mode == SceneImportMode.REPLACE && currentPlaying.parentTrackId == parentTrack.id))) {
+                withContext(Dispatchers.Main) {
+                    AudioPlayerManager.pause()
+                    AudioPlayerManager.playTrack(parentTrack)
+                }
+            }
+
             var targetFolderId: Long? = null
             var startingSceneNum = 1
 
             when (mode) {
                 SceneImportMode.REPLACE -> {
                     targetFolderId = existingScenes.firstOrNull()?.parentFolderId
-                    for (scene in existingScenes) {
-                        repository.deleteTrack(scene)
-                    }
                     startingSceneNum = 1
                 }
                 SceneImportMode.APPEND -> {
@@ -291,14 +300,14 @@ fun AppViewModel.importScenesFromJson(
                 )
             }
 
-            scenes.forEachIndexed { index, item ->
+            val newTracks = scenes.mapIndexed { index, item ->
                 val sceneNum = startingSceneNum + index
                 val formattedNumber = String.format(Locale.US, "%03d", sceneNum)
                 val sceneTitle = item.title.ifBlank { "Scene $sceneNum" }
                 val virtualFileName = "$formattedNumber - $sceneTitle"
                 val sceneDuration = (item.endMs - item.startMs).coerceAtLeast(1000L)
 
-                val virtualTrack = AudioTrack(
+                AudioTrack(
                     filePath = parentTrack.filePath,
                     fileName = virtualFileName,
                     duration = sceneDuration,
@@ -317,7 +326,13 @@ fun AppViewModel.importScenesFromJson(
                     parentTrackId = parentTrack.id,
                     sceneNumber = sceneNum
                 )
-                repository.insertTrack(virtualTrack)
+            }
+
+            // Perform atomic database operation
+            if (mode == SceneImportMode.REPLACE) {
+                repository.replaceVirtualScenes(parentTrack.id, newTracks)
+            } else {
+                repository.insertTracks(newTracks)
             }
 
             withContext(Dispatchers.Main) {
@@ -328,7 +343,12 @@ fun AppViewModel.importScenesFromJson(
         } catch (e: Exception) {
             e.printStackTrace()
             withContext(Dispatchers.Main) {
-                val errMsg = String.format(Locale.getDefault(), Loc.getText("invalid_json_scenes_file"), e.message ?: "")
+                val rawErr = e.message ?: "Unknown error"
+                val errMsg = try {
+                    String.format(Locale.getDefault(), Loc.getText("invalid_json_scenes_file"), rawErr)
+                } catch (_: Exception) {
+                    "Error importing scenes: $rawErr"
+                }
                 Toast.makeText(context, errMsg, Toast.LENGTH_LONG).show()
             }
         }
@@ -350,6 +370,7 @@ fun ImportScenesJsonDialog(
     var selectedFileName by remember { mutableStateOf<String?>(null) }
     var parseError by remember { mutableStateOf<String?>(null) }
     var importMode by remember { mutableStateOf(SceneImportMode.REPLACE) }
+    var isImporting by remember { mutableStateOf(false) }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -375,7 +396,7 @@ fun ImportScenesJsonDialog(
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isImporting) onDismiss() },
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -625,14 +646,17 @@ fun ImportScenesJsonDialog(
         confirmButton = {
             if (parsedScenes != null) {
                 Button(
+                    enabled = !isImporting,
                     onClick = {
                         val scenesToImport = parsedScenes ?: return@Button
                         val modeToUse = if (existingScenes.isEmpty()) SceneImportMode.CREATE_NEW else importMode
+                        isImporting = true
                         viewModel.importScenesFromJson(
                             parentTrack = parentTrack,
                             scenes = scenesToImport,
                             mode = modeToUse,
                             onSuccess = { _, _ ->
+                                isImporting = false
                                 onImportFinished()
                                 onDismiss()
                             }
@@ -640,18 +664,31 @@ fun ImportScenesJsonDialog(
                     },
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Check,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(Loc.getText("confirm_import_btn"))
+                    if (isImporting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(Loc.getText("loading"))
+                    } else {
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(Loc.getText("confirm_import_btn"))
+                    }
                 }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                enabled = !isImporting,
+                onClick = onDismiss
+            ) {
                 Text(Loc.getText("cancel"))
             }
         }
