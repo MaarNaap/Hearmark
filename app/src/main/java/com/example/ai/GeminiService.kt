@@ -23,6 +23,8 @@ object GeminiService {
     const val DEFAULT_MODEL = "gemini-3.5-flash"
     const val FALLBACK_MODEL = "gemini-flash-latest"
     const val LITE_FALLBACK_MODEL = "gemini-3.1-flash-lite-preview"
+    const val STABLE_FLASH_MODEL = "gemini-2.5-flash"
+    const val STABLE_LITE_MODEL = "gemini-flash-lite-latest"
     const val PRO_FALLBACK_MODEL = "gemini-3.1-pro-preview"
     private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -30,6 +32,8 @@ object GeminiService {
         DEFAULT_MODEL,
         FALLBACK_MODEL,
         LITE_FALLBACK_MODEL,
+        STABLE_FLASH_MODEL,
+        STABLE_LITE_MODEL,
         PRO_FALLBACK_MODEL
     )
 
@@ -49,6 +53,40 @@ object GeminiService {
     private val pacingLock = kotlinx.coroutines.sync.Mutex()
     @Volatile private var lastRequestTimestampMs: Long = 0L
     private const val MIN_REQUEST_INTERVAL_MS = 350L
+
+    internal fun extractNonThoughtTextFromParts(parts: JSONArray?): String {
+        if (parts == null || parts.length() == 0) return ""
+        val nonThoughtBuilder = StringBuilder()
+        val fallbackBuilder = StringBuilder()
+        for (i in 0 until parts.length()) {
+            val partObj = parts.optJSONObject(i) ?: continue
+            val text = partObj.optString("text", "")
+            if (text.isEmpty()) continue
+            fallbackBuilder.append(text)
+            if (!partObj.optBoolean("thought", false)) {
+                nonThoughtBuilder.append(text)
+            }
+        }
+        return if (nonThoughtBuilder.isNotEmpty()) nonThoughtBuilder.toString() else fallbackBuilder.toString()
+    }
+
+    internal fun buildFastThinkingConfig(): JSONObject {
+        return JSONObject().apply {
+            put("thinkingBudget", 0)
+        }
+    }
+
+    internal fun stripThinkingOrClampTokensFromPayload(payload: JSONObject, errorBody: String): JSONObject {
+        val copy = JSONObject(payload.toString())
+        val genConfig = copy.optJSONObject("generationConfig") ?: return copy
+        if (errorBody.contains("thinking", ignoreCase = true) || genConfig.has("thinkingConfig")) {
+            genConfig.remove("thinkingConfig")
+        }
+        if (errorBody.contains("max_output_tokens", ignoreCase = true) || errorBody.contains("maxOutputTokens", ignoreCase = true)) {
+            genConfig.put("maxOutputTokens", 8192)
+        }
+        return copy
+    }
 
     fun setConfiguredApiKeys(primaryKey: String?, allKeys: List<String>) {
         val cleaned = mutableListOf<String>()
@@ -126,7 +164,8 @@ object GeminiService {
 
     internal fun markModelFailure(model: String, httpCode: Int, nowMs: Long = System.currentTimeMillis()) {
         val cooldownDurationMs = when {
-            httpCode == 404 || httpCode == 400 -> 30 * 60 * 1000L // 30 minutes for missing/unsupported model
+            httpCode == 404 -> 6 * 60 * 60 * 1000L // 6 hours for non-existent model endpoint
+            httpCode == 400 -> 15 * 60 * 1000L
             httpCode == 503 || httpCode == 429 || httpCode in 500..599 -> 60 * 1000L // 60 seconds for overloaded/rate-limited pool
             else -> 30 * 1000L
         }
@@ -172,7 +211,7 @@ object GeminiService {
 
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(90, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
@@ -188,27 +227,29 @@ object GeminiService {
     fun extractAudioFromVideoIfPossible(videoFile: File): File {
         val ext = videoFile.extension.lowercase()
         val isVideo = ext in listOf("mp4", "mkv", "mov", "webm", "3gp", "avi", "m4v")
-        if (!isVideo) return videoFile
-
-        // If file is smaller than 12MB, uploading directly is already very fast
-        if (videoFile.length() < 12 * 1024 * 1024L) {
-            return videoFile
-        }
+        if (!isVideo || videoFile.length() < 64 * 1024L) return videoFile
 
         val cacheDir = videoFile.parentFile ?: File(System.getProperty("java.io.tmpdir") ?: "/tmp")
-        val audioOut = File(cacheDir, "extracted_${videoFile.nameWithoutExtension}_${videoFile.lastModified()}.m4a")
-        if (audioOut.exists() && audioOut.length() > 1024) {
-            Log.d(TAG, "Reusing already extracted audio: ${audioOut.absolutePath}")
-            return audioOut
+        val audioOutM4a = File(cacheDir, "extracted_${videoFile.nameWithoutExtension}_${videoFile.lastModified()}.m4a")
+        if (audioOutM4a.exists() && audioOutM4a.length() > 1024) {
+            Log.d(TAG, "Reusing already extracted audio: ${audioOutM4a.absolutePath}")
+            return audioOutM4a
+        }
+        val audioOutWebm = File(cacheDir, "extracted_${videoFile.nameWithoutExtension}_${videoFile.lastModified()}.webm")
+        if (audioOutWebm.exists() && audioOutWebm.length() > 1024) {
+            Log.d(TAG, "Reusing already extracted webm audio: ${audioOutWebm.absolutePath}")
+            return audioOutWebm
         }
 
         var extractor: android.media.MediaExtractor? = null
         var muxer: android.media.MediaMuxer? = null
+        var targetOutFile: File = audioOutM4a
         try {
             extractor = android.media.MediaExtractor()
             extractor.setDataSource(videoFile.absolutePath)
             var audioTrackIdx = -1
             var format: android.media.MediaFormat? = null
+            var audioMime = ""
 
             for (i in 0 until extractor.trackCount) {
                 val f = extractor.getTrackFormat(i)
@@ -216,16 +257,22 @@ object GeminiService {
                 if (mime.startsWith("audio/")) {
                     audioTrackIdx = i
                     format = f
+                    audioMime = mime
                     break
                 }
             }
 
             if (audioTrackIdx != -1 && format != null) {
                 extractor.selectTrack(audioTrackIdx)
-                muxer = android.media.MediaMuxer(
-                    audioOut.absolutePath,
+                val useWebm = audioMime.contains("opus", ignoreCase = true) || audioMime.contains("vorbis", ignoreCase = true)
+                targetOutFile = if (useWebm) audioOutWebm else audioOutM4a
+                val outputFormat = if (useWebm && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_WEBM
+                } else {
                     android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
-                )
+                }
+
+                muxer = android.media.MediaMuxer(targetOutFile.absolutePath, outputFormat)
                 val muxerTrackIdx = muxer.addTrack(format)
                 muxer.start()
 
@@ -253,14 +300,14 @@ object GeminiService {
                 extractor.release()
                 extractor = null
 
-                if (audioOut.exists() && audioOut.length() > 1024) {
-                    Log.i(TAG, "Successfully demuxed audio from large video: original=${videoFile.length()} bytes -> audio=${audioOut.length()} bytes")
-                    return audioOut
+                if (targetOutFile.exists() && targetOutFile.length() > 1024) {
+                    Log.i(TAG, "Successfully demuxed audio from video: original=${videoFile.length()} bytes -> audio=${targetOutFile.length()} bytes")
+                    return targetOutFile
                 }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Direct audio extraction from video failed or not supported, using original file: ${e.message}")
-            try { audioOut.delete() } catch (_: Exception) {}
+            try { targetOutFile.delete() } catch (_: Exception) {}
         } finally {
             try { extractor?.release() } catch (_: Exception) {}
             try { muxer?.release() } catch (_: Exception) {}
@@ -268,12 +315,141 @@ object GeminiService {
         return videoFile
     }
 
+    /**
+     * Slicing a long audio track into a standalone time-window clip [startMs, endMs] so each chunk
+     * sends only ~3-5MB of audio instead of re-sending the entire 60-minute file on every chunk.
+     */
+    internal fun extractAudioTimeSliceIfPossible(
+        sourceFile: File,
+        startMs: Long,
+        endMs: Long
+    ): File? {
+        if (endMs <= startMs) return null
+        val cacheDir = sourceFile.parentFile ?: File(System.getProperty("java.io.tmpdir") ?: "/tmp")
+        var extractor: android.media.MediaExtractor? = null
+        var muxer: android.media.MediaMuxer? = null
+        var sliceFile: File? = null
+        try {
+            extractor = android.media.MediaExtractor()
+            extractor.setDataSource(sourceFile.absolutePath)
+            var audioTrackIdx = -1
+            var format: android.media.MediaFormat? = null
+            var audioMime = ""
+
+            for (i in 0 until extractor.trackCount) {
+                val f = extractor.getTrackFormat(i)
+                val mime = f.getString(android.media.MediaFormat.KEY_MIME) ?: ""
+                if (mime.startsWith("audio/")) {
+                    audioTrackIdx = i
+                    format = f
+                    audioMime = mime
+                    break
+                }
+            }
+
+            if (audioTrackIdx == -1 || format == null) return null
+
+            val useWebm = audioMime.contains("opus", ignoreCase = true) || audioMime.contains("vorbis", ignoreCase = true)
+            val canMuxM4a = audioMime.contains("mp4a", ignoreCase = true) || audioMime.contains("aac", ignoreCase = true) || audioMime.contains("3gpp", ignoreCase = true) || audioMime.contains("amr", ignoreCase = true)
+            if (!useWebm && !canMuxM4a) {
+                // For raw MP3 files, slice approximately by byte offset if file is large
+                if (sourceFile.extension.equals("mp3", ignoreCase = true)) {
+                    val totalDurMs = getMediaDurationMs(sourceFile)
+                    if (totalDurMs > 0 && endMs <= totalDurMs + 5000L) {
+                        val fileLen = sourceFile.length()
+                        val startByte = ((startMs.toDouble() / totalDurMs.toDouble()) * fileLen).toLong().coerceIn(0L, fileLen)
+                        val endByte = ((endMs.toDouble() / totalDurMs.toDouble()) * fileLen).toLong().coerceIn(startByte, fileLen)
+                        if (endByte - startByte > 16 * 1024L) {
+                            val mp3Slice = File(cacheDir, "slice_${sourceFile.nameWithoutExtension}_${startMs}_${endMs}.mp3")
+                            java.io.RandomAccessFile(sourceFile, "r").use { raf ->
+                                raf.seek(startByte)
+                                mp3Slice.outputStream().use { out ->
+                                    val buffer = ByteArray(64 * 1024)
+                                    var remaining = endByte - startByte
+                                    while (remaining > 0) {
+                                        val toRead = minOf(buffer.size.toLong(), remaining).toInt()
+                                        val read = raf.read(buffer, 0, toRead)
+                                        if (read <= 0) break
+                                        out.write(buffer, 0, read)
+                                        remaining -= read
+                                    }
+                                }
+                            }
+                            if (mp3Slice.exists() && mp3Slice.length() > 4096L) {
+                                return mp3Slice
+                            }
+                        }
+                    }
+                }
+                return null
+            }
+
+            val ext = if (useWebm) "webm" else "m4a"
+            sliceFile = File(cacheDir, "slice_${sourceFile.nameWithoutExtension}_${startMs}_${endMs}.$ext")
+            val outputFormat = if (useWebm && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_WEBM
+            } else {
+                android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
+            }
+
+            extractor.selectTrack(audioTrackIdx)
+            val startUs = startMs * 1000L
+            val endUs = endMs * 1000L
+            extractor.seekTo(startUs, android.media.MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+
+            muxer = android.media.MediaMuxer(sliceFile.absolutePath, outputFormat)
+            val muxerTrackIdx = muxer.addTrack(format)
+            muxer.start()
+
+            val maxBuf = if (format.containsKey(android.media.MediaFormat.KEY_MAX_INPUT_SIZE)) {
+                format.getInteger(android.media.MediaFormat.KEY_MAX_INPUT_SIZE)
+            } else {
+                256 * 1024
+            }
+            val buf = java.nio.ByteBuffer.allocate(maxBuf.coerceAtLeast(64 * 1024))
+            val bufInfo = android.media.MediaCodec.BufferInfo()
+            var basePtsUs = -1L
+
+            while (true) {
+                bufInfo.offset = 0
+                bufInfo.size = extractor.readSampleData(buf, 0)
+                if (bufInfo.size < 0) break
+                val sampleTimeUs = extractor.sampleTime
+                if (sampleTimeUs > endUs) break
+                if (sampleTimeUs >= startUs) {
+                    if (basePtsUs < 0L) basePtsUs = sampleTimeUs
+                    bufInfo.presentationTimeUs = (sampleTimeUs - basePtsUs).coerceAtLeast(0L)
+                    bufInfo.flags = extractor.sampleFlags
+                    muxer.writeSampleData(muxerTrackIdx, buf, bufInfo)
+                }
+                extractor.advance()
+            }
+
+            muxer.stop()
+            muxer.release()
+            muxer = null
+            extractor.release()
+            extractor = null
+
+            if (sliceFile.exists() && sliceFile.length() > 2048L) {
+                return sliceFile
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Audio time slice extraction failed, falling back to full file: ${e.message}")
+            try { sliceFile?.delete() } catch (_: Exception) {}
+        } finally {
+            try { extractor?.release() } catch (_: Exception) {}
+            try { muxer?.release() } catch (_: Exception) {}
+        }
+        return null
+    }
+
     suspend fun executeGeminiPostWithRetry(
         urlBuilder: (model: String) -> String,
         payload: JSONObject,
         primaryModel: String = DEFAULT_MODEL,
         fallbackModel: String = FALLBACK_MODEL,
-        maxAttempts: Int = 5,
+        maxAttempts: Int = 6,
         client: OkHttpClient = okHttpClient,
         language: String = "en",
         candidateApiKeys: List<String> = emptyList(),
@@ -281,17 +457,20 @@ object GeminiService {
         onProgressUpdate: ((String) -> Unit)? = null
     ): Pair<Int, String> = withContext(Dispatchers.IO) {
         val mediaType = "application/json; charset=utf-8".toMediaType()
-        val requestBodyString = payload.toString()
-        val orderedModels = selectOrderedCandidateModels(primaryModel)
+        var activePayload = payload
         val keysPool = candidateApiKeys.filter { it.isNotBlank() }
+        val modelsFailedWith404 = mutableSetOf<String>()
 
         var lastCode = -1
         var lastBody = ""
         var lastException: Exception? = null
-        var baseDelayMs = 1800L
+        var baseDelayMs = 1500L
 
         for (attempt in 1..maxAttempts) {
-            val currentModel = orderedModels[(attempt - 1) % orderedModels.size]
+            val dynamicModels = selectOrderedCandidateModels(primaryModel)
+                .filter { it !in modelsFailedWith404 }
+                .ifEmpty { listOf(FALLBACK_MODEL, STABLE_FLASH_MODEL, LITE_FALLBACK_MODEL) }
+            val currentModel = dynamicModels[(attempt - 1) % dynamicModels.size]
             val currentKey = if (keysPool.isNotEmpty()) {
                 keysPool[(attempt - 1) % keysPool.size]
             } else ""
@@ -304,7 +483,12 @@ object GeminiService {
                 } else {
                     urlBuilder(currentModel)
                 }
-                val body = requestBodyString.toRequestBody(mediaType)
+                val currentPayloadForModel = if (currentModel.contains("pro", ignoreCase = true)) {
+                    stripThinkingOrClampTokensFromPayload(activePayload, "thinking")
+                } else {
+                    activePayload
+                }
+                val body = currentPayloadForModel.toString().toRequestBody(mediaType)
                 val request = Request.Builder().url(url).post(body).build()
 
                 val response = client.newCall(request).execute()
@@ -316,24 +500,41 @@ object GeminiService {
                     return@withContext Pair(lastCode, lastBody)
                 }
 
+                // If 400 due to thinkingConfig or maxOutputTokens on a specific model, sanitize payload and retry immediately
+                if (lastCode == 400 && (
+                    lastBody.contains("thinking", ignoreCase = true) ||
+                    lastBody.contains("max_output_tokens", ignoreCase = true) ||
+                    lastBody.contains("maxOutputTokens", ignoreCase = true) ||
+                    lastBody.contains("generation_config", ignoreCase = true)
+                )) {
+                    activePayload = stripThinkingOrClampTokensFromPayload(activePayload, lastBody)
+                    if (attempt < maxAttempts) {
+                        continue
+                    }
+                }
+
                 val is503 = lastCode == 503 || lastBody.contains("overloaded", ignoreCase = true) || lastBody.contains("UNAVAILABLE", ignoreCase = true)
                 val is429 = lastCode == 429 || lastBody.contains("RESOURCE_EXHAUSTED", ignoreCase = true) || lastBody.contains("quota", ignoreCase = true)
                 val is404 = lastCode == 404 || lastBody.contains("NOT_FOUND", ignoreCase = true)
                 val is5xx = lastCode in 500..599
 
+                if (is404) {
+                    modelsFailedWith404.add(currentModel)
+                }
                 markModelFailure(currentModel, lastCode)
                 Log.w(TAG, "Gemini POST failed (HTTP $lastCode, model $currentModel, attempt $attempt/$maxAttempts): $lastBody")
 
                 if (attempt < maxAttempts && (is503 || is429 || is404 || is5xx)) {
-                    val nextModel = orderedModels[attempt % orderedModels.size]
+                    val nextModels = selectOrderedCandidateModels(primaryModel).filter { it !in modelsFailedWith404 }
+                    val nextModel = nextModels.firstOrNull() ?: FALLBACK_MODEL
                     val retryAfterSec = response.header("Retry-After")?.toLongOrNull()
-                    val jitterMs = kotlin.random.Random.nextLong(200L, 750L)
-                    val waitMs = if (retryAfterSec != null && retryAfterSec in 1..15) {
+                    val jitterMs = kotlin.random.Random.nextLong(200L, 650L)
+                    val waitMs = if (is404) {
+                        150L // Instant switch when model endpoint is 404
+                    } else if (retryAfterSec != null && retryAfterSec in 1..15) {
                         retryAfterSec * 1000L + jitterMs
-                    } else if (is404) {
-                        350L // Fast switch when model endpoint is 404
                     } else {
-                        (baseDelayMs + jitterMs).coerceAtMost(9000L)
+                        (baseDelayMs + jitterMs).coerceAtMost(8000L)
                     }
 
                     val retryMsg = if (language == "ar") {
@@ -344,7 +545,7 @@ object GeminiService {
                     onProgressUpdate?.invoke(retryMsg)
                     delay(waitMs)
                     if (!is404) {
-                        baseDelayMs = (baseDelayMs * 1.75).toLong().coerceAtMost(8500L)
+                        baseDelayMs = (baseDelayMs * 1.65).toLong().coerceAtMost(7500L)
                     }
                     continue
                 } else {
@@ -356,8 +557,8 @@ object GeminiService {
                 markModelFailure(currentModel, 503)
                 Log.w(TAG, "Gemini POST exception (model $currentModel, attempt $attempt/$maxAttempts): ${e.message}")
                 if (attempt < maxAttempts) {
-                    val jitterMs = kotlin.random.Random.nextLong(200L, 700L)
-                    val waitMs = (baseDelayMs + jitterMs).coerceAtMost(9000L)
+                    val jitterMs = kotlin.random.Random.nextLong(200L, 650L)
+                    val waitMs = (baseDelayMs + jitterMs).coerceAtMost(8000L)
                     val retryMsg = if (language == "ar") {
                         "جارٍ إعادة المحاولة تلقائياً عبر نموذج بديل (${attempt + 1}/$maxAttempts)..."
                     } else {
@@ -365,7 +566,7 @@ object GeminiService {
                     }
                     onProgressUpdate?.invoke(retryMsg)
                     delay(waitMs)
-                    baseDelayMs = (baseDelayMs * 1.75).toLong().coerceAtMost(8500L)
+                    baseDelayMs = (baseDelayMs * 1.65).toLong().coerceAtMost(7500L)
                 } else {
                     throw e
                 }
@@ -421,8 +622,10 @@ object GeminiService {
                 put("temperature", if (isVocabNoteRequest) 0.3 else 0.7)
                 put("topP", 0.95)
                 put("topK", 40)
-                // Right-size output token reservation to prevent heavy-queue 503 rejections
-                put("maxOutputTokens", if (isVocabNoteRequest) 1024 else 4096)
+                put("maxOutputTokens", if (isVocabNoteRequest) 2048 else 8192)
+                if (isVocabNoteRequest) {
+                    put("thinkingConfig", buildFastThinkingConfig())
+                }
             }
             rootJson.put("generationConfig", genConfig)
 
@@ -469,7 +672,7 @@ object GeminiService {
                 payload = rootJson,
                 primaryModel = modelName,
                 fallbackModel = FALLBACK_MODEL,
-                maxAttempts = 5,
+                maxAttempts = 6,
                 client = okHttpClient,
                 language = language
             )
@@ -489,13 +692,7 @@ object GeminiService {
             val firstCandidate = candidates.getJSONObject(0)
             val content = firstCandidate.optJSONObject("content")
             val parts = content?.optJSONArray("parts")
-            val replyBuilder = StringBuilder()
-            if (parts != null) {
-                for (p in 0 until parts.length()) {
-                    replyBuilder.append(parts.getJSONObject(p).optString("text", ""))
-                }
-            }
-            val textResult = replyBuilder.toString()
+            val textResult = extractNonThoughtTextFromParts(parts)
 
             if (textResult.isBlank()) {
                 return@withContext Result.failure(Exception("Empty text in Gemini response."))
@@ -684,13 +881,93 @@ object GeminiService {
         return validatedList
     }
 
+    private suspend fun detectScenesSinglePass(
+        transcriptCues: List<SubtitleCue>,
+        totalDurationMs: Long,
+        mediaTitle: String,
+        resolvedApiKey: String,
+        candidateKeys: List<String>,
+        language: String,
+        modelName: String,
+        onProgressUpdate: ((String) -> Unit)?
+    ): Result<List<DetectedScene>> {
+        val (systemInstruction, prompt) = GeminiPrompts.buildSceneDetectionPrompt(
+            transcriptCues = transcriptCues,
+            totalDurationMs = totalDurationMs,
+            mediaTitle = mediaTitle,
+            language = language
+        )
+
+        val rootJson = JSONObject().apply {
+            put("systemInstruction", JSONObject().apply {
+                put("parts", JSONArray().apply {
+                    put(JSONObject().apply { put("text", systemInstruction) })
+                })
+            })
+            put("contents", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("parts", JSONArray().apply {
+                        put(JSONObject().apply { put("text", prompt) })
+                    })
+                })
+            })
+            put("generationConfig", JSONObject().apply {
+                put("responseMimeType", "application/json")
+                put("temperature", 0.2)
+                put("maxOutputTokens", 65536)
+                put("thinkingConfig", buildFastThinkingConfig())
+            })
+        }
+
+        val (code, responseBody) = executeGeminiPostWithRetry(
+            urlBuilder = { m -> "$BASE_URL/$m:generateContent?key=$resolvedApiKey" },
+            urlWithKeyBuilder = { m, k -> "$BASE_URL/$m:generateContent?key=$k" },
+            candidateApiKeys = candidateKeys,
+            payload = rootJson,
+            primaryModel = modelName,
+            fallbackModel = FALLBACK_MODEL,
+            maxAttempts = 6,
+            client = subtitleOkHttpClient,
+            language = language,
+            onProgressUpdate = onProgressUpdate
+        )
+
+        if (code !in 200..299) {
+            Log.e(TAG, "Gemini Scene Detection failed: $code -> $responseBody")
+            val cleanErrorMsg = parseGeminiErrorMessage(code, responseBody, language)
+            return Result.failure(Exception(cleanErrorMsg))
+        }
+
+        val respJson = JSONObject(responseBody)
+        val candidates = respJson.optJSONArray("candidates")
+        if (candidates == null || candidates.length() == 0) {
+            return Result.failure(Exception("No candidate returned by Gemini."))
+        }
+
+        val firstCandidate = candidates.getJSONObject(0)
+        val content = firstCandidate.optJSONObject("content")
+        val parts = content?.optJSONArray("parts")
+        val rawText = extractNonThoughtTextFromParts(parts)
+
+        if (rawText.isBlank()) {
+            return Result.failure(Exception("Empty text response for scene detection."))
+        }
+
+        val validatedList = parseScenesResiliently(rawText, totalDurationMs)
+        if (validatedList.isEmpty()) {
+            return Result.failure(Exception("AI did not return any valid scene items."))
+        }
+        return Result.success(validatedList)
+    }
+
     suspend fun detectScenes(
         transcriptCues: List<SubtitleCue>,
         totalDurationMs: Long,
         mediaTitle: String,
         customApiKey: String? = null,
         language: String = "en",
-        modelName: String = DEFAULT_MODEL,
+        modelName: String = FALLBACK_MODEL,
         onProgressUpdate: ((String) -> Unit)? = null
     ): Result<List<DetectedScene>> = withContext(Dispatchers.IO) {
         try {
@@ -709,83 +986,70 @@ object GeminiService {
                 else "Preparing transcript and analyzing scenes with AI..."
             )
 
-            val (systemInstruction, prompt) = GeminiPrompts.buildSceneDetectionPrompt(
+            val candidateKeys = resolveCandidateApiKeys(customApiKey)
+
+            val singlePassResult = detectScenesSinglePass(
                 transcriptCues = transcriptCues,
                 totalDurationMs = totalDurationMs,
                 mediaTitle = mediaTitle,
-                language = language
-            )
-
-            val rootJson = JSONObject().apply {
-                put("systemInstruction", JSONObject().apply {
-                    put("parts", JSONArray().apply {
-                        put(JSONObject().apply { put("text", systemInstruction) })
-                    })
-                })
-                put("contents", JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("role", "user")
-                        put("parts", JSONArray().apply {
-                            put(JSONObject().apply { put("text", prompt) })
-                        })
-                    })
-                })
-                put("generationConfig", JSONObject().apply {
-                    put("responseMimeType", "application/json")
-                    put("temperature", 0.2)
-                    // 8192 output tokens is more than enough for scene JSON and avoids 64K heavy-queue 503 rejections
-                    put("maxOutputTokens", 8192)
-                })
-            }
-
-            val candidateKeys = resolveCandidateApiKeys(customApiKey)
-
-            val (code, responseBody) = executeGeminiPostWithRetry(
-                urlBuilder = { m -> "$BASE_URL/$m:generateContent?key=$resolvedApiKey" },
-                urlWithKeyBuilder = { m, k -> "$BASE_URL/$m:generateContent?key=$k" },
-                candidateApiKeys = candidateKeys,
-                payload = rootJson,
-                primaryModel = modelName,
-                fallbackModel = FALLBACK_MODEL,
-                maxAttempts = 5,
-                client = subtitleOkHttpClient,
+                resolvedApiKey = resolvedApiKey,
+                candidateKeys = candidateKeys,
                 language = language,
+                modelName = modelName,
                 onProgressUpdate = onProgressUpdate
             )
 
-            if (code !in 200..299) {
-                Log.e(TAG, "Gemini Scene Detection failed: $code -> $responseBody")
-                val cleanErrorMsg = parseGeminiErrorMessage(code, responseBody, language)
-                return@withContext Result.failure(Exception(cleanErrorMsg))
+            if (singlePassResult.isSuccess) {
+                return@withContext singlePassResult
             }
 
-            val respJson = JSONObject(responseBody)
-            val candidates = respJson.optJSONArray("candidates")
-            if (candidates == null || candidates.length() == 0) {
-                return@withContext Result.failure(Exception("No candidate returned by Gemini."))
-            }
+            // Fallback for very long transcripts: split into 2 halves so each half has 50% token load
+            if (transcriptCues.size >= 80) {
+                onProgressUpdate?.invoke(
+                    if (language == "ar") "المقطع طويل، جارٍ تقسيم تحليل المشاهد إلى جزأين لضمان النجاح..."
+                    else "Long transcript detected, analyzing scenes in 2 parts for reliability..."
+                )
+                val midIdx = transcriptCues.size / 2
+                val firstCues = transcriptCues.subList(0, midIdx)
+                val secondCues = transcriptCues.subList(midIdx, transcriptCues.size)
+                val midDurationMs = secondCues.firstOrNull()?.startMs?.takeIf { it > 0 } ?: (totalDurationMs / 2)
 
-            val firstCandidate = candidates.getJSONObject(0)
-            val content = firstCandidate.optJSONObject("content")
-            val parts = content?.optJSONArray("parts")
-            val rawTextBuilder = StringBuilder()
-            if (parts != null) {
-                for (pIdx in 0 until parts.length()) {
-                    rawTextBuilder.append(parts.getJSONObject(pIdx).optString("text", ""))
+                val part1 = detectScenesSinglePass(
+                    transcriptCues = firstCues,
+                    totalDurationMs = midDurationMs,
+                    mediaTitle = "$mediaTitle (Part 1)",
+                    resolvedApiKey = resolvedApiKey,
+                    candidateKeys = candidateKeys,
+                    language = language,
+                    modelName = LITE_FALLBACK_MODEL,
+                    onProgressUpdate = onProgressUpdate
+                ).getOrNull().orEmpty()
+
+                val part2 = detectScenesSinglePass(
+                    transcriptCues = secondCues,
+                    totalDurationMs = totalDurationMs,
+                    mediaTitle = "$mediaTitle (Part 2)",
+                    resolvedApiKey = resolvedApiKey,
+                    candidateKeys = candidateKeys,
+                    language = language,
+                    modelName = LITE_FALLBACK_MODEL,
+                    onProgressUpdate = onProgressUpdate
+                ).getOrNull().orEmpty()
+
+                val combined = (part1 + part2.map { scene ->
+                    if (scene.startMs < midDurationMs / 2 && midDurationMs > 0) {
+                        scene.copy(startMs = scene.startMs + midDurationMs, endMs = scene.endMs + midDurationMs)
+                    } else scene
+                }).sortedBy { it.startMs }.mapIndexed { idx, scene ->
+                    scene.copy(sceneNumber = idx + 1)
+                }
+
+                if (combined.isNotEmpty()) {
+                    return@withContext Result.success(combined)
                 }
             }
-            val rawText = rawTextBuilder.toString()
 
-            if (rawText.isBlank()) {
-                return@withContext Result.failure(Exception("Empty text response for scene detection."))
-            }
-
-            val validatedList = parseScenesResiliently(rawText, totalDurationMs)
-            if (validatedList.isEmpty()) {
-                return@withContext Result.failure(Exception("AI did not return any valid scene items."))
-            }
-
-            Result.success(validatedList)
+            singlePassResult
         } catch (e: Exception) {
             Log.e(TAG, "Exception during detectScenes", e)
             val friendlyMsg = when {
@@ -803,7 +1067,7 @@ object GeminiService {
         source: QuizContentSource,
         customApiKey: String? = null,
         language: String = "en",
-        modelName: String = DEFAULT_MODEL
+        modelName: String = FALLBACK_MODEL
     ): Result<List<UnifiedQuizItem>> = withContext(Dispatchers.IO) {
         try {
             val resolvedApiKey = resolveApiKey(customApiKey)
@@ -855,7 +1119,8 @@ object GeminiService {
                 put("generationConfig", JSONObject().apply {
                     put("responseMimeType", "application/json")
                     put("temperature", temperature)
-                    put("maxOutputTokens", 4096)
+                    put("maxOutputTokens", 16384)
+                    put("thinkingConfig", buildFastThinkingConfig())
                 })
             }
 
@@ -868,7 +1133,7 @@ object GeminiService {
                 payload = rootJson,
                 primaryModel = modelName,
                 fallbackModel = FALLBACK_MODEL,
-                maxAttempts = 5,
+                maxAttempts = 6,
                 client = okHttpClient,
                 language = language
             )
@@ -888,13 +1153,7 @@ object GeminiService {
             val firstCandidate = candidates.getJSONObject(0)
             val content = firstCandidate.optJSONObject("content")
             val parts = content?.optJSONArray("parts")
-            val rawTextBuilder = StringBuilder()
-            if (parts != null) {
-                for (p in 0 until parts.length()) {
-                    rawTextBuilder.append(parts.getJSONObject(p).optString("text", ""))
-                }
-            }
-            val rawText = rawTextBuilder.toString()
+            val rawText = extractNonThoughtTextFromParts(parts)
 
             if (rawText.isBlank()) {
                 return@withContext Result.failure(Exception("Empty text response for quiz."))
@@ -1271,7 +1530,7 @@ object GeminiService {
 
     private suspend fun executeSubtitleGenerationWithRetry(
         rootJson: JSONObject,
-        resolvedApiKey: String,
+        candidateApiKeys: List<String>,
         preferredModel: String,
         language: String,
         chunkIdx: Int,
@@ -1279,109 +1538,94 @@ object GeminiService {
         accumulatedCuesCount: Int,
         onProgressUpdate: ((String) -> Unit)?
     ): String = withContext(Dispatchers.IO) {
-        val maxAttempts = 5
-        var currentDelayMs = 2000L
+        val maxAttempts = 6
+        var currentDelayMs = 1500L
         val orderedModels = selectOrderedCandidateModels(preferredModel)
         var lastException: Exception? = null
+        var currentRootJson = JSONObject(rootJson.toString())
+        val keys = candidateApiKeys.ifEmpty { listOf("") }
 
         val mediaType = "application/json; charset=utf-8".toMediaType()
 
         for (attempt in 1..maxAttempts) {
             val activeModel = orderedModels[(attempt - 1) % orderedModels.size]
+            val activeApiKey = keys[(attempt - 1) % keys.size]
             try {
                 paceRequestIfNeeded()
-                val useStreaming = (attempt <= 2)
+                val useStreaming = (attempt == 1)
 
                 if (useStreaming) {
-                    val requestUrl = "$BASE_URL/$activeModel:streamGenerateContent?key=$resolvedApiKey&alt=sse"
-                    val requestBody = rootJson.toString().toRequestBody(mediaType)
+                    val requestUrl = "$BASE_URL/$activeModel:streamGenerateContent?key=$activeApiKey&alt=sse"
+                    val requestBody = currentRootJson.toString().toRequestBody(mediaType)
                     val request = Request.Builder().url(requestUrl).post(requestBody).build()
 
                     val response = subtitleOkHttpClient.newCall(request).execute()
                     val responseCode = response.code
                     if (!response.isSuccessful) {
                         val errBody = response.body?.string() ?: ""
+                        if (responseCode == 400 && (errBody.contains("thinking", ignoreCase = true) || errBody.contains("thinkingConfig", ignoreCase = true) || errBody.contains("maxOutputTokens", ignoreCase = true) || errBody.contains("max_output_tokens", ignoreCase = true))) {
+                            Log.w(TAG, "Subtitle model $activeModel rejected thinkingConfig/maxOutputTokens; adapting payload and retrying immediately")
+                            currentRootJson.optJSONObject("generationConfig")?.apply {
+                                remove("thinkingConfig")
+                                if (optInt("maxOutputTokens", 8192) > 8192) {
+                                    put("maxOutputTokens", 8192)
+                                }
+                            }
+                            val retryReq = Request.Builder().url(requestUrl).post(currentRootJson.toString().toRequestBody(mediaType)).build()
+                            val retryResp = subtitleOkHttpClient.newCall(retryReq).execute()
+                            if (!retryResp.isSuccessful) {
+                                val retryErr = retryResp.body?.string() ?: ""
+                                markModelFailure(activeModel, retryResp.code)
+                                throw Exception("HTTP ${retryResp.code}: $retryErr")
+                            }
+                            val retryBody = retryResp.body ?: throw Exception("Empty response body from Gemini.")
+                            val retryText = parseSseSubtitleStream(retryBody, language, chunkIdx, totalChunks, accumulatedCuesCount, onProgressUpdate)
+                            if (retryText.isNotBlank() && retryText.contains("-->")) {
+                                markModelSuccess(activeModel)
+                                return@withContext retryText
+                            }
+                        }
                         markModelFailure(activeModel, responseCode)
                         Log.e(TAG, "Gemini Subtitles stream failed (HTTP $responseCode, model $activeModel, attempt $attempt/$maxAttempts): $errBody")
                         throw Exception("HTTP $responseCode: $errBody")
                     }
 
                     val body = response.body ?: throw Exception("Empty response body from Gemini.")
-                    val reader = body.byteStream().bufferedReader(Charsets.UTF_8)
-                    val chunkRawText = StringBuilder()
-                    var streamedArrowCount = 0
-
-                    reader.useLines { lines ->
-                        for (line in lines) {
-                            if (line.startsWith("data: ")) {
-                                val jsonStr = line.substring(6).trim()
-                                if (jsonStr.isNotBlank() && jsonStr != "[DONE]") {
-                                    try {
-                                        val chunkJson = JSONObject(jsonStr)
-                                        val candidates = chunkJson.optJSONArray("candidates")
-                                        if (candidates != null && candidates.length() > 0) {
-                                            val candidate = candidates.getJSONObject(0)
-                                            val content = candidate.optJSONObject("content")
-                                            val parts = content?.optJSONArray("parts")
-                                            if (parts != null && parts.length() > 0) {
-                                                for (i in 0 until parts.length()) {
-                                                    val partText = parts.getJSONObject(i).optString("text", "")
-                                                    if (partText.isNotEmpty()) {
-                                                        chunkRawText.append(partText)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.w(TAG, "Error parsing SSE chunk: ${e.message}")
-                                    }
-
-                                    val currentTotal = chunkRawText.toString()
-                                    val arrowCount = currentTotal.split("-->").size - 1
-                                    if (arrowCount > streamedArrowCount) {
-                                        streamedArrowCount = arrowCount
-                                        val totalLiveCues = accumulatedCuesCount + streamedArrowCount
-                                        val updateMsg = if (totalChunks > 1) {
-                                            if (language == "ar") {
-                                                "مزامنة الجزء (${chunkIdx + 1}/$totalChunks)... ($totalLiveCues مقطعاً)"
-                                            } else {
-                                                "Syncing chunk (${chunkIdx + 1}/$totalChunks)... ($totalLiveCues cues synced)"
-                                            }
-                                        } else {
-                                            if (language == "ar") {
-                                                "جارٍ توليد ومزامنة الترجمة... ($totalLiveCues مقطعاً)"
-                                            } else {
-                                                "Generating subtitles... ($totalLiveCues cues synced)"
-                                            }
-                                        }
-                                        onProgressUpdate?.invoke(updateMsg)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    val rawResult = chunkRawText.toString()
+                    val rawResult = parseSseSubtitleStream(body, language, chunkIdx, totalChunks, accumulatedCuesCount, onProgressUpdate)
                     if (rawResult.isNotBlank() && rawResult.contains("-->")) {
                         markModelSuccess(activeModel)
                         return@withContext rawResult
                     } else {
-                        markModelFailure(activeModel, 503)
+                        Log.w(TAG, "Streaming returned incomplete subtitle output on $activeModel; switching to standard generateContent")
                         throw Exception("Streaming returned incomplete subtitle output.")
                     }
                 } else {
-                    // Non-streaming generateContent fallback: robust against SSE socket drops on long audio
-                    val fallbackMsg = if (language == "ar") "جارٍ إتمام معالجة الترجمة عبر خوادم الذكاء الاصطناعي ($activeModel)..."
-                    else "Processing subtitles directly via Gemini API ($activeModel)..."
+                    // Non-streaming generateContent: ultra-reliable against SSE socket drops on long audio
+                    val fallbackMsg = if (language == "ar") "جارٍ معالجة الترجمة عبر الذكاء الاصطناعي ($activeModel)..."
+                    else "Processing subtitles via Gemini API ($activeModel)..."
                     onProgressUpdate?.invoke(fallbackMsg)
 
-                    val requestUrl = "$BASE_URL/$activeModel:generateContent?key=$resolvedApiKey"
-                    val requestBody = rootJson.toString().toRequestBody(mediaType)
+                    val requestUrl = "$BASE_URL/$activeModel:generateContent?key=$activeApiKey"
+                    val requestBody = currentRootJson.toString().toRequestBody(mediaType)
                     val request = Request.Builder().url(requestUrl).post(requestBody).build()
 
-                    val response = subtitleOkHttpClient.newCall(request).execute()
-                    val responseCode = response.code
-                    val responseBody = response.body?.string() ?: ""
+                    var response = subtitleOkHttpClient.newCall(request).execute()
+                    var responseCode = response.code
+                    var responseBody = response.body?.string() ?: ""
+
+                    if (responseCode == 400 && (responseBody.contains("thinking", ignoreCase = true) || responseBody.contains("thinkingConfig", ignoreCase = true) || responseBody.contains("maxOutputTokens", ignoreCase = true) || responseBody.contains("max_output_tokens", ignoreCase = true))) {
+                        Log.w(TAG, "Subtitle model $activeModel rejected thinkingConfig/maxOutputTokens in generateContent; adapting and retrying immediately")
+                        currentRootJson.optJSONObject("generationConfig")?.apply {
+                            remove("thinkingConfig")
+                            if (optInt("maxOutputTokens", 8192) > 8192) {
+                                put("maxOutputTokens", 8192)
+                            }
+                        }
+                        val retryReq = Request.Builder().url(requestUrl).post(currentRootJson.toString().toRequestBody(mediaType)).build()
+                        response = subtitleOkHttpClient.newCall(retryReq).execute()
+                        responseCode = response.code
+                        responseBody = response.body?.string() ?: ""
+                    }
 
                     if (!response.isSuccessful) {
                         markModelFailure(activeModel, responseCode)
@@ -1393,19 +1637,12 @@ object GeminiService {
                     val candidates = respJson.optJSONArray("candidates")
                     val candidate = candidates?.optJSONObject(0)
                     val parts = candidate?.optJSONObject("content")?.optJSONArray("parts")
-                    val rawBuilder = StringBuilder()
-                    if (parts != null) {
-                        for (p in 0 until parts.length()) {
-                            rawBuilder.append(parts.getJSONObject(p).optString("text", ""))
-                        }
-                    }
-                    val rawResult = rawBuilder.toString()
+                    val rawResult = extractNonThoughtTextFromParts(parts)
 
                     if (rawResult.isNotBlank() && rawResult.contains("-->")) {
                         markModelSuccess(activeModel)
                         return@withContext rawResult
                     } else {
-                        markModelFailure(activeModel, 503)
                         throw Exception("Gemini returned invalid or empty subtitle text.")
                     }
                 }
@@ -1418,14 +1655,14 @@ object GeminiService {
                 val is404 = msg.contains("404") || msg.contains("NOT_FOUND", ignoreCase = true)
                 val is5xx = msg.contains("500") || msg.contains("502") || msg.contains("504") || msg.contains("INTERNAL", ignoreCase = true)
                 val isTimeout = e is java.net.SocketTimeoutException || msg.contains("timeout", ignoreCase = true) || e.cause is java.net.SocketTimeoutException
-                val isConnectionErr = e is java.io.IOException || msg.contains("connection", ignoreCase = true) || msg.contains("stream", ignoreCase = true) || msg.contains("incomplete", ignoreCase = true)
+                val isConnectionErr = e is java.io.IOException || msg.contains("connection", ignoreCase = true) || msg.contains("stream", ignoreCase = true) || msg.contains("incomplete", ignoreCase = true) || msg.contains("invalid or empty", ignoreCase = true)
 
                 val canRetry = (is503 || is429 || is404 || is5xx || isTimeout || isConnectionErr) && attempt < maxAttempts
 
                 if (canRetry) {
                     val nextModel = orderedModels[attempt % orderedModels.size]
-                    val jitterMs = kotlin.random.Random.nextLong(250L, 800L)
-                    val waitMs = if (is404) 350L else (currentDelayMs + jitterMs).coerceAtMost(10000L)
+                    val jitterMs = kotlin.random.Random.nextLong(200L, 600L)
+                    val waitMs = if (is404 || msg.contains("incomplete", ignoreCase = true)) 300L else (currentDelayMs + jitterMs).coerceAtMost(8000L)
                     val waitSec = (waitMs / 1000).coerceAtLeast(1).toInt()
                     val retryNotice = if (language == "ar") {
                         if (is503) "خوادم Gemini مشغولة مؤقتاً (503)، جارٍ التبديل للنموذج البديل ($nextModel) خلال $waitSec ثوانٍ (${attempt + 1}/$maxAttempts)..."
@@ -1440,7 +1677,7 @@ object GeminiService {
                     Log.w(TAG, "Subtitle generation attempt $attempt ($activeModel) failed with: $msg. Retrying with $nextModel in ${waitMs}ms...")
                     delay(waitMs)
                     if (!is404) {
-                        currentDelayMs = (currentDelayMs * 1.75).toLong().coerceAtMost(9500L)
+                        currentDelayMs = (currentDelayMs * 1.6).toLong().coerceAtMost(8000L)
                     }
                 } else {
                     throw e
@@ -1450,16 +1687,77 @@ object GeminiService {
         throw lastException ?: Exception("Subtitle generation failed after $maxAttempts attempts.")
     }
 
+    private fun parseSseSubtitleStream(
+        body: okhttp3.ResponseBody,
+        language: String,
+        chunkIdx: Int,
+        totalChunks: Int,
+        accumulatedCuesCount: Int,
+        onProgressUpdate: ((String) -> Unit)?
+    ): String {
+        val reader = body.byteStream().bufferedReader(Charsets.UTF_8)
+        val chunkRawText = StringBuilder()
+        var streamedArrowCount = 0
+
+        reader.useLines { lines ->
+            for (line in lines) {
+                if (line.startsWith("data: ")) {
+                    val jsonStr = line.substring(6).trim()
+                    if (jsonStr.isNotBlank() && jsonStr != "[DONE]") {
+                        try {
+                            val chunkJson = JSONObject(jsonStr)
+                            val candidates = chunkJson.optJSONArray("candidates")
+                            if (candidates != null && candidates.length() > 0) {
+                                val candidate = candidates.getJSONObject(0)
+                                val content = candidate.optJSONObject("content")
+                                val parts = content?.optJSONArray("parts")
+                                val partText = extractNonThoughtTextFromParts(parts)
+                                if (partText.isNotEmpty()) {
+                                    chunkRawText.append(partText)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Error parsing SSE chunk: ${e.message}")
+                        }
+
+                        val currentTotal = chunkRawText.toString()
+                        val arrowCount = currentTotal.split("-->").size - 1
+                        if (arrowCount > streamedArrowCount) {
+                            streamedArrowCount = arrowCount
+                            val totalLiveCues = accumulatedCuesCount + streamedArrowCount
+                            val updateMsg = if (totalChunks > 1) {
+                                if (language == "ar") {
+                                    "مزامنة الجزء (${chunkIdx + 1}/$totalChunks)... ($totalLiveCues مقطعاً)"
+                                } else {
+                                    "Syncing chunk (${chunkIdx + 1}/$totalChunks)... ($totalLiveCues cues synced)"
+                                }
+                            } else {
+                                if (language == "ar") {
+                                    "جارٍ توليد ومزامنة الترجمة... ($totalLiveCues مقطعاً)"
+                                } else {
+                                    "Generating subtitles... ($totalLiveCues cues synced)"
+                                }
+                            }
+                            onProgressUpdate?.invoke(updateMsg)
+                        }
+                    }
+                }
+            }
+        }
+        return chunkRawText.toString()
+    }
+
     suspend fun generateSubtitles(
         audioFile: File,
         existingSubtitleText: String? = null,
         totalDurationMs: Long = 0L,
         customApiKey: String? = null,
         language: String = "en",
-        modelName: String = DEFAULT_MODEL,
+        modelName: String = FALLBACK_MODEL,
         onProgressUpdate: ((String) -> Unit)? = null
     ): Result<String> = withContext(Dispatchers.IO) {
-        val resolvedApiKey = resolveApiKey(customApiKey)
+        val candidateApiKeys = resolveCandidateApiKeys(customApiKey)
+        val resolvedApiKey = candidateApiKeys.firstOrNull() ?: resolveApiKey(customApiKey)
         if (resolvedApiKey.isBlank()) {
             return@withContext Result.failure(Exception("MISSING_API_KEY"))
         }
@@ -1468,6 +1766,7 @@ object GeminiService {
             return@withContext Result.failure(Exception("Audio file not found or cannot be read: ${audioFile.absolutePath}"))
         }
 
+        val tempFilesToClean = mutableListOf<File>()
         try {
             val effectiveMediaFile = extractAudioFromVideoIfPossible(audioFile)
             val mimeType = getMimeTypeForFile(effectiveMediaFile)
@@ -1481,29 +1780,6 @@ object GeminiService {
                 approxSec
             }
 
-            val mediaPartJson = JSONObject()
-            // Files over 2MB or audio longer than 120 seconds use Gemini Files API for reliable upload and server-side processing
-            val maxInlineBytes = 2 * 1024 * 1024L // 2MB
-            if (effectiveMediaFile.length() <= maxInlineBytes && durationSeconds <= 120) {
-                onProgressUpdate?.invoke(
-                    if (language == "ar") "جارٍ قراءة الملف الصوتي..." else "Reading audio data..."
-                )
-                val bytes = effectiveMediaFile.readBytes()
-                val base64Data = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                mediaPartJson.put("inlineData", JSONObject().apply {
-                    put("mimeType", mimeType)
-                    put("data", base64Data)
-                })
-            } else {
-                val uploadProgressMsg = if (language == "ar") "جارٍ رفع المقطع إلى خوادم Gemini..." else "Uploading audio to Gemini server..."
-                onProgressUpdate?.invoke(uploadProgressMsg)
-                val fileUri = uploadFileToGemini(effectiveMediaFile, mimeType, resolvedApiKey, onProgressUpdate)
-                mediaPartJson.put("fileData", JSONObject().apply {
-                    put("mimeType", mimeType)
-                    put("fileUri", fileUri)
-                })
-            }
-
             // Sanitize reference text: strip inaccurate existing timestamps to eliminate bias
             val cleanReferenceText = if (!existingSubtitleText.isNullOrBlank()) {
                 SubtitleParser.extractCleanTextFromReference(existingSubtitleText)
@@ -1511,15 +1787,16 @@ object GeminiService {
                 null
             }
 
-            // Up to 8 minutes (480 seconds) is processed in a single pass; longer tracks use 7-minute chunks
-            // so each chunk fits comfortably within 8192 output tokens without triggering heavy-queue 503 rejections.
-            val singlePassMaxSeconds = 480
+            // Up to 10 minutes (600 seconds) is processed in a single pass; longer tracks use 8-minute chunks.
+            // Crucially, for multi-chunk audio, we physically slice each chunk so Gemini only processes
+            // a lightweight 8-minute audio clip per request instead of reloading the entire multi-hour file!
+            val singlePassMaxSeconds = 600
             val chunkWindows = mutableListOf<Pair<Int, Int>>()
 
             if (durationSeconds <= singlePassMaxSeconds) {
                 chunkWindows.add(Pair(0, durationSeconds))
             } else {
-                val chunkWindowSec = 420 // 7 minutes per chunk for long podcasts/lectures
+                val chunkWindowSec = 480 // 8 minutes per chunk
                 var curStart = 0
                 while (curStart < durationSeconds) {
                     val curEnd = (curStart + chunkWindowSec).coerceAtMost(durationSeconds)
@@ -1532,6 +1809,8 @@ object GeminiService {
             val totalChunks = chunkWindows.size
             val allAccumulatedCues = mutableListOf<SubtitleCue>()
             var globalCueIndex = 1
+            val maxInlineBytes = 14 * 1024 * 1024L // 14MB inline limit (safe under 20MB Gemini payload cap)
+            var fullFileFallbackJson: JSONObject? = null
 
             for ((chunkIdx, window) in chunkWindows.withIndex()) {
                 val (winStartSec, winEndSec) = window
@@ -1550,17 +1829,87 @@ object GeminiService {
                 }
                 onProgressUpdate?.invoke(chunkProgressMsg)
 
+                // Physically slice the audio chunk when totalChunks > 1 so each request is tiny and fast
+                val slicedChunkFile = if (totalChunks > 1) {
+                    extractAudioTimeSliceIfPossible(effectiveMediaFile, winStartMs, winEndMs)?.also {
+                        tempFilesToClean.add(it)
+                    }
+                } else null
+
+                val isPhysicallySlicedChunk = (slicedChunkFile != null)
+                val chunkMediaFile = slicedChunkFile ?: effectiveMediaFile
+                val chunkMimeType = getMimeTypeForFile(chunkMediaFile)
+
+                val chunkMediaPartJson: JSONObject
+                val usedFilesApiForChunk: Boolean
+
+                if (chunkMediaFile.length() <= maxInlineBytes && (isPhysicallySlicedChunk || totalChunks == 1)) {
+                    if (totalChunks == 1) {
+                        onProgressUpdate?.invoke(
+                            if (language == "ar") "جارٍ تجهيز البيانات الصوتية..." else "Preparing audio data..."
+                        )
+                    }
+                    val bytes = chunkMediaFile.readBytes()
+                    val base64Data = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    chunkMediaPartJson = JSONObject().apply {
+                        put("inlineData", JSONObject().apply {
+                            put("mimeType", chunkMimeType)
+                            put("data", base64Data)
+                        })
+                    }
+                    usedFilesApiForChunk = false
+                } else if (isPhysicallySlicedChunk) {
+                    val fileUri = uploadFileToGemini(chunkMediaFile, chunkMimeType, resolvedApiKey, onProgressUpdate)
+                    chunkMediaPartJson = JSONObject().apply {
+                        put("fileData", JSONObject().apply {
+                            put("mimeType", chunkMimeType)
+                            put("fileUri", fileUri)
+                        })
+                    }
+                    usedFilesApiForChunk = true
+                } else {
+                    if (fullFileFallbackJson == null) {
+                        val uploadProgressMsg = if (language == "ar") "جارٍ رفع المقطع إلى خوادم Gemini..." else "Uploading audio to Gemini server..."
+                        onProgressUpdate?.invoke(uploadProgressMsg)
+                        val fileUri = uploadFileToGemini(effectiveMediaFile, mimeType, resolvedApiKey, onProgressUpdate)
+                        fullFileFallbackJson = JSONObject().apply {
+                            put("fileData", JSONObject().apply {
+                                put("mimeType", mimeType)
+                                put("fileUri", fileUri)
+                            })
+                        }
+                    }
+                    chunkMediaPartJson = fullFileFallbackJson!!
+                    usedFilesApiForChunk = true
+                }
+
+                // Slice reference text proportionally when multi-chunk so we don't send a massive book/transcript on every chunk
+                val chunkReferenceText = if (!cleanReferenceText.isNullOrBlank() && totalChunks > 1 && cleanReferenceText.length > 6000) {
+                    val lines = cleanReferenceText.lines().filter { it.isNotBlank() }
+                    if (lines.size >= totalChunks * 2) {
+                        val startLine = ((chunkIdx.toDouble() / totalChunks) * lines.size).toInt().coerceAtLeast(0)
+                        val endLine = (((chunkIdx + 1).toDouble() / totalChunks) * lines.size + 15).toInt().coerceAtMost(lines.size)
+                        val overlapStart = (startLine - 15).coerceAtLeast(0)
+                        lines.subList(overlapStart, endLine).joinToString("\n")
+                    } else {
+                        cleanReferenceText
+                    }
+                } else {
+                    cleanReferenceText
+                }
+
                 val (systemInstruction, prompt) = GeminiPrompts.buildSubtitleGenerationPrompt(
                     totalChunks = totalChunks,
                     winStartMs = winStartMs,
                     winEndMs = winEndMs,
-                    calculatedDurationMs = calculatedDurationMs,
-                    cleanReferenceText = cleanReferenceText,
-                    globalCueIndex = globalCueIndex
+                    calculatedDurationMs = if (isPhysicallySlicedChunk) (winEndMs - winStartMs) else calculatedDurationMs,
+                    cleanReferenceText = chunkReferenceText,
+                    globalCueIndex = globalCueIndex,
+                    isPhysicallySlicedChunk = isPhysicallySlicedChunk
                 )
 
                 val partsArray = JSONArray().apply {
-                    put(mediaPartJson)
+                    put(chunkMediaPartJson)
                     put(JSONObject().apply { put("text", prompt) })
                 }
 
@@ -1578,13 +1927,19 @@ object GeminiService {
                     })
                     put("generationConfig", JSONObject().apply {
                         put("temperature", 0.1)
-                        put("maxOutputTokens", 8192)
+                        put("maxOutputTokens", 65536)
+                        put("thinkingConfig", JSONObject().apply {
+                            put("thinkingBudget", 0)
+                        })
                     })
                 }
 
+                // If using Files API URI, it is bound to resolvedApiKey; if inlineData, we can rotate across all candidate keys!
+                val keysForChunk = if (usedFilesApiForChunk) listOf(resolvedApiKey) else candidateApiKeys.ifEmpty { listOf(resolvedApiKey) }
+
                 val chunkRawText = executeSubtitleGenerationWithRetry(
                     rootJson = rootJson,
-                    resolvedApiKey = resolvedApiKey,
+                    candidateApiKeys = keysForChunk,
                     preferredModel = modelName,
                     language = language,
                     chunkIdx = chunkIdx,
@@ -1595,9 +1950,21 @@ object GeminiService {
 
                 val cleanedChunkSrt = cleanSrtOutput(chunkRawText)
                 val parsedChunkCues = SubtitleParser.parseContent(cleanedChunkSrt)
+                val chunkDurationMs = (winEndMs - winStartMs).coerceAtLeast(1000L)
+
                 for (cue in parsedChunkCues) {
                     if (cue.isTimed && cue.startMs >= 0L) {
-                        allAccumulatedCues.add(cue.copy(id = globalCueIndex++))
+                        // If the chunk was physically sliced, timestamps from Gemini are relative to 00:00:00 of the slice
+                        val adjustedCue = if (isPhysicallySlicedChunk && winStartMs > 0L && cue.startMs < chunkDurationMs + 15000L) {
+                            cue.copy(
+                                id = globalCueIndex++,
+                                startMs = cue.startMs + winStartMs,
+                                endMs = cue.endMs + winStartMs
+                            )
+                        } else {
+                            cue.copy(id = globalCueIndex++)
+                        }
+                        allAccumulatedCues.add(adjustedCue)
                     }
                 }
             }
@@ -1636,6 +2003,12 @@ object GeminiService {
                 }
             }
             Result.failure(Exception(friendlyError))
+        } finally {
+            for (tempFile in tempFilesToClean) {
+                try {
+                    if (tempFile.exists()) tempFile.delete()
+                } catch (_: Exception) {}
+            }
         }
     }
 }

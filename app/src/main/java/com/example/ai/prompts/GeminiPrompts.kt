@@ -87,9 +87,12 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                         promptBuilder.append("\n")
                     }
                     if (hasFullSubtitles) {
+                        val trimmedSubtitles = contextSummary.fullSubtitlesText!!.trim().let {
+                            if (it.length > 24000) it.take(24000) + "\n...[تم اختصار بقية النص لطوله]..." else it
+                        }
                         promptBuilder.append("• كامل نص ملف الترجمة / التفريغ الصوتي لهذا المقطع:\n")
                         promptBuilder.append("--- بداية نص ملف الترجمة ---\n")
-                        promptBuilder.append(contextSummary.fullSubtitlesText!!.trim()).append("\n")
+                        promptBuilder.append(trimmedSubtitles).append("\n")
                         promptBuilder.append("--- نهاية نص ملف الترجمة ---\n")
                     } else if (hasSubtitle) {
                         promptBuilder.append("• جملة التفريغ/الترجمة الحالية: \"").append(contextSummary.activeSubtitleLine).append("\"\n")
@@ -108,9 +111,12 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                         promptBuilder.append("\n")
                     }
                     if (hasFullSubtitles) {
+                        val trimmedSubtitles = contextSummary.fullSubtitlesText!!.trim().let {
+                            if (it.length > 24000) it.take(24000) + "\n...[Transcript truncated for length]..." else it
+                        }
                         promptBuilder.append("• Full Subtitles / Transcript for this entire audio file:\n")
                         promptBuilder.append("--- START OF TRANSCRIPT ---\n")
-                        promptBuilder.append(contextSummary.fullSubtitlesText!!.trim()).append("\n")
+                        promptBuilder.append(trimmedSubtitles).append("\n")
                         promptBuilder.append("--- END OF TRANSCRIPT ---\n")
                     } else if (hasSubtitle) {
                         promptBuilder.append("• Current Active Subtitle / Lyric Sentence: \"").append(contextSummary.activeSubtitleLine).append("\"\n")
@@ -134,10 +140,13 @@ Take for granted: To fail to properly appreciate someone or something, especiall
     ): Pair<String, String> {
         val transcriptBuilder = StringBuilder()
 
-        // When transcript is large (> 250 cues), intelligently merge closely-timed dialogue lines (within 2s)
-        // into unified conversation blocks up to 25s each. This preserves 100% of spoken words and exact timestamps
-        // while reducing prompt token payload by 60%, drastically accelerating processing and eliminating network timeouts.
-        val processedCues = if (transcriptCues.size > 250) {
+        // Adaptively merge closely-timed cues into compact dialogue blocks (targeting ~120-160 blocks max)
+        // so even a 2-hour movie transcript stays lean (< 7,000 tokens), avoiding Gemini 503 heavy-queue rejections.
+        val effectiveDurationMs = if (totalDurationMs > 0) totalDurationMs else (transcriptCues.lastOrNull()?.endMs ?: 600_000L)
+        val targetBlockWindowMs = (effectiveDurationMs / 140L).coerceIn(15_000L, 45_000L)
+        val maxGapToMergeMs = if (transcriptCues.size > 400) 8_000L else 4_000L
+
+        val processedCues = if (transcriptCues.size > 120) {
             val merged = mutableListOf<SubtitleCue>()
             var curStart = -1L
             var curEnd = -1L
@@ -159,7 +168,11 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                     curStart = cue.startMs
                     curEnd = cue.endMs
                     curText.append(cue.text.replace("\n", " ").trim())
-                } else if (cue.startMs - curEnd <= 2000L && (curEnd - curStart) <= 25000L) {
+                } else if (
+                    cue.startMs - curEnd <= maxGapToMergeMs &&
+                    (cue.endMs - curStart) <= targetBlockWindowMs &&
+                    curText.length < 380
+                ) {
                     curEnd = maxOf(curEnd, cue.endMs)
                     val trimmed = cue.text.replace("\n", " ").trim()
                     if (trimmed.isNotEmpty()) {
@@ -183,11 +196,9 @@ Take for granted: To fail to properly appreciate someone or something, especiall
 
         processedCues.forEachIndexed { index, cue ->
             if (cue.isTimed && cue.startMs >= 0) {
-                val startFmt = formatTimestamp(cue.startMs)
-                val endFmt = formatTimestamp(cue.endMs)
-                transcriptBuilder.append("[${index + 1}] $startFmt - $endFmt (startMs:${cue.startMs}, endMs:${cue.endMs}): ${cue.text.replace("\n", " ").trim()}\n")
+                transcriptBuilder.append("[${cue.startMs}-${cue.endMs}] ${cue.text.replace("\n", " ").trim()}\n")
             } else {
-                transcriptBuilder.append("[${index + 1}]: ${cue.text.replace("\n", " ").trim()}\n")
+                transcriptBuilder.append("[${index + 1}] ${cue.text.replace("\n", " ").trim()}\n")
             }
         }
 
@@ -420,17 +431,22 @@ Take for granted: To fail to properly appreciate someone or something, especiall
         winEndMs: Long,
         calculatedDurationMs: Long,
         cleanReferenceText: String?,
-        globalCueIndex: Int
+        globalCueIndex: Int,
+        isPhysicallySlicedChunk: Boolean = false
     ): Pair<String, String> {
         val prompt = buildString {
             append("You are an expert audio transcriptionist and pinpoint acoustic timing specialist.\n")
             append("Analyze the attached audio/video recording and generate strictly synchronized SubRip (.srt) subtitles.\n\n")
 
-            if (totalChunks > 1) {
+            if (totalChunks > 1 && !isPhysicallySlicedChunk) {
                 append("TARGET TIME WINDOW FOR THIS PASS:\n")
                 append("- Transcribe ONLY the speech occurring from exactly [${SubtitleParser.formatShortTimeTag(winStartMs)}] (${SubtitleParser.formatSrtTimestamp(winStartMs)}) to [${SubtitleParser.formatShortTimeTag(winEndMs)}] (${SubtitleParser.formatSrtTimestamp(winEndMs)}).\n")
                 append("- Do NOT include speech occurring before ${SubtitleParser.formatSrtTimestamp(winStartMs)} or after ${SubtitleParser.formatSrtTimestamp(winEndMs)}.\n")
                 append("- All subtitle cues in this pass MUST have absolute timestamps within ${SubtitleParser.formatSrtTimestamp(winStartMs)} and ${SubtitleParser.formatSrtTimestamp(winEndMs)}.\n\n")
+            } else if (isPhysicallySlicedChunk) {
+                val clipDurationMs = (winEndMs - winStartMs).coerceAtLeast(1000L)
+                append("AUDIO CLIP DURATION: ${SubtitleParser.formatSrtTimestamp(clipDurationMs)}\n")
+                append("- Transcribe all speech in this audio clip starting from 00:00:00,000 up to ${SubtitleParser.formatSrtTimestamp(clipDurationMs)}.\n\n")
             } else if (calculatedDurationMs > 0) {
                 append("TOTAL TRACK DURATION: ${SubtitleParser.formatSrtTimestamp(calculatedDurationMs)}\n\n")
             }
