@@ -9,17 +9,17 @@
 ## 📋 Registry of Protected Components
 
 ### 1. Reach Coverage & Playback Progress Bars
-- **Files**: `Screens.kt` (lines ~1908-1935 and ~5745-5785)
+- **Files**: `ui/home/HomeView.kt` and `ui/player/AudioPlayerOverlay.kt`
 - **Description**: Canvas-based reach coverage segments and progress cursor needle.
 - **Rule**: Do not add background overlay boxes, change alpha transparency of segments, or alter needle cursor rendering without explicit instructions.
 
 ### 2. Subtitle Styling & Timestamp Badges
-- **Files**: `Screens.kt` (lines ~1465-1510, ~1590-1635)
+- **Files**: `ui/player/SubtitleViewer.kt`
 - **Description**: Exact background opacity, border stroke, typography, and timestamp pill layout for active/inactive subtitle cues.
 - **Rule**: Do not adjust colors, font sizes (9.5sp), icons, or border strokes unless specifically asked.
 
 ### 3. Focus Mode & Practice Mode Header
-- **Files**: `Screens.kt` (lines ~4605-4655)
+- **Files**: `ui/player/AudioPlayerOverlay.kt`
 - **Description**: Header layout displaying practice mode pill indicator and conditional rendering for focus mode.
 - **Rule**: Do not reintroduce general focus mode pills or alter practice mode header structure without explicit request.
 
