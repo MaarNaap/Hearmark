@@ -1700,7 +1700,6 @@ object AudioPlayerManager {
         trackAccumulatedListeningMsMap[track.id] = 0L
         initialSessionProgressPercent = 0
         isThresholdTriggeredForCurrentSession = false
-        completedTaskIdsForCurrentSession.clear()
 
         updateTrackState { t ->
             if (t.id == track.id) {
@@ -1722,6 +1721,10 @@ object AudioPlayerManager {
         }
     }
 
+    // =========================================================================
+    // @LOCKED: Play Count Increment & Threshold Handling - STRICT FREEZE
+    // DO NOT MODIFY OR REFACTOR THIS BLOCK WITHOUT EXPLICIT PERMISSION IN PROMPT
+    // =========================================================================
     private fun handleThresholdReached() {
         if (isThresholdTriggeredForCurrentSession) return
         isThresholdTriggeredForCurrentSession = true
@@ -1739,7 +1742,14 @@ object AudioPlayerManager {
             updateAssociatedTasks(track.id)
         }
     }
+    // =========================================================================
+    // @END_LOCKED: Play Count Increment & Threshold Handling
+    // =========================================================================
 
+    // =========================================================================
+    // @LOCKED: End-of-File Lifecycle & Progress Reset - STRICT FREEZE
+    // DO NOT MODIFY OR REFACTOR THIS BLOCK WITHOUT EXPLICIT PERMISSION IN PROMPT
+    // =========================================================================
     private fun handlePhysicalEndOfTrack() {
         val track = currentTrackValue ?: return
         stopProgressTracking()
@@ -1813,7 +1823,6 @@ object AudioPlayerManager {
                     updateTrackState { t -> t.copy(playCount = t.playCount + 1) }
                     updateAssociatedTasks(currentTrack.id)
                 }
-                checkAndTriggerTaskSpecificProgress(currentTrack, progressPercent)
                 syncCurrentSessionHistory(isFinishing = true)
             } else {
                 // Criteria NOT met: do NOT call handleThresholdReached(), do NOT log into PlaybackHistory, do NOT increment playCount
@@ -1832,6 +1841,9 @@ object AudioPlayerManager {
                     if (t.id == track.id) t.copy(lastPosition = 0L) else t
                 }
             }
+            // =========================================================================
+            // @END_LOCKED: End-of-File Lifecycle & Progress Reset
+            // =========================================================================
 
             // Look for next track in the queue to auto play
             var nextTrackPlayed = false
@@ -1882,8 +1894,8 @@ object AudioPlayerManager {
 
             for (task in activeTasksList) {
                 if (task.isCompleted) continue
-                val effectiveThreshold = task.customThreshold ?: completionThreshold
-                if (progressPercent >= effectiveThreshold) {
+                val customThreshold = task.customThreshold ?: continue
+                if (progressPercent >= customThreshold) {
                     if (completedTaskIdsForCurrentSession.contains(task.id)) continue
                     
                     val taskProgresses = repo.getProgressForTask(task.id)

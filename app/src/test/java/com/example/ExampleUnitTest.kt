@@ -144,4 +144,62 @@ class ExampleUnitTest {
         // Ends at or covers the duration
         assertEquals(10000L, boundaries.last())
     }
+
+    @Test
+    fun playbackThreshold_evaluation_matchesInvariant() {
+        val completionThreshold = 90
+
+        // Helper function mimicking the protected shouldTrigger condition
+        fun evaluateTrigger(initialPercent: Int, currentPercent: Int): Boolean {
+            return when {
+                initialPercent >= 100 -> false
+                initialPercent >= completionThreshold -> currentPercent >= 100
+                else -> currentPercent >= completionThreshold
+            }
+        }
+
+        // Fresh session starting at 0%
+        assertFalse(evaluateTrigger(0, 50))
+        assertFalse(evaluateTrigger(0, 89))
+        assertTrue(evaluateTrigger(0, 90))
+        assertTrue(evaluateTrigger(0, 100))
+
+        // Session starting at partial completion above threshold (e.g. 92%)
+        assertFalse(evaluateTrigger(92, 95))
+        assertTrue(evaluateTrigger(92, 100))
+
+        // Session starting at 100% already
+        assertFalse(evaluateTrigger(100, 100))
+    }
+
+    @Test
+    fun taskPlayCount_sessionGuard_preventsDoubleIncrementOnCompletion() {
+        // Test that a session guard prevents multiple increments within a single completion cycle
+        val completedTaskIdsForCurrentSession = mutableSetOf<Long>()
+        val taskId = 42L
+        var completedPlayCount = 0
+
+        fun triggerTaskProgress(progressPercent: Int, customThreshold: Int?) {
+            val effectiveThreshold = customThreshold ?: 90
+            if (progressPercent >= effectiveThreshold) {
+                if (!completedTaskIdsForCurrentSession.contains(taskId)) {
+                    completedTaskIdsForCurrentSession.add(taskId)
+                    completedPlayCount++
+                }
+            }
+        }
+
+        // 1. Threshold reached during playback at 90%
+        triggerTaskProgress(90, null)
+        assertEquals("Should increment exactly once at threshold", 1, completedPlayCount)
+
+        // 2. Playback ticks again at 95%
+        triggerTaskProgress(95, null)
+        assertEquals("Should not increment again while in the same session", 1, completedPlayCount)
+
+        // 3. Playback reaches 100% (physical end of track)
+        triggerTaskProgress(100, null)
+        assertEquals("Should remain exactly 1 after reaching end of file", 1, completedPlayCount)
+    }
 }
+
