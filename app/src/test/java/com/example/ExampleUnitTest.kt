@@ -292,5 +292,31 @@ class ExampleUnitTest {
         assertEquals("Scene One", scenes[0].title)
         assertEquals("Scene Two", scenes[1].title)
     }
+
+    @Test
+    fun geminiService_modelHealthCooldown_rotatesAndPrioritizesHealthyModels() {
+        com.example.ai.GeminiService.clearModelHealthStateForTesting()
+        val now = 1_000_000L
+
+        // Initially starts with DEFAULT_MODEL followed by fallback models
+        val initialOrder = com.example.ai.GeminiService.selectOrderedCandidateModels(nowMs = now)
+        assertEquals(com.example.ai.GeminiService.DEFAULT_MODEL, initialOrder.first())
+        assertTrue(initialOrder.size >= 4)
+
+        // Mark DEFAULT_MODEL and FALLBACK_MODEL as failing with 503
+        com.example.ai.GeminiService.markModelFailure(com.example.ai.GeminiService.DEFAULT_MODEL, 503, nowMs = now)
+        com.example.ai.GeminiService.markModelFailure(com.example.ai.GeminiService.FALLBACK_MODEL, 503, nowMs = now + 100)
+
+        // Next candidate selection should put healthy LITE_FALLBACK_MODEL first
+        val afterFailureOrder = com.example.ai.GeminiService.selectOrderedCandidateModels(nowMs = now + 200)
+        assertEquals(com.example.ai.GeminiService.LITE_FALLBACK_MODEL, afterFailureOrder.first())
+
+        // Mark LITE_FALLBACK_MODEL as succeeding -> should stick as first choice
+        com.example.ai.GeminiService.markModelSuccess(com.example.ai.GeminiService.LITE_FALLBACK_MODEL, nowMs = now + 300)
+        val afterSuccessOrder = com.example.ai.GeminiService.selectOrderedCandidateModels(nowMs = now + 120_000L)
+        assertEquals(com.example.ai.GeminiService.LITE_FALLBACK_MODEL, afterSuccessOrder.first())
+
+        com.example.ai.GeminiService.clearModelHealthStateForTesting()
+    }
 }
 

@@ -268,6 +268,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         savedApiKeys = keys
         activeApiKeyId = activeId
         customGeminiApiKey = activeKeyString
+        GeminiService.setConfiguredApiKeys(activeKeyString, keys.map { it.key })
     }
 
     fun selectActiveApiKey(keyId: String) {
@@ -413,6 +414,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 activeApiKeyId = ""
                 customGeminiApiKey = ""
             }
+            GeminiService.setConfiguredApiKeys(customGeminiApiKey, parsedKeys.map { it.key })
         }
 
         Loc.currentLanguage = sharedPref.getString("language", "en") ?: "en"

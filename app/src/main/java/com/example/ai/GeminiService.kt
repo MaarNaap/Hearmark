@@ -20,13 +20,141 @@ import java.util.concurrent.TimeUnit
 
 object GeminiService {
     private const val TAG = "GeminiService"
-    private const val DEFAULT_MODEL = "gemini-3.5-flash"
-    private const val FALLBACK_MODEL = "gemini-flash-latest"
+    const val DEFAULT_MODEL = "gemini-3.5-flash"
+    const val FALLBACK_MODEL = "gemini-flash-latest"
+    const val LITE_FALLBACK_MODEL = "gemini-3.1-flash-lite-preview"
+    const val PRO_FALLBACK_MODEL = "gemini-3.1-pro-preview"
     private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+
+    val MODEL_FALLBACK_CHAIN = listOf(
+        DEFAULT_MODEL,
+        FALLBACK_MODEL,
+        LITE_FALLBACK_MODEL,
+        PRO_FALLBACK_MODEL
+    )
 
     const val VOCAB_NOTE_SYSTEM_PROMPT = GeminiPrompts.VOCAB_NOTE_SYSTEM_PROMPT
 
     private val uploadedFileCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
+
+    // Smart Model Health & Cooldown Registry
+    private val modelCooldownUntilMs = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    @Volatile private var lastHealthyModel: String? = null
+    @Volatile private var lastHealthyModelTimestampMs: Long = 0L
+
+    // Multi-API Key Failover Pool (synced from Settings)
+    @Volatile private var configuredBackupApiKeys: List<String> = emptyList()
+
+    // Request Pacing to avoid burst 503/429 rejections
+    private val pacingLock = kotlinx.coroutines.sync.Mutex()
+    @Volatile private var lastRequestTimestampMs: Long = 0L
+    private const val MIN_REQUEST_INTERVAL_MS = 350L
+
+    fun setConfiguredApiKeys(primaryKey: String?, allKeys: List<String>) {
+        val cleaned = mutableListOf<String>()
+        if (!primaryKey.isNullOrBlank()) cleaned.add(primaryKey.trim())
+        for (k in allKeys) {
+            val trimmed = k.trim()
+            if (trimmed.isNotBlank() && trimmed !in cleaned) {
+                cleaned.add(trimmed)
+            }
+        }
+        configuredBackupApiKeys = cleaned
+    }
+
+    fun resolveCandidateApiKeys(customApiKey: String?): List<String> {
+        val result = mutableListOf<String>()
+        val primary = resolveApiKey(customApiKey)
+        if (primary.isNotBlank()) result.add(primary)
+        for (k in configuredBackupApiKeys) {
+            if (k.isNotBlank() && k !in result) {
+                result.add(k)
+            }
+        }
+        val buildConfigKey = try {
+            if (BuildConfig.GEMINI_API_KEY.isNotBlank() && BuildConfig.GEMINI_API_KEY != "MY_GEMINI_API_KEY") {
+                BuildConfig.GEMINI_API_KEY.trim()
+            } else ""
+        } catch (_: Exception) { "" }
+        if (buildConfigKey.isNotBlank() && buildConfigKey !in result) {
+            result.add(buildConfigKey)
+        }
+        return result
+    }
+
+    internal fun selectOrderedCandidateModels(
+        preferredModel: String = DEFAULT_MODEL,
+        nowMs: Long = System.currentTimeMillis()
+    ): List<String> {
+        val baseOrder = mutableListOf<String>()
+        val recentHealthy = lastHealthyModel
+        if (
+            preferredModel == DEFAULT_MODEL &&
+            !recentHealthy.isNullOrBlank() &&
+            (nowMs - lastHealthyModelTimestampMs) < 10 * 60 * 1000L
+        ) {
+            baseOrder.add(recentHealthy)
+        }
+        if (preferredModel !in baseOrder) {
+            baseOrder.add(preferredModel)
+        }
+        for (m in MODEL_FALLBACK_CHAIN) {
+            if (m !in baseOrder) baseOrder.add(m)
+        }
+
+        val healthy = mutableListOf<String>()
+        val coolingDown = mutableListOf<Pair<String, Long>>()
+
+        for (m in baseOrder) {
+            val cooldownUntil = modelCooldownUntilMs[m] ?: 0L
+            if (nowMs >= cooldownUntil) {
+                healthy.add(m)
+            } else {
+                coolingDown.add(m to cooldownUntil)
+            }
+        }
+
+        coolingDown.sortBy { it.second }
+        return healthy + coolingDown.map { it.first }
+    }
+
+    internal fun markModelSuccess(model: String, nowMs: Long = System.currentTimeMillis()) {
+        modelCooldownUntilMs.remove(model)
+        lastHealthyModel = model
+        lastHealthyModelTimestampMs = nowMs
+    }
+
+    internal fun markModelFailure(model: String, httpCode: Int, nowMs: Long = System.currentTimeMillis()) {
+        val cooldownDurationMs = when {
+            httpCode == 404 || httpCode == 400 -> 30 * 60 * 1000L // 30 minutes for missing/unsupported model
+            httpCode == 503 || httpCode == 429 || httpCode in 500..599 -> 60 * 1000L // 60 seconds for overloaded/rate-limited pool
+            else -> 30 * 1000L
+        }
+        modelCooldownUntilMs[model] = nowMs + cooldownDurationMs
+        if (lastHealthyModel == model) {
+            lastHealthyModel = null
+        }
+    }
+
+    internal fun clearModelHealthStateForTesting() {
+        modelCooldownUntilMs.clear()
+        lastHealthyModel = null
+        lastHealthyModelTimestampMs = 0L
+    }
+
+    private suspend fun paceRequestIfNeeded() {
+        pacingLock.lock()
+        try {
+            val now = System.currentTimeMillis()
+            val elapsed = now - lastRequestTimestampMs
+            if (elapsed in 0 until MIN_REQUEST_INTERVAL_MS) {
+                delay(MIN_REQUEST_INTERVAL_MS - elapsed)
+            }
+            lastRequestTimestampMs = System.currentTimeMillis()
+        } finally {
+            pacingLock.unlock()
+        }
+    }
 
     fun getMediaDurationMs(file: File): Long {
         var retriever: android.media.MediaMetadataRetriever? = null
@@ -145,25 +273,37 @@ object GeminiService {
         payload: JSONObject,
         primaryModel: String = DEFAULT_MODEL,
         fallbackModel: String = FALLBACK_MODEL,
-        maxAttempts: Int = 3,
+        maxAttempts: Int = 5,
         client: OkHttpClient = okHttpClient,
         language: String = "en",
+        candidateApiKeys: List<String> = emptyList(),
+        urlWithKeyBuilder: ((model: String, apiKey: String) -> String)? = null,
         onProgressUpdate: ((String) -> Unit)? = null
     ): Pair<Int, String> = withContext(Dispatchers.IO) {
         val mediaType = "application/json; charset=utf-8".toMediaType()
         val requestBodyString = payload.toString()
-        var currentModel = primaryModel
+        val orderedModels = selectOrderedCandidateModels(primaryModel)
+        val keysPool = candidateApiKeys.filter { it.isNotBlank() }
+
         var lastCode = -1
         var lastBody = ""
         var lastException: Exception? = null
-        var delayMs = 1500L
+        var baseDelayMs = 1800L
 
         for (attempt in 1..maxAttempts) {
+            val currentModel = orderedModels[(attempt - 1) % orderedModels.size]
+            val currentKey = if (keysPool.isNotEmpty()) {
+                keysPool[(attempt - 1) % keysPool.size]
+            } else ""
+
             try {
-                if (attempt == 2 && currentModel == primaryModel) {
-                    currentModel = fallbackModel
+                paceRequestIfNeeded()
+
+                val url = if (urlWithKeyBuilder != null && currentKey.isNotBlank()) {
+                    urlWithKeyBuilder(currentModel, currentKey)
+                } else {
+                    urlBuilder(currentModel)
                 }
-                val url = urlBuilder(currentModel)
                 val body = requestBodyString.toRequestBody(mediaType)
                 val request = Request.Builder().url(url).post(body).build()
 
@@ -172,43 +312,60 @@ object GeminiService {
                 lastBody = response.body?.string() ?: ""
 
                 if (response.isSuccessful) {
+                    markModelSuccess(currentModel)
                     return@withContext Pair(lastCode, lastBody)
                 }
 
                 val is503 = lastCode == 503 || lastBody.contains("overloaded", ignoreCase = true) || lastBody.contains("UNAVAILABLE", ignoreCase = true)
                 val is429 = lastCode == 429 || lastBody.contains("RESOURCE_EXHAUSTED", ignoreCase = true) || lastBody.contains("quota", ignoreCase = true)
-                val is404 = lastCode == 404
+                val is404 = lastCode == 404 || lastBody.contains("NOT_FOUND", ignoreCase = true)
                 val is5xx = lastCode in 500..599
 
-                Log.w(TAG, "Gemini POST failed (HTTP $lastCode, model $currentModel, attempt $attempt): $lastBody")
+                markModelFailure(currentModel, lastCode)
+                Log.w(TAG, "Gemini POST failed (HTTP $lastCode, model $currentModel, attempt $attempt/$maxAttempts): $lastBody")
 
                 if (attempt < maxAttempts && (is503 || is429 || is404 || is5xx)) {
-                    currentModel = fallbackModel
-                    val retryMsg = if (language == "ar") {
-                        "خادم الذكاء الاصطناعي مشغول مؤقتاً، جارٍ التبديل للنموذج البديل وإعادة المحاولة (${attempt + 1}/$maxAttempts)..."
+                    val nextModel = orderedModels[attempt % orderedModels.size]
+                    val retryAfterSec = response.header("Retry-After")?.toLongOrNull()
+                    val jitterMs = kotlin.random.Random.nextLong(200L, 750L)
+                    val waitMs = if (retryAfterSec != null && retryAfterSec in 1..15) {
+                        retryAfterSec * 1000L + jitterMs
+                    } else if (is404) {
+                        350L // Fast switch when model endpoint is 404
                     } else {
-                        "AI server busy (HTTP $lastCode), switching to backup model and retrying (${attempt + 1}/$maxAttempts)..."
+                        (baseDelayMs + jitterMs).coerceAtMost(9000L)
+                    }
+
+                    val retryMsg = if (language == "ar") {
+                        "خادم الذكاء الاصطناعي مشغول مؤقتاً، جارٍ التبديل للنموذج البديل ($nextModel) وإعادة المحاولة (${attempt + 1}/$maxAttempts)..."
+                    } else {
+                        "AI server busy (HTTP $lastCode), switching to $nextModel and retrying (${attempt + 1}/$maxAttempts)..."
                     }
                     onProgressUpdate?.invoke(retryMsg)
-                    delay(delayMs)
-                    delayMs = (delayMs * 1.8).toLong().coerceAtMost(8000L)
+                    delay(waitMs)
+                    if (!is404) {
+                        baseDelayMs = (baseDelayMs * 1.75).toLong().coerceAtMost(8500L)
+                    }
                     continue
                 } else {
                     return@withContext Pair(lastCode, lastBody)
                 }
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 lastException = e
-                Log.w(TAG, "Gemini POST exception (model $currentModel, attempt $attempt): ${e.message}")
+                markModelFailure(currentModel, 503)
+                Log.w(TAG, "Gemini POST exception (model $currentModel, attempt $attempt/$maxAttempts): ${e.message}")
                 if (attempt < maxAttempts) {
-                    currentModel = fallbackModel
+                    val jitterMs = kotlin.random.Random.nextLong(200L, 700L)
+                    val waitMs = (baseDelayMs + jitterMs).coerceAtMost(9000L)
                     val retryMsg = if (language == "ar") {
-                        "جارٍ إعادة المحاولة تلقائياً بعد انقطاع الاتصال (${attempt + 1}/$maxAttempts)..."
+                        "جارٍ إعادة المحاولة تلقائياً عبر نموذج بديل (${attempt + 1}/$maxAttempts)..."
                     } else {
                         "Connection interrupted, retrying with backup model (${attempt + 1}/$maxAttempts)..."
                     }
                     onProgressUpdate?.invoke(retryMsg)
-                    delay(delayMs)
-                    delayMs = (delayMs * 1.8).toLong().coerceAtMost(8000L)
+                    delay(waitMs)
+                    baseDelayMs = (baseDelayMs * 1.75).toLong().coerceAtMost(8500L)
                 } else {
                     throw e
                 }
@@ -259,19 +416,21 @@ object GeminiService {
             rootJson.put("systemInstruction", systemInstructionObj)
 
             // Generation config
+            val isVocabNoteRequest = customSystemInstruction == VOCAB_NOTE_SYSTEM_PROMPT
             val genConfig = JSONObject().apply {
-                put("temperature", 0.7)
+                put("temperature", if (isVocabNoteRequest) 0.3 else 0.7)
                 put("topP", 0.95)
                 put("topK", 40)
+                // Right-size output token reservation to prevent heavy-queue 503 rejections
+                put("maxOutputTokens", if (isVocabNoteRequest) 1024 else 4096)
             }
             rootJson.put("generationConfig", genConfig)
 
-            // Build multi-turn contents
+            // Build multi-turn contents (limit prior turns to recent 12 messages to keep token payload lean)
             val contentsArray = JSONArray()
+            val recentHistory = history.filter { !it.isError && it.text.isNotBlank() }.takeLast(12)
 
-            // Prior conversation turns
-            for (msg in history) {
-                if (msg.isError || msg.text.isBlank()) continue
+            for (msg in recentHistory) {
                 val role = if (msg.role == "user") "user" else "model"
                 val contentObj = JSONObject().apply {
                     put("role", role)
@@ -301,14 +460,16 @@ object GeminiService {
             contentsArray.put(currentTurnObj)
             rootJson.put("contents", contentsArray)
 
-            genConfig.put("maxOutputTokens", 8192)
+            val candidateKeys = resolveCandidateApiKeys(customApiKey)
 
             val (code, responseBody) = executeGeminiPostWithRetry(
                 urlBuilder = { m -> "$BASE_URL/$m:generateContent?key=$resolvedApiKey" },
+                urlWithKeyBuilder = { m, k -> "$BASE_URL/$m:generateContent?key=$k" },
+                candidateApiKeys = candidateKeys,
                 payload = rootJson,
                 primaryModel = modelName,
                 fallbackModel = FALLBACK_MODEL,
-                maxAttempts = 3,
+                maxAttempts = 5,
                 client = okHttpClient,
                 language = language
             )
@@ -572,16 +733,21 @@ object GeminiService {
                 put("generationConfig", JSONObject().apply {
                     put("responseMimeType", "application/json")
                     put("temperature", 0.2)
-                    put("maxOutputTokens", 65536)
+                    // 8192 output tokens is more than enough for scene JSON and avoids 64K heavy-queue 503 rejections
+                    put("maxOutputTokens", 8192)
                 })
             }
 
+            val candidateKeys = resolveCandidateApiKeys(customApiKey)
+
             val (code, responseBody) = executeGeminiPostWithRetry(
                 urlBuilder = { m -> "$BASE_URL/$m:generateContent?key=$resolvedApiKey" },
+                urlWithKeyBuilder = { m, k -> "$BASE_URL/$m:generateContent?key=$k" },
+                candidateApiKeys = candidateKeys,
                 payload = rootJson,
                 primaryModel = modelName,
                 fallbackModel = FALLBACK_MODEL,
-                maxAttempts = 3,
+                maxAttempts = 5,
                 client = subtitleOkHttpClient,
                 language = language,
                 onProgressUpdate = onProgressUpdate
@@ -689,16 +855,20 @@ object GeminiService {
                 put("generationConfig", JSONObject().apply {
                     put("responseMimeType", "application/json")
                     put("temperature", temperature)
-                    put("maxOutputTokens", 16384)
+                    put("maxOutputTokens", 4096)
                 })
             }
 
+            val candidateKeys = resolveCandidateApiKeys(customApiKey)
+
             val (code, responseBody) = executeGeminiPostWithRetry(
                 urlBuilder = { m -> "$BASE_URL/$m:generateContent?key=$resolvedApiKey" },
+                urlWithKeyBuilder = { m, k -> "$BASE_URL/$m:generateContent?key=$k" },
+                candidateApiKeys = candidateKeys,
                 payload = rootJson,
                 primaryModel = modelName,
                 fallbackModel = FALLBACK_MODEL,
-                maxAttempts = 3,
+                maxAttempts = 5,
                 client = okHttpClient,
                 language = language
             )
@@ -973,7 +1143,7 @@ object GeminiService {
         apiKey: String,
         onProgressUpdate: ((String) -> Unit)? = null
     ): String = withContext(Dispatchers.IO) {
-        val cacheKey = "${file.absolutePath}:${file.lastModified()}"
+        val cacheKey = "${file.absolutePath}:${file.lastModified()}:${apiKey.hashCode()}"
         uploadedFileCache[cacheKey]?.let { (uri, time) ->
             if (System.currentTimeMillis() - time < 24 * 3600 * 1000L) {
                 Log.d(TAG, "Reusing cached Gemini File URI: $uri")
@@ -981,42 +1151,58 @@ object GeminiService {
             }
         }
 
-        onProgressUpdate?.invoke("Uploading audio to Gemini server...")
-        val initUrl = "https://generativelanguage.googleapis.com/upload/v1beta/files?key=$apiKey"
-        val metadataJson = JSONObject().apply {
-            put("file", JSONObject().apply {
-                put("display_name", file.name)
-            })
+        var lastUploadException: Exception? = null
+        var respBody = ""
+        for (uploadAttempt in 1..3) {
+            try {
+                onProgressUpdate?.invoke("Uploading audio to Gemini server...")
+                val initUrl = "https://generativelanguage.googleapis.com/upload/v1beta/files?key=$apiKey"
+                val metadataJson = JSONObject().apply {
+                    put("file", JSONObject().apply {
+                        put("display_name", file.name)
+                    })
+                }
+                val mediaTypeJson = "application/json; charset=utf-8".toMediaType()
+                val initRequest = Request.Builder()
+                    .url(initUrl)
+                    .addHeader("X-Goog-Upload-Protocol", "resumable")
+                    .addHeader("X-Goog-Upload-Command", "start")
+                    .addHeader("X-Goog-Upload-Header-Content-Length", file.length().toString())
+                    .addHeader("X-Goog-Upload-Header-Content-Type", mimeType)
+                    .post(metadataJson.toString().toRequestBody(mediaTypeJson))
+                    .build()
+
+                val initResponse = subtitleOkHttpClient.newCall(initRequest).execute()
+                val uploadUrl = initResponse.header("X-Goog-Upload-URL")
+                    ?: initResponse.header("x-goog-upload-url")
+                    ?: throw Exception("Failed to get upload URL from Gemini Files API (HTTP ${initResponse.code})")
+
+                val uploadBody = file.asRequestBody(mimeType.toMediaType())
+                val uploadRequest = Request.Builder()
+                    .url(uploadUrl)
+                    .addHeader("Content-Length", file.length().toString())
+                    .addHeader("X-Goog-Upload-Offset", "0")
+                    .addHeader("X-Goog-Upload-Command", "upload, finalize")
+                    .put(uploadBody)
+                    .build()
+
+                val uploadResponse = subtitleOkHttpClient.newCall(uploadRequest).execute()
+                respBody = uploadResponse.body?.string() ?: ""
+                if (!uploadResponse.isSuccessful) {
+                    throw Exception("Files API upload failed (HTTP ${uploadResponse.code}): $respBody")
+                }
+                lastUploadException = null
+                break
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                lastUploadException = e
+                Log.w(TAG, "Audio upload attempt $uploadAttempt failed: ${e.message}")
+                if (uploadAttempt < 3) {
+                    delay(2000L * uploadAttempt)
+                }
+            }
         }
-        val mediaTypeJson = "application/json; charset=utf-8".toMediaType()
-        val initRequest = Request.Builder()
-            .url(initUrl)
-            .addHeader("X-Goog-Upload-Protocol", "resumable")
-            .addHeader("X-Goog-Upload-Command", "start")
-            .addHeader("X-Goog-Upload-Header-Content-Length", file.length().toString())
-            .addHeader("X-Goog-Upload-Header-Content-Type", mimeType)
-            .post(metadataJson.toString().toRequestBody(mediaTypeJson))
-            .build()
-
-        val initResponse = subtitleOkHttpClient.newCall(initRequest).execute()
-        val uploadUrl = initResponse.header("X-Goog-Upload-URL")
-            ?: initResponse.header("x-goog-upload-url")
-            ?: throw Exception("Failed to get upload URL from Gemini Files API (HTTP ${initResponse.code})")
-
-        val uploadBody = file.asRequestBody(mimeType.toMediaType())
-        val uploadRequest = Request.Builder()
-            .url(uploadUrl)
-            .addHeader("Content-Length", file.length().toString())
-            .addHeader("X-Goog-Upload-Offset", "0")
-            .addHeader("X-Goog-Upload-Command", "upload, finalize")
-            .put(uploadBody)
-            .build()
-
-        val uploadResponse = subtitleOkHttpClient.newCall(uploadRequest).execute()
-        val respBody = uploadResponse.body?.string() ?: ""
-        if (!uploadResponse.isSuccessful) {
-            throw Exception("Files API upload failed (HTTP ${uploadResponse.code}): $respBody")
-        }
+        if (lastUploadException != null) throw lastUploadException
         val respJson = JSONObject(respBody)
         val fileObj = respJson.getJSONObject("file")
         val fileUri = fileObj.getString("uri")
@@ -1093,20 +1279,17 @@ object GeminiService {
         accumulatedCuesCount: Int,
         onProgressUpdate: ((String) -> Unit)?
     ): String = withContext(Dispatchers.IO) {
-        val maxAttempts = 3
-        var currentDelayMs = 2500L
-        var activeModel = preferredModel
+        val maxAttempts = 5
+        var currentDelayMs = 2000L
+        val orderedModels = selectOrderedCandidateModels(preferredModel)
         var lastException: Exception? = null
 
         val mediaType = "application/json; charset=utf-8".toMediaType()
 
         for (attempt in 1..maxAttempts) {
+            val activeModel = orderedModels[(attempt - 1) % orderedModels.size]
             try {
-                // If attempt 1 failed with 503/timeout, fallback to FALLBACK_MODEL immediately on attempt 2
-                if (attempt >= 2 && activeModel == DEFAULT_MODEL) {
-                    activeModel = FALLBACK_MODEL
-                }
-
+                paceRequestIfNeeded()
                 val useStreaming = (attempt <= 2)
 
                 if (useStreaming) {
@@ -1118,7 +1301,8 @@ object GeminiService {
                     val responseCode = response.code
                     if (!response.isSuccessful) {
                         val errBody = response.body?.string() ?: ""
-                        Log.e(TAG, "Gemini Subtitles stream failed (HTTP $responseCode, attempt $attempt): $errBody")
+                        markModelFailure(activeModel, responseCode)
+                        Log.e(TAG, "Gemini Subtitles stream failed (HTTP $responseCode, model $activeModel, attempt $attempt/$maxAttempts): $errBody")
                         throw Exception("HTTP $responseCode: $errBody")
                     }
 
@@ -1179,14 +1363,16 @@ object GeminiService {
 
                     val rawResult = chunkRawText.toString()
                     if (rawResult.isNotBlank() && rawResult.contains("-->")) {
+                        markModelSuccess(activeModel)
                         return@withContext rawResult
                     } else {
+                        markModelFailure(activeModel, 503)
                         throw Exception("Streaming returned incomplete subtitle output.")
                     }
                 } else {
                     // Non-streaming generateContent fallback: robust against SSE socket drops on long audio
-                    val fallbackMsg = if (language == "ar") "جارٍ إتمام معالجة الترجمة عبر خوادم الذكاء الاصطناعي..."
-                    else "Processing subtitles directly via Gemini API..."
+                    val fallbackMsg = if (language == "ar") "جارٍ إتمام معالجة الترجمة عبر خوادم الذكاء الاصطناعي ($activeModel)..."
+                    else "Processing subtitles directly via Gemini API ($activeModel)..."
                     onProgressUpdate?.invoke(fallbackMsg)
 
                     val requestUrl = "$BASE_URL/$activeModel:generateContent?key=$resolvedApiKey"
@@ -1198,7 +1384,8 @@ object GeminiService {
                     val responseBody = response.body?.string() ?: ""
 
                     if (!response.isSuccessful) {
-                        Log.e(TAG, "Gemini Subtitles generateContent failed (HTTP $responseCode): $responseBody")
+                        markModelFailure(activeModel, responseCode)
+                        Log.e(TAG, "Gemini Subtitles generateContent failed (HTTP $responseCode, model $activeModel): $responseBody")
                         throw Exception("HTTP $responseCode: $responseBody")
                     }
 
@@ -1215,36 +1402,46 @@ object GeminiService {
                     val rawResult = rawBuilder.toString()
 
                     if (rawResult.isNotBlank() && rawResult.contains("-->")) {
+                        markModelSuccess(activeModel)
                         return@withContext rawResult
                     } else {
+                        markModelFailure(activeModel, 503)
                         throw Exception("Gemini returned invalid or empty subtitle text.")
                     }
                 }
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 lastException = e
                 val msg = e.message ?: ""
                 val is503 = msg.contains("503") || msg.contains("overloaded", ignoreCase = true) || msg.contains("UNAVAILABLE", ignoreCase = true)
                 val is429 = msg.contains("429") || msg.contains("RESOURCE_EXHAUSTED", ignoreCase = true)
+                val is404 = msg.contains("404") || msg.contains("NOT_FOUND", ignoreCase = true)
+                val is5xx = msg.contains("500") || msg.contains("502") || msg.contains("504") || msg.contains("INTERNAL", ignoreCase = true)
                 val isTimeout = e is java.net.SocketTimeoutException || msg.contains("timeout", ignoreCase = true) || e.cause is java.net.SocketTimeoutException
-                val isConnectionErr = e is java.io.IOException || msg.contains("connection", ignoreCase = true) || msg.contains("stream", ignoreCase = true)
+                val isConnectionErr = e is java.io.IOException || msg.contains("connection", ignoreCase = true) || msg.contains("stream", ignoreCase = true) || msg.contains("incomplete", ignoreCase = true)
 
-                val canRetry = (is503 || is429 || isTimeout || isConnectionErr) && attempt < maxAttempts
+                val canRetry = (is503 || is429 || is404 || is5xx || isTimeout || isConnectionErr) && attempt < maxAttempts
 
                 if (canRetry) {
-                    val waitSec = (currentDelayMs / 1000).toInt()
+                    val nextModel = orderedModels[attempt % orderedModels.size]
+                    val jitterMs = kotlin.random.Random.nextLong(250L, 800L)
+                    val waitMs = if (is404) 350L else (currentDelayMs + jitterMs).coerceAtMost(10000L)
+                    val waitSec = (waitMs / 1000).coerceAtLeast(1).toInt()
                     val retryNotice = if (language == "ar") {
-                        if (is503) "خوادم Gemini مشغولة مؤقتاً (503)، جارٍ إعادة المحاولة تلقائياً خلال $waitSec ثوانٍ ($attempt/$maxAttempts)..."
-                        else if (isTimeout) "استغرق الاتصال وقتاً أطول، جارٍ إعادة المحاولة خلال $waitSec ثوانٍ ($attempt/$maxAttempts)..."
-                        else "جارٍ إعادة المحاولة تلقائياً خلال $waitSec ثوانٍ ($attempt/$maxAttempts)..."
+                        if (is503) "خوادم Gemini مشغولة مؤقتاً (503)، جارٍ التبديل للنموذج البديل ($nextModel) خلال $waitSec ثوانٍ (${attempt + 1}/$maxAttempts)..."
+                        else if (isTimeout) "استغرق الاتصال وقتاً أطول، جارٍ إعادة المحاولة عبر ($nextModel) خلال $waitSec ثوانٍ (${attempt + 1}/$maxAttempts)..."
+                        else "جارٍ إعادة المحاولة تلقائياً عبر ($nextModel) (${attempt + 1}/$maxAttempts)..."
                     } else {
-                        if (is503) "Gemini servers are busy (503), retrying in ${waitSec}s ($attempt/$maxAttempts)..."
-                        else if (isTimeout) "Request timed out, retrying in ${waitSec}s ($attempt/$maxAttempts)..."
-                        else "Retrying in ${waitSec}s ($attempt/$maxAttempts)..."
+                        if (is503) "Gemini servers busy (503), switching to $nextModel in ${waitSec}s (${attempt + 1}/$maxAttempts)..."
+                        else if (isTimeout) "Request timed out, retrying with $nextModel in ${waitSec}s (${attempt + 1}/$maxAttempts)..."
+                        else "Switching to $nextModel and retrying (${attempt + 1}/$maxAttempts)..."
                     }
                     onProgressUpdate?.invoke(retryNotice)
-                    Log.w(TAG, "Subtitle generation attempt $attempt failed with: $msg. Retrying in ${currentDelayMs}ms...")
-                    delay(currentDelayMs)
-                    currentDelayMs = (currentDelayMs * 1.8).toLong().coerceAtMost(10000L)
+                    Log.w(TAG, "Subtitle generation attempt $attempt ($activeModel) failed with: $msg. Retrying with $nextModel in ${waitMs}ms...")
+                    delay(waitMs)
+                    if (!is404) {
+                        currentDelayMs = (currentDelayMs * 1.75).toLong().coerceAtMost(9500L)
+                    }
                 } else {
                     throw e
                 }
@@ -1314,15 +1511,15 @@ object GeminiService {
                 null
             }
 
-            // Up to 20 minutes (1200 seconds) is processed in a SINGLE pass for continuous accuracy and fast execution!
-            // This prevents arbitrary splitting of standard 10-11 minute audios into multiple failing chunks.
-            val singlePassMaxSeconds = 1200
+            // Up to 8 minutes (480 seconds) is processed in a single pass; longer tracks use 7-minute chunks
+            // so each chunk fits comfortably within 8192 output tokens without triggering heavy-queue 503 rejections.
+            val singlePassMaxSeconds = 480
             val chunkWindows = mutableListOf<Pair<Int, Int>>()
 
             if (durationSeconds <= singlePassMaxSeconds) {
                 chunkWindows.add(Pair(0, durationSeconds))
             } else {
-                val chunkWindowSec = 600 // 10 minutes per chunk for very long podcasts/lectures
+                val chunkWindowSec = 420 // 7 minutes per chunk for long podcasts/lectures
                 var curStart = 0
                 while (curStart < durationSeconds) {
                     val curEnd = (curStart + chunkWindowSec).coerceAtMost(durationSeconds)
@@ -1381,7 +1578,7 @@ object GeminiService {
                     })
                     put("generationConfig", JSONObject().apply {
                         put("temperature", 0.1)
-                        put("maxOutputTokens", 65536)
+                        put("maxOutputTokens", 8192)
                     })
                 }
 
