@@ -760,6 +760,28 @@ object Loc {
         "scene_deleted_success" to mapOf("en" to "Scene deleted successfully!", "ar" to "تم حذف المشهد بنجاح!"),
         "create_scene_manual" to mapOf("en" to "Add New Scene", "ar" to "إضافة مشهد جديد"),
         "no_scenes_found" to mapOf("en" to "No virtual scenes found for this track.", "ar" to "لا توجد مشاهد مسجلة لهذا المقطع حالياً."),
+        "import_scenes_json_option" to mapOf("en" to "Import Scenes (JSON)", "ar" to "استيراد المشاهد من JSON"),
+        "import_scenes_json_title" to mapOf("en" to "Import Scenes from JSON", "ar" to "استيراد المشاهد من ملف JSON"),
+        "import_scenes_json_btn" to mapOf("en" to "Import from JSON", "ar" to "استيراد من JSON"),
+        "import_scenes_json_desc" to mapOf(
+            "en" to "Upload a JSON file containing scene boundaries to automatically generate virtual scenes and folders.",
+            "ar" to "رفع ملف JSON يحتوي على فترات المشاهد لإنشاء المقاطع الافتراضية والمجلد تلقائياً."
+        ),
+        "choose_json_file" to mapOf("en" to "Choose JSON File", "ar" to "اختيار ملف JSON"),
+        "copy_ai_prompt" to mapOf("en" to "Copy AI Prompt", "ar" to "نسخ نص طلب الذكاء الاصطناعي"),
+        "ai_prompt_copied" to mapOf("en" to "AI Prompt copied to clipboard!", "ar" to "تم نسخ نص التوجيه للذكاء الاصطناعي إلى الحافظة!"),
+        "scenes_parsed_count" to mapOf("en" to "%d scenes found in file", "ar" to "تم العثور على %d مشهد في الملف"),
+        "existing_scenes_prompt_title" to mapOf("en" to "Existing Scenes Found", "ar" to "توجد مشاهد سابقة"),
+        "existing_scenes_prompt_desc" to mapOf(
+            "en" to "This track already has %d virtual scenes. Would you like to replace all previous scenes or append the new ones?",
+            "ar" to "يحتوي هذا المقطع بالفعل على %d مشاهد سابقة. هل ترغب في استبدال جميع المشاهد السابقة أم إضافة المشاهد الجديدة إليها؟"
+        ),
+        "replace_existing_scenes" to mapOf("en" to "Replace All Existing", "ar" to "استبدال كافة المشاهد السابقة"),
+        "append_to_existing_scenes" to mapOf("en" to "Append New Scenes", "ar" to "إضافة إلى المشاهد السابقة"),
+        "confirm_import_btn" to mapOf("en" to "Import Scenes Now", "ar" to "تأكيد الاستيراد الآن"),
+        "scenes_imported_success" to mapOf("en" to "Successfully imported %d scenes into \"%s\"!", "ar" to "تم بنجاح استيراد %d مشهد داخل \"%s\"!"),
+        "invalid_json_scenes_file" to mapOf("en" to "Invalid scenes JSON: %s", "ar" to "ملف JSON غير صالح: %s"),
+        "no_scenes_in_json" to mapOf("en" to "No scenes could be parsed from the selected JSON file.", "ar" to "لم يتم العثور على مشاهد صالحة داخل ملف JSON المحدد."),
         "scene_info_title" to mapOf("en" to "Scene Information", "ar" to "بيانات المشهد"),
         "parent_file_info_header" to mapOf("en" to "Original Parent File", "ar" to "بيانات الملف الأصلي الأب"),
         "scene_number_label" to mapOf("en" to "Scene Number", "ar" to "رقم المشهد"),

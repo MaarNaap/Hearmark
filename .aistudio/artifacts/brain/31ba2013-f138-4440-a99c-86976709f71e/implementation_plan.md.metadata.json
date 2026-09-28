@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for resetting track progress upon reaching 100%, synchronizing play count numbers between the player and library, and softening the played segments bar with transparency.",
-  "updatedAt":  "2026-09-27T14:08:07.978269126Z",
+  "summary":  "Implementation plan for importing virtual scenes from a JSON file into tracks/videos (including auto-creation of scenes, folder management, replace/append handling, and UI integration in track options menu and Review Scenes dialog), along with the ready-to-use AI generation prompt.",
+  "updatedAt":  "2026-09-28T15:50:04.663042451Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

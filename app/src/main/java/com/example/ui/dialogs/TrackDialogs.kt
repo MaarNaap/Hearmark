@@ -1262,6 +1262,15 @@ fun ReviewScenesDialog(
     val scenes by scenesFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     var sceneToEdit by remember { mutableStateOf<AudioTrack?>(null) }
     var isAddingScene by remember { mutableStateOf(false) }
+    var showImportJsonDialog by remember { mutableStateOf(false) }
+
+    if (showImportJsonDialog) {
+        ImportScenesJsonDialog(
+            parentTrack = parentTrack,
+            viewModel = viewModel,
+            onDismiss = { showImportJsonDialog = false }
+        )
+    }
 
     if (sceneToEdit != null) {
         EditVirtualSceneDialog(
@@ -1313,15 +1322,27 @@ fun ReviewScenesDialog(
                     }
                 }
 
-                IconButton(
-                    onClick = { isAddingScene = true },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Add,
-                        contentDescription = Loc.getText("add_scene_btn"),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { showImportJsonDialog = true },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.FileUpload,
+                            contentDescription = Loc.getText("import_scenes_json_btn"),
+                            tint = MaterialTheme.colorScheme.secondary
+                        )
+                    }
+                    IconButton(
+                        onClick = { isAddingScene = true },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = Loc.getText("add_scene_btn"),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
         },
@@ -1346,19 +1367,33 @@ fun ReviewScenesDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
                     )
-                    Button(
-                        onClick = {
-                            onDismiss()
-                            viewModel.openAiHub(
-                                function = AiFunctionType.SCENES,
-                                track = parentTrack
-                            )
-                        },
-                        shape = RoundedCornerShape(12.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(Loc.getText("detect_scenes_btn"))
+                        Button(
+                            onClick = {
+                                onDismiss()
+                                viewModel.openAiHub(
+                                    function = AiFunctionType.SCENES,
+                                    track = parentTrack
+                                )
+                            },
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(Loc.getText("detect_scenes_btn"))
+                        }
+
+                        OutlinedButton(
+                            onClick = { showImportJsonDialog = true },
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(Loc.getText("import_scenes_json_btn"))
+                        }
                     }
                 }
             } else {
@@ -1481,7 +1516,8 @@ fun UnifiedTrackDropdownMenu(
     onPlay: () -> Unit = {},
     onViewInfo: () -> Unit = {},
     onEditScene: () -> Unit = {},
-    onReviewScenes: () -> Unit = {}
+    onReviewScenes: () -> Unit = {},
+    onImportScenesJson: () -> Unit = {}
 ) {
     val context = LocalContext.current
     DropdownMenu(expanded = expanded, onDismissRequest = onDismissRequest) {
@@ -1581,6 +1617,21 @@ fun UnifiedTrackDropdownMenu(
                     )
                 }
             )
+            DropdownMenuItem(
+                text = { Text(Loc.getText("import_scenes_json_option")) },
+                leadingIcon = {
+                    Icon(
+                        Icons.Filled.FileUpload,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                },
+                onClick = {
+                    onDismissRequest()
+                    onImportScenesJson()
+                }
+            )
         }
         DropdownMenuItem(
             text = { Text(Loc.getText("delete_history"), color = MaterialTheme.colorScheme.error) },
@@ -1630,6 +1681,7 @@ fun UnifiedAudioTrackRow(
     var showInfoDialog by remember { mutableStateOf(false) }
     var showEditSceneDialog by remember { mutableStateOf(false) }
     var showReviewScenesDialog by remember { mutableStateOf(false) }
+    var showImportScenesJsonDialog by remember { mutableStateOf(false) }
 
     if (showInfoDialog) {
         TrackInfoDialog(track = track, onDismiss = { showInfoDialog = false })
@@ -1649,6 +1701,14 @@ fun UnifiedAudioTrackRow(
             viewModel = viewModel,
             onDismiss = { showReviewScenesDialog = false },
             onPlayScene = { scene -> viewModel.selectAndPlay(scene, playlistTracks) }
+        )
+    }
+
+    if (showImportScenesJsonDialog) {
+        ImportScenesJsonDialog(
+            parentTrack = track,
+            viewModel = viewModel,
+            onDismiss = { showImportScenesJsonDialog = false }
         )
     }
 
@@ -1867,7 +1927,8 @@ fun UnifiedAudioTrackRow(
                         onPlay = { onClick() },
                         onViewInfo = { showInfoDialog = true },
                         onEditScene = { showEditSceneDialog = true },
-                        onReviewScenes = { showReviewScenesDialog = true }
+                        onReviewScenes = { showReviewScenesDialog = true },
+                        onImportScenesJson = { showImportScenesJsonDialog = true }
                     )
                 }
             }
