@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.AudioTrack
-import com.example.player.AudioPlayerManager
+import com.example.player.*
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
