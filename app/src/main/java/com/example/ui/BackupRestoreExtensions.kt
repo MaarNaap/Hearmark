@@ -571,6 +571,11 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String) {
                             e.printStackTrace()
                         }
                     }
+                    try {
+                        repository.relinkNotesToActiveTracks()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
 
                 // 5. Note Tags
@@ -644,6 +649,12 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String) {
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
+            }
+
+            try {
+                repository.relinkNotesToActiveTracks()
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
 
             val totalRestored = historyCount + tasksCount + progressCount + notesCount + tagsCount + labelsCount + dailyProgressCount + vocabCount

@@ -73,7 +73,10 @@ fun flattenFolderTree(
 }
 
 fun getFolderNotesCount(node: FolderTreeNode, notes: List<Note>): Int {
-    var count = notes.count { it.folderId == node.folder.id }
+    var count = notes.count { 
+        it.folderId == node.folder.id || 
+        (!it.folderName.isNullOrBlank() && it.folderName.equals(node.folder.folderName, ignoreCase = true))
+    }
     for (child in node.children) {
         count += getFolderNotesCount(child, notes)
     }

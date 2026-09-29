@@ -37,6 +37,9 @@ interface AppDao {
     suspend fun getFolderByPath(path: String): Folder?
 
     // Tracks
+    @Query("SELECT * FROM audio_tracks")
+    suspend fun getAllTracksDirect(): List<AudioTrack>
+
     @Query("SELECT * FROM audio_tracks ORDER BY fileName ASC")
     fun getAllTracksFlow(): Flow<List<AudioTrack>>
 
@@ -261,8 +264,14 @@ interface AppDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNote(note: Note): Long
 
+    @Query("SELECT * FROM notes")
+    suspend fun getAllNotesDirect(): List<Note>
+
     @Update
     suspend fun updateNote(note: Note)
+
+    @Update
+    suspend fun updateNotes(notes: List<Note>)
 
     @Delete
     suspend fun deleteNote(note: Note)
@@ -375,6 +384,15 @@ interface AppDao {
 
     @Query("UPDATE notes SET trackId = :toTrackId WHERE trackId = :fromTrackId")
     suspend fun reassignNotes(fromTrackId: Long, toTrackId: Long)
+
+    @Query("UPDATE notes SET trackId = :toTrackId, folderId = :toFolderId, trackName = :trackName, folderName = :folderName WHERE trackId = :fromTrackId")
+    suspend fun reassignNotesWithMetadata(fromTrackId: Long, toTrackId: Long, toFolderId: Long?, trackName: String?, folderName: String?)
+
+    @Query("UPDATE vocabulary_items SET trackId = :trackId WHERE noteId = :noteId")
+    suspend fun updateVocabularyTrackForNote(noteId: Long, trackId: Long)
+
+    @Query("UPDATE quiz_questions SET trackId = :trackId WHERE noteId = :noteId")
+    suspend fun updateQuizQuestionsTrackForNote(noteId: Long, trackId: Long)
 
     @Query("UPDATE vocabulary_items SET trackId = :toTrackId WHERE trackId = :fromTrackId")
     suspend fun reassignVocabularyItems(fromTrackId: Long, toTrackId: Long)

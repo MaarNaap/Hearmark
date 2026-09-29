@@ -80,7 +80,11 @@ fun NotebookScreen(
     val context = LocalContext.current
 
     // Filter notes
-    val filteredNotes = remember(notes, searchQuery, selectedFolderIds, selectedTags, selectedTrackId) {
+    val filteredNotes = remember(notes, searchQuery, selectedFolderIds, selectedTags, selectedTrackId, folders, tracks) {
+        val selectedFolderNames = folders.filter { selectedFolderIds.contains(it.id) }.map { it.folderName.trim().lowercase() }.toSet()
+        val selectedTrack = selectedTrackId?.let { tid -> tracks.find { it.id == tid } }
+        val selectedTrackName = selectedTrack?.fileName?.trim()?.lowercase()
+
         notes.filter { note ->
             val matchesSearch = if (searchQuery.isBlank()) true else {
                 val q = searchQuery.trim().lowercase()
@@ -92,7 +96,8 @@ fun NotebookScreen(
             }
 
             val matchesFolder = if (selectedFolderIds.isEmpty()) true else {
-                note.folderId != null && selectedFolderIds.contains(note.folderId)
+                (note.folderId != null && selectedFolderIds.contains(note.folderId)) ||
+                (note.folderName != null && selectedFolderNames.contains(note.folderName.trim().lowercase()))
             }
 
             val matchesTag = if (selectedTags.isEmpty()) true else {
@@ -103,7 +108,8 @@ fun NotebookScreen(
             }
 
             val matchesTrack = if (selectedTrackId == null) true else {
-                note.trackId == selectedTrackId
+                note.trackId == selectedTrackId ||
+                (selectedTrackName != null && note.trackName?.trim()?.lowercase() == selectedTrackName)
             }
 
             matchesSearch && matchesFolder && matchesTag && matchesTrack
@@ -715,7 +721,10 @@ fun NotebookScreen(
 
                                 val isChecked = tempSelectedFolderIds.contains(folder.id)
                                 val allSubtreeChecked = subtreeIds.all { tempSelectedFolderIds.contains(it) }
-                                val folderNotesCount = notes.count { it.folderId == folder.id }
+                                val folderNotesCount = notes.count { 
+                                    it.folderId == folder.id || 
+                                    (!it.folderName.isNullOrBlank() && it.folderName.equals(folder.folderName, ignoreCase = true)) 
+                                }
                                 val totalSubtreeNotesCount = remember(node, notes) { getFolderNotesCount(node, notes) }
 
                                 Surface(

@@ -668,6 +668,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 ))
             }
         }
+
+        // Auto-relink any unlinked notes to active tracks
+        repository.relinkNotesToActiveTracks()
     }
 
     fun rebindMissingTrack(track: AudioTrack, newPath: String) {
@@ -736,6 +739,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val matchedActiveIds = mutableSetOf<Long>()
                 val matchedHistoricalTrackIds = mutableSetOf<Long>()
 
+                fun countMatchingNotes(activeTrack: AudioTrack, histId: Long?): Int {
+                    val activeCleanName = cleanStr(activeTrack.fileName)
+                    val activeCleanFolder = cleanStr(getFolderForTrack(activeTrack))
+                    return allNotes.count { note ->
+                        (histId != null && note.trackId == histId) ||
+                        note.trackId == activeTrack.id ||
+                        run {
+                            val noteCleanName = cleanStr(note.trackName)
+                            val nameMatch = noteCleanName.isNotBlank() && (noteCleanName == activeCleanName || noteCleanName.replace(" ", "") == activeCleanName.replace(" ", ""))
+                            if (!nameMatch) return@run false
+                            val noteCleanFolder = cleanStr(note.folderName)
+                            when {
+                                activeCleanFolder.isNotBlank() && noteCleanFolder.isNotBlank() ->
+                                    noteCleanFolder == activeCleanFolder || noteCleanFolder.contains(activeCleanFolder) || activeCleanFolder.contains(noteCleanFolder)
+                                else -> true
+                            }
+                        }
+                    }
+                }
+
                 // 1. Match active tracks against missing/older AudioTracks in DB
                 for (active in activeTracks) {
                     val activeCleanName = cleanStr(active.fileName)
@@ -767,7 +790,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         val hFolder = getFolderForTrack(match)
                         val hHistoryCount = allHistory.count { it.trackId == match.id }
                         val hTaskCount = allTaskProgress.count { it.trackId == match.id }
-                        val hNoteCount = allNotes.count { it.trackId == match.id }
+                        val hNoteCount = countMatchingNotes(active, match.id)
                         val playCount = maxOf(match.playCount, hHistoryCount)
                         val progressPercent = match.getProgressPercent()
 
@@ -809,7 +832,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         val activeFolder = getFolderForTrack(matchingActive)
                         val noteFolder = allNotes.firstOrNull { it.trackId == orphanedId }?.folderName ?: ""
                         val taskCount = allTaskProgress.count { it.trackId == orphanedId }
-                        val noteCount = allNotes.count { it.trackId == orphanedId }
+                        val noteCount = countMatchingNotes(matchingActive, orphanedId)
 
                         candidatesList.add(
                             com.example.data.entities.TrackRelinkCandidate(
@@ -828,6 +851,59 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             )
                         )
                         matchedActiveIds.add(matchingActive.id)
+                    }
+                }
+
+                // 3. Check active tracks that have unlinked/imported notes matching their file name & folder
+                for (active in activeTracks) {
+                    if (matchedActiveIds.contains(active.id)) continue
+                    val activeCleanName = cleanStr(active.fileName)
+                    val activeFolder = getFolderForTrack(active)
+                    val activeCleanFolder = cleanStr(activeFolder)
+
+                    // Find notes belonging to this active track that are unlinked or have outdated folderId/trackId
+                    val matchingNotes = allNotes.filter { note ->
+                        val noteCleanName = cleanStr(note.trackName)
+                        val nameMatch = (noteCleanName.isNotBlank() && (noteCleanName == activeCleanName || noteCleanName.replace(" ", "") == activeCleanName.replace(" ", ""))) ||
+                                (note.trackId != null && note.trackId == active.id)
+
+                        if (!nameMatch) return@filter false
+
+                        val noteCleanFolder = cleanStr(note.folderName)
+                        val folderMatch = when {
+                            activeCleanFolder.isNotBlank() && noteCleanFolder.isNotBlank() ->
+                                noteCleanFolder == activeCleanFolder ||
+                                noteCleanFolder.contains(activeCleanFolder) ||
+                                activeCleanFolder.contains(noteCleanFolder)
+                            activeCleanFolder.isBlank() && noteCleanFolder.isBlank() -> true
+                            else -> true
+                        }
+                        folderMatch && (note.trackId != active.id || note.folderId != active.parentFolderId)
+                    }
+
+                    if (matchingNotes.isNotEmpty()) {
+                        val historyCount = allHistory.count { it.trackId == active.id }
+                        val taskCount = allTaskProgress.count { it.trackId == active.id }
+                        val playCount = maxOf(active.playCount, historyCount)
+                        val noteFolder = matchingNotes.firstOrNull { !it.folderName.isNullOrBlank() }?.folderName ?: activeFolder
+
+                        candidatesList.add(
+                            com.example.data.entities.TrackRelinkCandidate(
+                                activeTrack = active,
+                                historicalTrackId = matchingNotes.firstOrNull()?.trackId ?: active.id,
+                                fileName = active.fileName,
+                                folderName = activeFolder.ifBlank { noteFolder },
+                                historicalFolderName = noteFolder,
+                                playCount = playCount,
+                                progressPercent = active.getProgressPercent(),
+                                durationMs = active.duration,
+                                historyEntriesCount = historyCount,
+                                taskProgressCount = taskCount,
+                                notesCount = matchingNotes.size,
+                                isMissingRecord = false
+                            )
+                        )
+                        matchedActiveIds.add(active.id)
                     }
                 }
 
@@ -863,6 +939,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     val oldId = candidate.historicalTrackId
                     val oldTrack = repository.getTrackById(oldId)
 
+                    val finalTrackId: Long
+                    val finalFileName: String
+                    val finalFolderId: Long?
+                    val finalFolderName: String
+
                     if (oldTrack != null && oldTrack.id != active.id) {
                         // Merge active physical file into historical track record
                         val effectivePlayCount = maxOf(oldTrack.playCount, active.playCount, candidate.playCount)
@@ -895,6 +976,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         // Remove duplicate active track
                         repository.deleteTrackById(active.id)
 
+                        finalTrackId = oldTrack.id
+                        finalFileName = active.fileName
+                        finalFolderId = mergedTrack.parentFolderId
+                        finalFolderName = candidate.folderName
+
                         linkedCount++
                     } else if (oldTrack != null && oldTrack.id == active.id) {
                         // Same entity, mark active and update play count
@@ -902,6 +988,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             isMissing = false,
                             playCount = maxOf(oldTrack.playCount, candidate.playCount)
                         ))
+                        finalTrackId = oldTrack.id
+                        finalFileName = oldTrack.fileName
+                        finalFolderId = oldTrack.parentFolderId
+                        finalFolderName = candidate.folderName
                         linkedCount++
                     } else {
                         // Historical record lived in logs; reassign logs to active track ID
@@ -910,14 +1000,60 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             playCount = maxOf(active.playCount, candidate.playCount),
                             isMissing = false
                         ))
+                        finalTrackId = active.id
+                        finalFileName = active.fileName
+                        finalFolderId = active.parentFolderId
+                        finalFolderName = candidate.folderName
                         linkedCount++
+                    }
+
+                    // Re-link and sync all matching notes to final track & folder
+                    val currentNotes = repository.dao.getAllNotesDirect()
+                    fun cleanS(s: String?): String {
+                        if (s.isNullOrBlank()) return ""
+                        return s.trim().lowercase(Locale.ROOT)
+                            .removeSuffix(".mp3").removeSuffix(".m4a").removeSuffix(".wav")
+                            .removeSuffix(".aac").removeSuffix(".ogg").removeSuffix(".flac").removeSuffix(".opus")
+                            .replace("_", " ").replace("-", " ").replace(".", " ").replace(Regex("\\s+"), " ").trim()
+                    }
+                    val activeCleanName = cleanS(finalFileName)
+                    val activeCleanFolder = cleanS(finalFolderName)
+
+                    val matchingNotes = currentNotes.filter { note ->
+                        note.trackId == oldId ||
+                        note.trackId == active.id ||
+                        run {
+                            val noteCleanName = cleanS(note.trackName)
+                            val nameMatch = noteCleanName.isNotBlank() && (noteCleanName == activeCleanName || noteCleanName.replace(" ", "") == activeCleanName.replace(" ", ""))
+                            if (!nameMatch) return@run false
+                            val noteCleanFolder = cleanS(note.folderName)
+                            when {
+                                activeCleanFolder.isNotBlank() && noteCleanFolder.isNotBlank() ->
+                                    noteCleanFolder == activeCleanFolder || noteCleanFolder.contains(activeCleanFolder) || activeCleanFolder.contains(noteCleanFolder)
+                                else -> true
+                            }
+                        }
+                    }
+
+                    for (n in matchingNotes) {
+                        repository.dao.updateNote(
+                            n.copy(
+                                trackId = finalTrackId,
+                                trackName = finalFileName,
+                                folderId = finalFolderId,
+                                folderName = finalFolderName
+                            )
+                        )
+                        repository.dao.updateVocabularyTrackForNote(n.id, finalTrackId)
+                        repository.dao.updateQuizQuestionsTrackForNote(n.id, finalTrackId)
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
             }
 
-            // Sync sanity and tasks
+            // Sync sanity, tasks, and run comprehensive note sweep
+            repository.relinkNotesToActiveTracks()
             checkFilesSanity()
             syncAllDynamicTasks()
 
@@ -2244,9 +2380,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playNoteSnippet(note: Note) {
-        if (note.trackId == null) return
-        val targetTrack = tracks.value.find { it.id == note.trackId }
         val context = getApplication<Application>()
+        var targetTrack = if (note.trackId != null) tracks.value.find { it.id == note.trackId } else null
+        if (targetTrack == null && !note.trackName.isNullOrBlank()) {
+            val cleanName = note.trackName.trim().lowercase(Locale.ROOT)
+            targetTrack = tracks.value.find { 
+                val fn = it.fileName.trim().lowercase(Locale.ROOT)
+                fn == cleanName || fn.removeSuffix(".mp3") == cleanName.removeSuffix(".mp3")
+            }
+            if (targetTrack != null) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    val updated = note.copy(
+                        trackId = targetTrack.id,
+                        trackName = targetTrack.fileName,
+                        folderId = targetTrack.parentFolderId,
+                        folderName = targetTrack.parentFolderId?.let { repository.getFolderById(it)?.folderName } ?: note.folderName
+                    )
+                    repository.updateNote(updated)
+                }
+            }
+        }
         if (targetTrack != null) {
             NoteAudioPlayer.playSnippet(
                 context = context,
@@ -2255,10 +2408,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 startMs = note.startTimestampMs,
                 endMs = if (note.endTimestampMs > note.startTimestampMs) note.endTimestampMs else null
             )
-        } else {
+        } else if (note.trackId != null) {
             viewModelScope.launch(Dispatchers.IO) {
                 val dbTrack = repository.dao.getTrackById(note.trackId)
-                if (dbTrack != null) {
+                if (dbTrack != null && File(dbTrack.filePath).exists()) {
                     withContext(Dispatchers.Main) {
                         NoteAudioPlayer.playSnippet(
                             context = context,

@@ -652,8 +652,42 @@ class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
         // 1. Playback history logs
         dao.reassignPlaybackHistory(fromTrackId, toTrackId)
 
-        // 2. Notes
-        dao.reassignNotes(fromTrackId, toTrackId)
+        // 2. Notes (reassign trackId and sync parent folder + filenames)
+        val targetTrack = dao.getTrackById(toTrackId)
+        val targetFolder = targetTrack?.parentFolderId?.let { dao.getFolderById(it) }
+        dao.reassignNotesWithMetadata(
+            fromTrackId = fromTrackId,
+            toTrackId = toTrackId,
+            toFolderId = targetTrack?.parentFolderId,
+            trackName = targetTrack?.fileName,
+            folderName = targetFolder?.folderName
+        )
+        // Also update any notes that match by trackName and folderName
+        if (targetTrack != null) {
+            val allNotes = dao.getAllNotesDirect()
+            val targetFolderClean = targetFolder?.folderName?.trim()?.lowercase(java.util.Locale.ROOT) ?: ""
+            val targetNameClean = targetTrack.fileName.trim().lowercase(java.util.Locale.ROOT)
+            val notesToUpdate = allNotes.filter { note ->
+                val noteNameClean = note.trackName?.trim()?.lowercase(java.util.Locale.ROOT) ?: ""
+                val noteFolderClean = note.folderName?.trim()?.lowercase(java.util.Locale.ROOT) ?: ""
+                (note.trackId == fromTrackId || (noteNameClean.isNotBlank() && noteNameClean == targetNameClean && (noteFolderClean.isBlank() || noteFolderClean == targetFolderClean))) &&
+                (note.trackId != toTrackId || note.folderId != targetTrack.parentFolderId)
+            }
+            if (notesToUpdate.isNotEmpty()) {
+                dao.updateNotes(notesToUpdate.map {
+                    it.copy(
+                        trackId = toTrackId,
+                        trackName = targetTrack.fileName,
+                        folderId = targetTrack.parentFolderId,
+                        folderName = targetFolder?.folderName ?: it.folderName
+                    )
+                })
+            }
+            for (note in notesToUpdate) {
+                dao.updateVocabularyTrackForNote(note.id, toTrackId)
+                dao.updateQuizQuestionsTrackForNote(note.id, toTrackId)
+            }
+        }
 
         // 3. Vocabulary items
         dao.reassignVocabularyItems(fromTrackId, toTrackId)
@@ -693,5 +727,116 @@ class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
             }
             dao.deletePlaylistTrack(fp.playlistId, fromTrackId)
         }
+    }
+
+    /**
+     * Scans all notes in the database and re-links any unlinked or orphaned notes
+     * to current active tracks and folders based on file and folder name matches.
+     */
+    suspend fun relinkNotesToActiveTracks(): Int {
+        val activeTracks = dao.getAllTracksDirect().filter { !it.isVirtualScene && File(it.filePath).exists() && !it.isMissing }
+        if (activeTracks.isEmpty()) return 0
+
+        val folders = dao.getAllFoldersDirect()
+        val folderMap = folders.associateBy { it.id }
+        val notes = dao.getAllNotesDirect()
+        if (notes.isEmpty()) return 0
+
+        fun cleanStr(s: String?): String {
+            if (s.isNullOrBlank()) return ""
+            return s.trim().lowercase(java.util.Locale.ROOT)
+                .removeSuffix(".mp3")
+                .removeSuffix(".m4a")
+                .removeSuffix(".wav")
+                .removeSuffix(".aac")
+                .removeSuffix(".ogg")
+                .removeSuffix(".flac")
+                .removeSuffix(".opus")
+                .replace("_", " ")
+                .replace("-", " ")
+                .replace(".", " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+        }
+
+        fun getFolderForTrack(track: AudioTrack): String {
+            val fName = track.parentFolderId?.let { folderMap[it]?.folderName }
+            if (!fName.isNullOrBlank()) return fName
+            val parentDir = try { File(track.filePath).parentFile?.name } catch (e: Exception) { null }
+            if (!parentDir.isNullOrBlank() && parentDir != "files" && parentDir != "imported") return parentDir
+            return ""
+        }
+
+        var relinkedCount = 0
+        val notesToUpdate = mutableListOf<Note>()
+
+        for (note in notes) {
+            val activeTrackById = note.trackId?.let { tid -> activeTracks.find { it.id == tid } }
+            if (activeTrackById != null) {
+                val correctFolderId = activeTrackById.parentFolderId
+                val correctFolderName = getFolderForTrack(activeTrackById)
+                val correctTrackName = activeTrackById.fileName
+                if (note.folderId != correctFolderId || note.folderName != correctFolderName || note.trackName != correctTrackName) {
+                    notesToUpdate.add(
+                        note.copy(
+                            folderId = correctFolderId,
+                            folderName = correctFolderName,
+                            trackName = correctTrackName
+                        )
+                    )
+                    relinkedCount++
+                }
+                continue
+            }
+
+            val cleanNoteTrackName = cleanStr(note.trackName)
+            if (cleanNoteTrackName.isBlank()) continue
+
+            val cleanNoteFolder = cleanStr(note.folderName)
+
+            val matchedTrack = activeTracks.firstOrNull { active ->
+                val cleanActiveName = cleanStr(active.fileName)
+                val nameMatch = cleanActiveName == cleanNoteTrackName ||
+                        cleanActiveName.replace(" ", "") == cleanNoteTrackName.replace(" ", "")
+                if (!nameMatch) return@firstOrNull false
+
+                val activeFolder = getFolderForTrack(active)
+                val cleanActiveFolder = cleanStr(activeFolder)
+
+                when {
+                    cleanNoteFolder.isNotBlank() && cleanActiveFolder.isNotBlank() ->
+                        cleanActiveFolder == cleanNoteFolder ||
+                        cleanActiveFolder.contains(cleanNoteFolder) ||
+                        cleanNoteFolder.contains(cleanActiveFolder)
+                    cleanNoteFolder.isBlank() && cleanActiveFolder.isBlank() -> true
+                    else -> true
+                }
+            }
+
+            if (matchedTrack != null) {
+                val activeFolder = getFolderForTrack(matchedTrack)
+                notesToUpdate.add(
+                    note.copy(
+                        trackId = matchedTrack.id,
+                        trackName = matchedTrack.fileName,
+                        folderId = matchedTrack.parentFolderId,
+                        folderName = activeFolder
+                    )
+                )
+                relinkedCount++
+            }
+        }
+
+        if (notesToUpdate.isNotEmpty()) {
+            dao.updateNotes(notesToUpdate)
+            for (updatedNote in notesToUpdate) {
+                if (updatedNote.trackId != null) {
+                    dao.updateVocabularyTrackForNote(updatedNote.id, updatedNote.trackId)
+                    dao.updateQuizQuestionsTrackForNote(updatedNote.id, updatedNote.trackId)
+                }
+            }
+        }
+
+        return relinkedCount
     }
 }

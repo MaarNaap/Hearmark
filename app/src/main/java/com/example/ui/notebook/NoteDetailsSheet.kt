@@ -268,8 +268,16 @@ fun ViewNoteDetailsModal(
     val isFavorite = remember(note.tags, favTag) {
         note.getTagsList().any { it.equals("favorite", ignoreCase = true) || it == "المفضلة" || it == favTag }
     }
-    val associatedTrack = remember(note.trackId, allTracks) {
-        if (note.trackId != null) allTracks.find { it.id == note.trackId } else null
+    val associatedTrack = remember(note.trackId, note.trackName, allTracks) {
+        if (note.trackId != null) {
+            allTracks.find { it.id == note.trackId }
+        } else if (!note.trackName.isNullOrBlank()) {
+            val cleanName = note.trackName.trim().lowercase(java.util.Locale.ROOT)
+            allTracks.find {
+                val fn = it.fileName.trim().lowercase(java.util.Locale.ROOT)
+                fn == cleanName || fn.removeSuffix(".mp3") == cleanName.removeSuffix(".mp3")
+            }
+        } else null
     }
     val effectiveFolderId = note.folderId ?: associatedTrack?.parentFolderId
     val effectiveFolderName = note.folderName
