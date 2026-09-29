@@ -779,12 +779,21 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                 // AI COMPREHENSION QUIZ SHEET
                 val isQuizSheetOpen by viewModel.isQuizSheetOpen.collectAsStateWithLifecycle()
                 if (isQuizSheetOpen) {
-                    QuizSheet(
-                        viewModel = viewModel,
+                    val allNotes by viewModel.notes.collectAsStateWithLifecycle()
+                    val allTracks by viewModel.tracks.collectAsStateWithLifecycle()
+                    UnifiedQuizSheet(
+                        quizViewModel = viewModel.quizViewModel,
+                        allNotes = allNotes,
+                        allTracks = allTracks,
                         onDismiss = { viewModel.closeQuizSheet() },
                         onOpenVocabularyReview = {
                             viewModel.closeQuizSheet()
                             currentScreen = "vocab_review"
+                        },
+                        onPlayTrackInMainPlayer = { track, ts ->
+                            AudioPlayerManager.playTrack(track)
+                            AudioPlayerManager.seekTo(ts)
+                            AudioPlayerManager.resume()
                         }
                     )
                 }
