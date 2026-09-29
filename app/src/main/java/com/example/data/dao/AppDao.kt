@@ -368,4 +368,26 @@ interface AppDao {
 
     @Query("SELECT noteId, COUNT(*) as count FROM quiz_questions WHERE noteId IS NOT NULL GROUP BY noteId")
     fun getNoteQuestionCountsFlow(): Flow<List<NoteQuestionCount>>
+
+    // Track Relinking & Foreign Key Reassignment
+    @Query("UPDATE playback_history SET trackId = :toTrackId WHERE trackId = :fromTrackId")
+    suspend fun reassignPlaybackHistory(fromTrackId: Long, toTrackId: Long)
+
+    @Query("UPDATE notes SET trackId = :toTrackId WHERE trackId = :fromTrackId")
+    suspend fun reassignNotes(fromTrackId: Long, toTrackId: Long)
+
+    @Query("UPDATE vocabulary_items SET trackId = :toTrackId WHERE trackId = :fromTrackId")
+    suspend fun reassignVocabularyItems(fromTrackId: Long, toTrackId: Long)
+
+    @Query("UPDATE quiz_questions SET trackId = :toTrackId WHERE trackId = :fromTrackId")
+    suspend fun reassignQuizQuestions(fromTrackId: Long, toTrackId: Long)
+
+    @Query("UPDATE audio_tracks SET parentTrackId = :toTrackId WHERE parentTrackId = :fromTrackId")
+    suspend fun reassignParentTrackId(fromTrackId: Long, toTrackId: Long)
+
+    @Query("SELECT * FROM task_track_progress WHERE trackId = :trackId")
+    suspend fun getTaskTrackProgressForTrackDirect(trackId: Long): List<TaskTrackProgress>
+
+    @Query("SELECT * FROM playlist_tracks WHERE trackId = :trackId")
+    suspend fun getPlaylistCrossRefsForTrackDirect(trackId: Long): List<PlaylistTrackCrossRef>
 }

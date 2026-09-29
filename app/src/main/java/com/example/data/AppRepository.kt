@@ -645,4 +645,53 @@ class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
             vocabDao.insertVocabularyItem(newItem)
         }
     }
+
+    suspend fun reassignTrackReferences(fromTrackId: Long, toTrackId: Long) {
+        if (fromTrackId == toTrackId) return
+
+        // 1. Playback history logs
+        dao.reassignPlaybackHistory(fromTrackId, toTrackId)
+
+        // 2. Notes
+        dao.reassignNotes(fromTrackId, toTrackId)
+
+        // 3. Vocabulary items
+        dao.reassignVocabularyItems(fromTrackId, toTrackId)
+
+        // 4. Quiz Questions
+        dao.reassignQuizQuestions(fromTrackId, toTrackId)
+
+        // 5. Parent Track references (virtual scenes)
+        dao.reassignParentTrackId(fromTrackId, toTrackId)
+
+        // 6. Task Track Progress (merge safe with composite primary key)
+        val fromTaskProgress = dao.getTaskTrackProgressForTrackDirect(fromTrackId)
+        val toTaskProgress = dao.getTaskTrackProgressForTrackDirect(toTrackId).associateBy { it.taskId }
+        for (fp in fromTaskProgress) {
+            val existing = toTaskProgress[fp.taskId]
+            if (existing != null) {
+                val combinedDays = (existing.getDaysList() + fp.getDaysList()).distinct().joinToString(",")
+                val merged = existing.copy(
+                    completedPlayCount = maxOf(existing.completedPlayCount, fp.completedPlayCount),
+                    completedDays = combinedDays,
+                    isTrackCompleted = existing.isTrackCompleted || fp.isTrackCompleted
+                )
+                dao.insertTaskProgress(merged)
+                dao.deleteSingleTaskProgress(fp.taskId, fromTrackId)
+            } else {
+                dao.insertTaskProgress(fp.copy(trackId = toTrackId))
+                dao.deleteSingleTaskProgress(fp.taskId, fromTrackId)
+            }
+        }
+
+        // 7. Playlist Tracks (merge safe with composite primary key)
+        val fromPlaylists = dao.getPlaylistCrossRefsForTrackDirect(fromTrackId)
+        val toPlaylists = dao.getPlaylistCrossRefsForTrackDirect(toTrackId).associateBy { it.playlistId }
+        for (fp in fromPlaylists) {
+            if (toPlaylists[fp.playlistId] == null) {
+                dao.insertPlaylistTrack(fp.copy(trackId = toTrackId))
+            }
+            dao.deletePlaylistTrack(fp.playlistId, fromTrackId)
+        }
+    }
 }

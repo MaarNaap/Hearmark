@@ -1288,6 +1288,34 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
                     }
                 }
 
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = {
+                        viewModel.searchRelinkCandidates(autoOpenDialog = true)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(38.dp)
+                        .testTag("btn_relink_files_settings"),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Link,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "🔗 " + Loc.getText("relink_files_stats_btn"),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
                 HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
 
                 Text(Loc.getText("auto_backup_title"), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
@@ -1451,6 +1479,17 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
                     onDismiss = { showWaveformDialogInSettings = false }
                 )
             }
+        }
+
+        if (viewModel.showRelinkDialog.value) {
+            com.example.ui.dialogs.RelinkFilesAndStatsDialog(
+                candidates = viewModel.relinkCandidates.value,
+                isLoading = viewModel.isScanningForRelink.value,
+                onDismissRequest = { viewModel.showRelinkDialog.value = false },
+                onConfirmRelink = { selected ->
+                    viewModel.applyRelinkCandidates(selected)
+                }
+            )
         }
     }
 }
