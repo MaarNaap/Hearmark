@@ -1,18 +1,12 @@
 package com.example.player
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
-import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
-import androidx.core.app.NotificationCompat
-import com.example.MainActivity
-import com.example.ui.Loc
+import android.util.Log
 
 class HearmarkPlaybackService : Service() {
 
@@ -36,14 +30,36 @@ class HearmarkPlaybackService : Service() {
                 androidx.media.session.MediaButtonReceiver.handleIntent(mediaSession, intent)
             }
         }
+        try {
+            val notification = AudioPlayerManager.buildNotification(this)
+            if (notification != null && (AudioPlayerManager.isPlaying.value || AudioPlayerManager.currentTrackValue != null)) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(
+                        AudioPlayerManager.NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                    )
+                } else {
+                    startForeground(AudioPlayerManager.NOTIFICATION_ID, notification)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("HearmarkPlaybackService", "startForeground failed: ${e.message}")
+        }
         return START_STICKY
     }
 
     override fun onDestroy() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+        } catch (e: Exception) {
+            // Ignore
+        }
         super.onDestroy()
-    }
-
-    companion object {
-        private const val NOTIFICATION_ID = 808
     }
 }

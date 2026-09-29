@@ -274,36 +274,74 @@ object AudioPlayerManager {
     // In-memory cached bitset of listened segments for the active track to eliminate string parsing/splitting on playback ticks
     private var activeTrackSegmentTrackId: Long? = null
     private val activeTrackSegmentsBitSet = java.util.BitSet(100)
+    private var playbackWakeLock: android.os.PowerManager.WakeLock? = null
+
+    private fun acquirePlaybackWakeLock() {
+        try {
+            val ctx = appContext ?: return
+            if (playbackWakeLock == null) {
+                val pm = ctx.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+                playbackWakeLock = pm?.newWakeLock(
+                    android.os.PowerManager.PARTIAL_WAKE_LOCK,
+                    "Hearmark:AudioPlaybackWakeLock"
+                )?.apply {
+                    setReferenceCounted(false)
+                }
+            }
+            if (playbackWakeLock?.isHeld == false) {
+                playbackWakeLock?.acquire(6 * 60 * 60 * 1000L) // max 6 hours safety timeout
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to acquire playback wake lock: ${e.message}")
+        }
+    }
+
+    private fun releasePlaybackWakeLock() {
+        try {
+            if (playbackWakeLock?.isHeld == true) {
+                playbackWakeLock?.release()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to release playback wake lock: ${e.message}")
+        }
+    }
+
+    private fun parseSegmentsIntoBitSet(rawSegments: String, targetBitSet: java.util.BitSet) {
+        if (rawSegments.isEmpty()) return
+        var current = 0
+        var hasDigits = false
+        for (i in 0 until rawSegments.length) {
+            val ch = rawSegments[i]
+            if (ch in '0'..'9') {
+                current = current * 10 + (ch - '0')
+                hasDigits = true
+            } else if (ch == ',') {
+                if (hasDigits && current in 0..999) {
+                    targetBitSet.set(current)
+                }
+                current = 0
+                hasDigits = false
+            }
+        }
+        if (hasDigits && current in 0..999) {
+            targetBitSet.set(current)
+        }
+    }
 
     @Synchronized
     private fun getOrInitActiveBitSet(trackId: Long, rawSegments: String): java.util.BitSet {
         if (activeTrackSegmentTrackId != trackId) {
             activeTrackSegmentTrackId = trackId
             activeTrackSegmentsBitSet.clear()
-            if (rawSegments.isNotEmpty()) {
-                var current = 0
-                var hasDigits = false
-                for (i in 0 until rawSegments.length) {
-                    val ch = rawSegments[i]
-                    if (ch in '0'..'9') {
-                        current = current * 10 + (ch - '0')
-                        hasDigits = true
-                    } else if (ch == ',') {
-                        if (hasDigits && current in 0..999) {
-                            activeTrackSegmentsBitSet.set(current)
-                        }
-                        current = 0
-                        hasDigits = false
-                    }
-                }
-                if (hasDigits && current in 0..999) {
-                    activeTrackSegmentsBitSet.set(current)
-                }
-            }
+            parseSegmentsIntoBitSet(rawSegments, activeTrackSegmentsBitSet)
+        } else if (rawSegments.isNotEmpty()) {
+            // Merge any segments present in rawSegments so we never lose segments across async updates
+            parseSegmentsIntoBitSet(rawSegments, activeTrackSegmentsBitSet)
         }
         return activeTrackSegmentsBitSet
     }
 
+    @Synchronized
     private fun serializeBitSet(bitSet: java.util.BitSet): String {
         if (bitSet.isEmpty) return ""
         val sb = StringBuilder(bitSet.cardinality() * 4)
@@ -354,17 +392,18 @@ object AudioPlayerManager {
         val newTotal = prevTotal + delta
         trackAccumulatedListeningMsMap[track.id] = newTotal
 
-        val updatedTrack = track.copy(currentPlayActualListeningMs = newTotal)
+        val latestSegments = if (activeTrackSegmentTrackId == track.id && !activeTrackSegmentsBitSet.isEmpty) {
+            serializeBitSet(activeTrackSegmentsBitSet)
+        } else {
+            track.listenedSegments
+        }
+
+        val updatedTrack = track.copy(
+            currentPlayActualListeningMs = newTotal,
+            listenedSegments = latestSegments
+        )
         currentTrackValue = updatedTrack
         _currentTrack.value = updatedTrack
-
-        // Update in queue
-        val index = currentQueue.indexOfFirst { it.id == updatedTrack.id }
-        if (index != -1) {
-            val updatedQueue = currentQueue.toMutableList()
-            updatedQueue[index] = updatedTrack
-            currentQueue = updatedQueue
-        }
 
         coroutineScope.launch(Dispatchers.IO) {
             updateTrackState { t ->
@@ -962,17 +1001,20 @@ object AudioPlayerManager {
                             val currentAcc = trackAccumulatedListeningMsMap[track.id] ?: 0L
                             val finalAcc = maxOf(dbAccumulated, currentAcc)
                             trackAccumulatedListeningMsMap[track.id] = finalAcc
-                            val updated = dbTrack.copy(currentPlayActualListeningMs = finalAcc)
-                            withContext(Dispatchers.Main) {
-                                if (currentTrackValue?.id == dbTrack.id) {
-                                    currentTrackValue = updated
-                                    _currentTrack.value = updated
-                                    val qIndex = currentQueue.indexOfFirst { it.id == updated.id }
-                                    if (qIndex != -1) {
-                                        val qCopy = currentQueue.toMutableList()
-                                        qCopy[qIndex] = updated
-                                        currentQueue = qCopy
-                                    }
+                            updateTrackState { current ->
+                                if (current.id == dbTrack.id) {
+                                    val bitSet = getOrInitActiveBitSet(dbTrack.id, dbTrack.listenedSegments)
+                                    parseSegmentsIntoBitSet(current.listenedSegments, bitSet)
+                                    val mergedSegments = serializeBitSet(bitSet)
+                                    val effDur = if (current.duration > 0) current.duration else dbTrack.duration
+                                    dbTrack.copy(
+                                        duration = effDur,
+                                        lastPosition = current.lastPosition,
+                                        listenedSegments = mergedSegments,
+                                        currentPlayActualListeningMs = finalAcc
+                                    )
+                                } else {
+                                    current
                                 }
                             }
                         }
@@ -1037,6 +1079,13 @@ object AudioPlayerManager {
             }
 
             mediaPlayer = MediaPlayer().apply {
+                appContext?.let { ctx ->
+                    try {
+                        setWakeMode(ctx.applicationContext, android.os.PowerManager.PARTIAL_WAKE_LOCK)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "setWakeMode failed: ${e.message}")
+                    }
+                }
                 if (activeSurface != null && activeSurface!!.isValid) {
                     try {
                         setSurface(activeSurface)
@@ -1069,14 +1118,18 @@ object AudioPlayerManager {
                     }
                     _duration.value = virtualDuration
                     val initialPhysicalSeek = (track.startOffsetMs + track.lastPosition).coerceIn(track.startOffsetMs, (track.endOffsetMs ?: realDuration).coerceAtLeast(track.startOffsetMs))
-                    seekTo(initialPhysicalSeek.toInt())
+                    if (initialPhysicalSeek > 0L) {
+                        seekTo(initialPhysicalSeek.toInt())
+                    }
                     _currentPosition.value = track.lastPosition.coerceIn(0L, virtualDuration)
                 } else {
                     if (realDuration > 0) {
                         _duration.value = realDuration
                     }
-                    // Seek to the last saved position immediately (never start from zero if we can resume)
-                    seekTo(track.lastPosition.toInt())
+                    // Seek to the last saved position immediately if non-zero
+                    if (track.lastPosition > 0L) {
+                        seekTo(track.lastPosition.toInt())
+                    }
                     _currentPosition.value = track.lastPosition
                 }
                 
@@ -1093,16 +1146,18 @@ object AudioPlayerManager {
                     isSeeking = false
                     val actual = try { currentPosition.toLong() } catch (e: Exception) { null }
                     if (actual != null) {
-                        lastTrackedPositionMs = actual
+                        setLastTrackedPosition(actual)
                     }
                 }
 
                 setOnCompletionListener {
+                    flushContinuousSegmentsBeforeCompletion()
                     // Normal play next or cycle completion (which handles sleep at end of file elegantly)
                     handlePhysicalEndOfTrack()
                 }
             }
 
+            acquirePlaybackWakeLock()
             _isPlaying.value = true
             loadSubtitlesForTrack(track)
             practicePauseJob?.cancel()
@@ -1130,11 +1185,14 @@ object AudioPlayerManager {
             val activeTrack = baseTrack.copy(duration = effectiveDuration)
             currentTrackValue = activeTrack
             _currentTrack.value = activeTrack
-            lastTrackedPositionMs = if (track.isVirtualScene) (track.startOffsetMs + track.lastPosition) else track.lastPosition
+            getOrInitActiveBitSet(activeTrack.id, activeTrack.listenedSegments)
+            setLastTrackedPosition(if (track.isVirtualScene) (track.startOffsetMs + track.lastPosition) else track.lastPosition)
 
             if (track.duration != effectiveDuration && effectiveDuration > 0) {
                 coroutineScope.launch(Dispatchers.IO) {
-                    repository?.updateTrack(activeTrack)
+                    updateTrackState { t ->
+                        if (t.id == activeTrack.id) t.copy(duration = effectiveDuration) else t
+                    }
                 }
             }
 
@@ -1223,11 +1281,12 @@ object AudioPlayerManager {
         NoteAudioPlayer.stop()
         lastActivePlayTimestamp = System.currentTimeMillis()
         try {
+            acquirePlaybackWakeLock()
             mediaPlayer?.let { mp ->
                 try {
-                    lastTrackedPositionMs = mp.currentPosition.toLong()
+                    setLastTrackedPosition(mp.currentPosition.toLong())
                 } catch (e: Exception) {
-                    lastTrackedPositionMs = null
+                    setLastTrackedPosition(null)
                 }
                 mp.start()
             }
@@ -1250,6 +1309,7 @@ object AudioPlayerManager {
         _practicePauseRemainingSeconds.value = 0f
         accumulateActiveListeningTime()
         lastActivePlayTimestamp = 0L
+        flushContinuousSegmentsOnEvent()
         try {
             mediaPlayer?.let {
                 if (try { it.isPlaying } catch (e: Exception) { false }) {
@@ -1260,9 +1320,10 @@ object AudioPlayerManager {
             Log.e(TAG, "Pause error: ${e.message}")
         }
         isSeeking = false
-        lastTrackedPositionMs = null
+        setLastTrackedPosition(null)
         _isPlaying.value = false
         stopProgressTracking()
+        releasePlaybackWakeLock()
         abandonAudioFocus()
         updateMediaSessionPlaybackState()
         showNotification()
@@ -1281,11 +1342,12 @@ object AudioPlayerManager {
         _practicePauseRemainingSeconds.value = 0f
         accumulateActiveListeningTime()
         lastActivePlayTimestamp = 0L
+        flushContinuousSegmentsOnEvent()
         persistCurrentPlayListeningTime()
         saveCurrentPositionProgress()
         syncCurrentSessionHistory(isFinishing = true)
         isSeeking = false
-        lastTrackedPositionMs = null
+        setLastTrackedPosition(null)
         try {
             mediaPlayer?.let {
                 if (try { it.isPlaying } catch (e: Exception) { false }) {
@@ -1300,6 +1362,7 @@ object AudioPlayerManager {
         mediaPlayer = null
         _isPlaying.value = false
         stopProgressTracking()
+        releasePlaybackWakeLock()
         abandonAudioFocus()
         currentTrackValue = null
         _currentTrack.value = null
@@ -1317,9 +1380,17 @@ object AudioPlayerManager {
         appContext?.let { ctx ->
             try {
                 val intent = Intent(ctx, HearmarkPlaybackService::class.java)
-                ctx.startService(intent)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && _isPlaying.value) {
+                    ContextCompat.startForegroundService(ctx, intent)
+                } else {
+                    ctx.startService(intent)
+                }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start HearmarkPlaybackService: ${e.message}")
+                try {
+                    ctx.startService(Intent(ctx, HearmarkPlaybackService::class.java))
+                } catch (e2: Exception) {
+                    Log.e(TAG, "Failed to start HearmarkPlaybackService: ${e2.message}")
+                }
             }
         }
     }
@@ -1340,7 +1411,7 @@ object AudioPlayerManager {
             mp.setOnSeekCompleteListener {
                 isSeeking = false
                 val actual = try { mp.currentPosition.toLong() } catch (e: Exception) { safeTarget }
-                lastTrackedPositionMs = actual
+                setLastTrackedPosition(actual)
             }
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 mp.seekTo(safeTarget, MediaPlayer.SEEK_CLOSEST)
@@ -1376,7 +1447,7 @@ object AudioPlayerManager {
                     isSeeking = true
                     lastSeekTimestamp = System.currentTimeMillis()
                     _currentPosition.value = virtualPos
-                    lastTrackedPositionMs = physicalTarget
+                    setLastTrackedPosition(physicalTarget)
                     performSeek(mp, physicalTarget)
                     updateActiveSubtitleCue(physicalTarget)
                 } else {
@@ -1385,7 +1456,7 @@ object AudioPlayerManager {
                     isSeeking = true
                     lastSeekTimestamp = System.currentTimeMillis()
                     _currentPosition.value = validTarget
-                    lastTrackedPositionMs = validTarget
+                    setLastTrackedPosition(validTarget)
                     performSeek(mp, validTarget)
                     updateActiveSubtitleCue(validTarget)
                 }
@@ -1483,22 +1554,159 @@ object AudioPlayerManager {
     }
 
     private val trackUpdateMutex = Mutex()
+    @Volatile
     private var lastTrackedPositionMs: Long? = null
+    @Volatile
+    private var lastTrackedWallClockMs: Long = 0L
+
+    private fun setLastTrackedPosition(posMs: Long?) {
+        lastTrackedPositionMs = posMs
+        lastTrackedWallClockMs = if (posMs != null) android.os.SystemClock.elapsedRealtime() else 0L
+    }
+
+    private fun computeMaxContinuousDeltaMs(nowWallMs: Long = android.os.SystemClock.elapsedRealtime()): Long {
+        val prevWall = lastTrackedWallClockMs
+        val elapsedWall = if (prevWall > 0L) (nowWallMs - prevWall).coerceAtLeast(0L) else 250L
+        val speed = _playbackSpeed.value.coerceAtLeast(1.0f)
+        return maxOf(2500L, (elapsedWall * speed * 1.5f).toLong() + 2000L)
+    }
+
+    internal fun flushContinuousSegmentsOnEvent() {
+        if (isSeeking) return
+        val mp = mediaPlayer ?: return
+        val track = currentTrackValue ?: return
+        val physicalPos = try {
+            if (mp.isPlaying) mp.currentPosition.toLong() else -1L
+        } catch (e: Exception) {
+            -1L
+        }
+        if (physicalPos < 0L) return
+
+        val effectiveDuration = if (track.isVirtualScene) {
+            track.duration
+        } else {
+            val mpDur = try { mp.duration.toLong() } catch (e: Exception) { 0L }
+            if (mpDur > 0) mpDur else track.duration
+        }
+        if (effectiveDuration <= 0L) return
+
+        val numSegments = track.getAdaptiveNumSegments()
+        if (numSegments <= 0) return
+
+        val prevPhys = lastTrackedPositionMs ?: physicalPos
+        val nowWall = android.os.SystemClock.elapsedRealtime()
+        val maxContinuousDelta = computeMaxContinuousDeltaMs(nowWall)
+
+        val currentVirtualOrPhys = if (track.isVirtualScene) {
+            (physicalPos - track.startOffsetMs).coerceIn(0L, effectiveDuration)
+        } else {
+            physicalPos.coerceIn(0L, effectiveDuration)
+        }
+        val prevVirtualOrPhys = if (track.isVirtualScene) {
+            (prevPhys - track.startOffsetMs).coerceIn(0L, effectiveDuration)
+        } else {
+            prevPhys.coerceIn(0L, effectiveDuration)
+        }
+
+        val deltaPos = currentVirtualOrPhys - prevVirtualOrPhys
+        val bitSet = getOrInitActiveBitSet(track.id, track.listenedSegments)
+        var hadNewSegments = false
+        if (deltaPos in 0L..maxContinuousDelta) {
+            val fromSeg = ((prevVirtualOrPhys * numSegments) / effectiveDuration).toInt().coerceIn(0, numSegments - 1)
+            val toSeg = ((currentVirtualOrPhys * numSegments) / effectiveDuration).toInt().coerceIn(0, numSegments - 1)
+            for (s in fromSeg..toSeg) {
+                if (!bitSet.get(s)) {
+                    bitSet.set(s)
+                    hadNewSegments = true
+                }
+            }
+        }
+        setLastTrackedPosition(physicalPos)
+        _currentPosition.value = currentVirtualOrPhys
+        if (hadNewSegments) {
+            val serialized = serializeBitSet(bitSet)
+            val updated = track.copy(lastPosition = currentVirtualOrPhys, listenedSegments = serialized)
+            currentTrackValue = updated
+            _currentTrack.value = updated
+            coroutineScope.launch(Dispatchers.IO) {
+                updateTrackState { t ->
+                    if (t.id == track.id) t.copy(lastPosition = currentVirtualOrPhys, listenedSegments = serialized) else t
+                }
+            }
+        }
+    }
+
+    private fun flushContinuousSegmentsBeforeCompletion() {
+        if (isSeeking) return
+        val track = currentTrackValue ?: return
+        val effectiveDuration = if (track.isVirtualScene) {
+            track.duration
+        } else {
+            val mpDur = try { mediaPlayer?.duration?.toLong() ?: 0L } catch (e: Exception) { 0L }
+            if (mpDur > 0) mpDur else (track.duration.takeIf { it > 0 } ?: _duration.value)
+        }
+        if (effectiveDuration <= 0L) return
+
+        val numSegments = track.getAdaptiveNumSegments()
+        if (numSegments <= 0) return
+
+        val lastPos = lastTrackedPositionMs ?: return
+        val prevEffectivePos = if (track.isVirtualScene) {
+            (lastPos - track.startOffsetMs).coerceIn(0L, effectiveDuration)
+        } else {
+            lastPos.coerceIn(0L, effectiveDuration)
+        }
+
+        val nowWall = android.os.SystemClock.elapsedRealtime()
+        val maxContinuousDelta = computeMaxContinuousDeltaMs(nowWall)
+        val remainingToEnd = effectiveDuration - prevEffectivePos
+
+        if (remainingToEnd in 0L..maxContinuousDelta) {
+            val bitSet = getOrInitActiveBitSet(track.id, track.listenedSegments)
+            val fromSeg = ((prevEffectivePos * numSegments) / effectiveDuration).toInt().coerceIn(0, numSegments - 1)
+            val finalSeg = numSegments - 1
+            var hadNewSegments = false
+            for (s in fromSeg..finalSeg) {
+                if (!bitSet.get(s)) {
+                    bitSet.set(s)
+                    hadNewSegments = true
+                }
+            }
+            val endPhysicalPos = if (track.isVirtualScene) (track.startOffsetMs + effectiveDuration) else effectiveDuration
+            setLastTrackedPosition(endPhysicalPos)
+            if (hadNewSegments) {
+                val serialized = serializeBitSet(bitSet)
+                val updated = track.copy(listenedSegments = serialized)
+                currentTrackValue = updated
+                _currentTrack.value = updated
+            }
+        }
+    }
 
     internal suspend fun updateTrackState(transform: (AudioTrack) -> AudioTrack) {
         trackUpdateMutex.withLock {
             val track = currentTrackValue ?: return@withLock
-            val updated = transform(track)
+            var updated = transform(track)
+            if (activeTrackSegmentTrackId == updated.id && !activeTrackSegmentsBitSet.isEmpty && updated.listenedSegments.isNotEmpty()) {
+                val mergedBitSet = getOrInitActiveBitSet(updated.id, updated.listenedSegments)
+                val mergedSerialized = serializeBitSet(mergedBitSet)
+                if (updated.listenedSegments != mergedSerialized) {
+                    updated = updated.copy(listenedSegments = mergedSerialized)
+                }
+            }
             if (updated != track) {
                 repository?.updateTrack(updated)
                 currentTrackValue = updated
-                withContext(Dispatchers.Main) {
-                    _currentTrack.value = updated
-                    val index = currentQueue.indexOfFirst { it.id == updated.id }
-                    if (index != -1) {
-                        val updatedQueue = currentQueue.toMutableList()
-                        updatedQueue[index] = updated
-                        currentQueue = updatedQueue
+                _currentTrack.value = updated
+                val index = currentQueue.indexOfFirst { it.id == updated.id }
+                if (index != -1 && currentQueue[index] != updated) {
+                    withContext(Dispatchers.Main) {
+                        val qIdx = currentQueue.indexOfFirst { it.id == updated.id }
+                        if (qIdx != -1) {
+                            val updatedQueue = currentQueue.toMutableList()
+                            updatedQueue[qIdx] = updated
+                            currentQueue = updatedQueue
+                        }
                     }
                 }
             }
@@ -1511,7 +1719,10 @@ object AudioPlayerManager {
         try {
             mediaPlayer?.let { mp ->
                 if (try { mp.isPlaying } catch (e: Exception) { false }) {
-                    lastTrackedPositionMs = try { mp.currentPosition.toLong() } catch (e: Exception) { null }
+                    val curPos = try { mp.currentPosition.toLong() } catch (e: Exception) { null }
+                    if (curPos != null) {
+                        setLastTrackedPosition(curPos)
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -1546,29 +1757,16 @@ object AudioPlayerManager {
                         }
 
                         val track = currentTrackValue
+                        val nowWall = android.os.SystemClock.elapsedRealtime()
+                        val maxContinuousDelta = computeMaxContinuousDeltaMs(nowWall)
 
                         if (track != null && track.isVirtualScene) {
                             val virtualPos = (physicalPos - track.startOffsetMs).coerceIn(0L, track.duration)
-                            withContext(Dispatchers.Main) {
-                                _currentPosition.value = virtualPos
-                                _duration.value = track.duration
-                            }
+                            _currentPosition.value = virtualPos
+                            _duration.value = track.duration
                             updateActiveSubtitleCue(physicalPos)
-                            if (_isPracticeMode.value && !_isPracticePausing.value && isPlaying) {
-                                checkPracticeSegmentBoundary(virtualPos)
-                            }
-                            val endBoundary = track.endOffsetMs ?: (track.startOffsetMs + track.duration)
-                            if (physicalPos >= endBoundary - 120L) {
-                                withContext(Dispatchers.Main) {
-                                    try {
-                                        mediaPlayer?.pause()
-                                    } catch (e: Exception) {}
-                                    handlePhysicalEndOfTrack()
-                                }
-                                return@launch
-                            }
 
-                            // Process segment logic for virtual scene
+                            // Process segment logic for virtual scene BEFORE checking end boundary or practice pause
                             val effectiveDuration = track.duration
                             if (effectiveDuration > 0) {
                                 val numSegments = track.getAdaptiveNumSegments()
@@ -1580,7 +1778,7 @@ object AudioPlayerManager {
                                 var hadNewSegments = false
 
                                 val deltaPos = virtualPos - prevVirtual
-                                if (!isSeeking && deltaPos in 0L..1500L) {
+                                if (!isSeeking && deltaPos in 0L..maxContinuousDelta) {
                                     val fromSeg = ((prevVirtual * numSegments) / effectiveDuration).toInt().coerceIn(0, numSegments - 1)
                                     for (s in fromSeg..currentSeg) {
                                         if (!bitSet.get(s)) {
@@ -1589,10 +1787,10 @@ object AudioPlayerManager {
                                         }
                                     }
                                 }
-                                lastTrackedPositionMs = physicalPos
+                                setLastTrackedPosition(physicalPos)
 
-                                 if (hadNewSegments || Math.abs(track.lastPosition - virtualPos) >= 1000L) {
-                                    val serialized = if (hadNewSegments) serializeBitSet(bitSet) else track.listenedSegments
+                                if (hadNewSegments || Math.abs(track.lastPosition - virtualPos) >= 2000L) {
+                                    val serialized = serializeBitSet(bitSet)
                                     updateTrackState { t ->
                                         t.copy(
                                             lastPosition = virtualPos,
@@ -1615,14 +1813,24 @@ object AudioPlayerManager {
                                     checkAndTriggerTaskSpecificProgress(currentTrack, progressPercent)
                                 }
                             }
-                        } else {
-                            withContext(Dispatchers.Main) {
-                                _currentPosition.value = physicalPos
-                            }
-                            updateActiveSubtitleCue(physicalPos)
+
                             if (_isPracticeMode.value && !_isPracticePausing.value && isPlaying) {
-                                checkPracticeSegmentBoundary(physicalPos)
+                                checkPracticeSegmentBoundary(virtualPos)
                             }
+                            val endBoundary = track.endOffsetMs ?: (track.startOffsetMs + track.duration)
+                            if (physicalPos >= endBoundary - 120L) {
+                                flushContinuousSegmentsBeforeCompletion()
+                                withContext(Dispatchers.Main) {
+                                    try {
+                                        mediaPlayer?.pause()
+                                    } catch (e: Exception) {}
+                                    handlePhysicalEndOfTrack()
+                                }
+                                return@launch
+                            }
+                        } else {
+                            _currentPosition.value = physicalPos
+                            updateActiveSubtitleCue(physicalPos)
                             
                             // Process segment logic
                             val effectiveDuration = if (mp.duration > 0) mp.duration.toLong() else track?.duration ?: 0L
@@ -1635,7 +1843,7 @@ object AudioPlayerManager {
                                 var hadNewSegments = false
                                 
                                 val deltaPos = physicalPos - prevPos
-                                if (!isSeeking && deltaPos in 0L..1500L) {
+                                if (!isSeeking && deltaPos in 0L..maxContinuousDelta) {
                                     val fromSeg = ((prevPos * numSegments) / effectiveDuration).toInt().coerceIn(0, numSegments - 1)
                                     for (s in fromSeg..currentSeg) {
                                         if (!bitSet.get(s)) {
@@ -1644,11 +1852,11 @@ object AudioPlayerManager {
                                         }
                                     }
                                 }
-                                lastTrackedPositionMs = physicalPos
+                                setLastTrackedPosition(physicalPos)
                                 
                                 // Atomically update track state with new segments and lastPosition directly on IO
-                                if (hadNewSegments || Math.abs(track.lastPosition - physicalPos) >= 1000L) {
-                                    val serialized = if (hadNewSegments) serializeBitSet(bitSet) else track.listenedSegments
+                                if (hadNewSegments || Math.abs(track.lastPosition - physicalPos) >= 2000L) {
+                                    val serialized = serializeBitSet(bitSet)
                                     updateTrackState { t ->
                                         t.copy(
                                             lastPosition = physicalPos,
@@ -1670,6 +1878,10 @@ object AudioPlayerManager {
                                     }
                                     checkAndTriggerTaskSpecificProgress(currentTrack, progressPercent)
                                 }
+                            }
+
+                            if (_isPracticeMode.value && !_isPracticePausing.value && isPlaying) {
+                                checkPracticeSegmentBoundary(physicalPos)
                             }
                         }
                     }
@@ -1868,13 +2080,14 @@ object AudioPlayerManager {
                     }
                     _isPlaying.value = false
                     stopProgressTracking()
+                    releasePlaybackWakeLock()
 
                     // Reset seek position cleanly to start so future play restarts from beginning
                     val seekReset = if (track.isVirtualScene) track.startOffsetMs else 0L
                     try {
                         mediaPlayer?.let { performSeek(it, seekReset) }
                     } catch (e: Exception) {}
-                    lastTrackedPositionMs = if (track.isVirtualScene) track.startOffsetMs else 0L
+                    setLastTrackedPosition(if (track.isVirtualScene) track.startOffsetMs else 0L)
                     _currentPosition.value = 0L
                     updateActiveSubtitleCue(if (track.isVirtualScene) track.startOffsetMs else 0L)
 
@@ -2000,7 +2213,7 @@ object AudioPlayerManager {
 
     // Notifications and Services
     private const val CHANNEL_ID = "smart_audio_player_channel"
-    private const val NOTIFICATION_ID = 404
+    internal const val NOTIFICATION_ID = 404
 
     fun isDarkThemeActive(): Boolean {
         val context = appContext ?: return true
@@ -2020,105 +2233,112 @@ object AudioPlayerManager {
         }
     }
 
+    internal fun buildNotification(context: Context? = appContext): android.app.Notification? {
+        val ctx = context ?: appContext ?: return null
+        val track = currentTrackValue ?: return null
+        return try {
+            val notificationManager = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    CHANNEL_ID,
+                    "Hearmark Playback Control",
+                    NotificationManager.IMPORTANCE_LOW
+                )
+                notificationManager?.createNotificationChannel(channel)
+            }
+
+            // Intents for controls
+            val intentOpen = Intent(ctx, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingIntentOpen = PendingIntent.getActivity(
+                ctx, 0, intentOpen,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val playIcon = if (_isPlaying.value) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+            val playActionTitle = if (_isPlaying.value) Loc.getText("pause") else Loc.getText("play")
+
+            val playIntent = Intent("com.example.ACTION_PLAY_PAUSE").apply {
+                `package` = ctx.packageName
+            }
+            val playPendingIntent = PendingIntent.getBroadcast(
+                ctx, 10, playIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val skipForwardIntent = Intent("com.example.ACTION_SKIP_FORWARD").apply {
+                `package` = ctx.packageName
+            }
+            val skipForwardPendingIntent = PendingIntent.getBroadcast(
+                ctx, 20, skipForwardIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val skipBackwardIntent = Intent("com.example.ACTION_SKIP_BACKWARD").apply {
+                `package` = ctx.packageName
+            }
+            val skipBackwardPendingIntent = PendingIntent.getBroadcast(
+                ctx, 30, skipBackwardIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val isDark = isDarkThemeActive()
+            val largeIcon = getLargeIconBitmap(ctx, isDark)
+            val cleanTitle = track.getDisplayTitle()
+            val statusText = if (_isPlaying.value) {
+                "Hearmark • ${Loc.getText("listening")}"
+            } else {
+                "Hearmark • ${Loc.getText("paused")}"
+            }
+
+            val mediaStyle = androidx.media.app.NotificationCompat.MediaStyle()
+                .setShowActionsInCompactView(0, 1, 2)
+                .setMediaSession(mediaSession?.sessionToken)
+
+            val notificationBgColor = if (isDark) {
+                0xFF1E1A22.toInt()
+            } else {
+                0xFFF4EEF8.toInt()
+            }
+
+            val durationMs = if (_duration.value > 0) _duration.value else track.duration
+            val currentPosMs = _currentPosition.value
+
+            NotificationCompat.Builder(ctx, CHANNEL_ID)
+                .setSmallIcon(com.example.R.drawable.ic_logo)
+                .setContentTitle(cleanTitle)
+                .setContentText(statusText)
+                .setContentIntent(pendingIntentOpen)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setOngoing(_isPlaying.value)
+                .setColor(notificationBgColor)
+                .setColorized(true)
+                .setStyle(mediaStyle)
+                .apply {
+                    if (durationMs > 0) {
+                        setProgress(durationMs.toInt(), currentPosMs.toInt(), false)
+                    }
+                    if (largeIcon != null) {
+                        setLargeIcon(largeIcon)
+                    }
+                }
+                .addAction(android.R.drawable.ic_media_rew, "⏪", skipBackwardPendingIntent)
+                .addAction(playIcon, playActionTitle, playPendingIntent)
+                .addAction(android.R.drawable.ic_media_ff, "⏩", skipForwardPendingIntent)
+                .build()
+        } catch (e: Exception) {
+            Log.w(TAG, "buildNotification failed: ${e.message}")
+            null
+        }
+    }
+
     fun showNotification() {
         val context = appContext ?: return
-        val track = currentTrackValue ?: return
-        
         try {
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Hearmark Playback Control",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            notificationManager.createNotificationChannel(channel)
-        }
-
-        // Intents for controls
-        val intentOpen = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val pendingIntentOpen = PendingIntent.getActivity(
-            context, 0, intentOpen,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val playIcon = if (_isPlaying.value) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
-        val playActionTitle = if (_isPlaying.value) Loc.getText("pause") else Loc.getText("play")
-
-        val playIntent = Intent("com.example.ACTION_PLAY_PAUSE").apply {
-            `package` = context.packageName
-        }
-        val playPendingIntent = PendingIntent.getBroadcast(
-            context, 10, playIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val skipForwardIntent = Intent("com.example.ACTION_SKIP_FORWARD").apply {
-            `package` = context.packageName
-        }
-        val skipForwardPendingIntent = PendingIntent.getBroadcast(
-            context, 20, skipForwardIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val skipBackwardIntent = Intent("com.example.ACTION_SKIP_BACKWARD").apply {
-            `package` = context.packageName
-        }
-        val skipBackwardPendingIntent = PendingIntent.getBroadcast(
-            context, 30, skipBackwardIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val isDark = isDarkThemeActive()
-        val largeIcon = getLargeIconBitmap(context, isDark)
-        val cleanTitle = track.getDisplayTitle()
-        val statusText = if (_isPlaying.value) {
-            "Hearmark • ${Loc.getText("listening")}"
-        } else {
-            "Hearmark • ${Loc.getText("paused")}"
-        }
-
-        val mediaStyle = androidx.media.app.NotificationCompat.MediaStyle()
-            .setShowActionsInCompactView(0, 1, 2)
-            .setMediaSession(mediaSession?.sessionToken)
-
-        // Light background color for light theme, dark background color for dark theme
-        // Maintaining clarity, high contrast, and harmony with the respective theme palette
-        val notificationBgColor = if (isDark) {
-            0xFF1E1A22.toInt() // Dark charcoal/purple theme background
-        } else {
-            0xFFF4EEF8.toInt() // Clean light lavender background
-        }
-
-        val durationMs = if (_duration.value > 0) _duration.value else track.duration
-        val currentPosMs = _currentPosition.value
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(com.example.R.drawable.ic_logo)
-            .setContentTitle(cleanTitle)
-            .setContentText(statusText)
-            .setContentIntent(pendingIntentOpen)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setOngoing(_isPlaying.value)
-            .setColor(notificationBgColor)
-            .setColorized(true)
-            .setStyle(mediaStyle)
-            .apply {
-                if (durationMs > 0) {
-                    setProgress(durationMs.toInt(), currentPosMs.toInt(), false)
-                }
-                if (largeIcon != null) {
-                    setLargeIcon(largeIcon)
-                }
-            }
-            .addAction(android.R.drawable.ic_media_rew, "⏪", skipBackwardPendingIntent)
-            .addAction(playIcon, playActionTitle, playPendingIntent)
-            .addAction(android.R.drawable.ic_media_ff, "⏩", skipForwardPendingIntent)
-            .build()
-
-        notificationManager.notify(NOTIFICATION_ID, notification)
+            val notification = buildNotification(context) ?: return
+            notificationManager.notify(NOTIFICATION_ID, notification)
         } catch (e: Exception) {
             Log.w(TAG, "showNotification failed: ${e.message}")
         }
@@ -2267,9 +2487,9 @@ object AudioPlayerManager {
                 else -> {
                     val autoFile = SubtitleParser.findMatchingSubtitleFile(track.filePath)
                     if (autoFile != null) {
-                        val updatedTrack = track.copy(subtitlePath = autoFile.absolutePath)
-                        repository?.updateTrack(updatedTrack)
-                        updateTrackState { updatedTrack }
+                        updateTrackState { t ->
+                            if (t.id == track.id) t.copy(subtitlePath = autoFile.absolutePath) else t
+                        }
                         SubtitleParser.parseFile(autoFile, track.subtitleOffsetMs)
                     } else {
                         emptyList()
@@ -2386,9 +2606,8 @@ object AudioPlayerManager {
         coroutineScope.launch(Dispatchers.IO) {
             val current = currentTrackValue
             if (current != null && (current.id == targetTrackId || current.parentTrackId == targetTrackId)) {
-                val updated = current.copy(subtitleContent = content)
-                repo.updateTrack(updated)
-                updateTrackState { updated }
+                updateTrackState { t -> t.copy(subtitleContent = content) }
+                val updated = currentTrackValue ?: current.copy(subtitleContent = content)
                 loadSubtitlesForTrack(updated)
                 if (segmentSource == "SUBTITLES" || _isPracticeMode.value) {
                     val ctx = appContext
@@ -2410,9 +2629,10 @@ object AudioPlayerManager {
     fun setSubtitleFileForCurrentTrack(filePath: String) {
         val track = currentTrackValue ?: return
         coroutineScope.launch(Dispatchers.IO) {
-            val updated = track.copy(subtitlePath = filePath)
-            repository?.updateTrack(updated)
-            updateTrackState { updated }
+            updateTrackState { t ->
+                if (t.id == track.id) t.copy(subtitlePath = filePath) else t
+            }
+            val updated = currentTrackValue ?: track.copy(subtitlePath = filePath)
             loadSubtitlesForTrack(updated)
             if (segmentSource == "SUBTITLES" || _isPracticeMode.value) {
                 val repo = repository
@@ -2427,9 +2647,9 @@ object AudioPlayerManager {
     fun clearSubtitlesForCurrentTrack() {
         val track = currentTrackValue ?: return
         coroutineScope.launch(Dispatchers.IO) {
-            val updated = track.copy(subtitleContent = null, subtitlePath = null)
-            repository?.updateTrack(updated)
-            updateTrackState { updated }
+            updateTrackState { t ->
+                if (t.id == track.id) t.copy(subtitleContent = null, subtitlePath = null) else t
+            }
             withContext(Dispatchers.Main) {
                 _subtitlesCues.value = emptyList()
                 _activeSubtitleCue.value = null
@@ -2440,22 +2660,24 @@ object AudioPlayerManager {
     fun adjustSubtitleOffset(deltaMs: Long) {
         val track = currentTrackValue ?: return
         val newOffset = track.subtitleOffsetMs + deltaMs
-        val updated = track.copy(subtitleOffsetMs = newOffset)
         subtitleOffsetMs.value = newOffset
         coroutineScope.launch(Dispatchers.IO) {
-            repository?.updateTrack(updated)
-            updateTrackState { updated }
+            updateTrackState { t ->
+                if (t.id == track.id) t.copy(subtitleOffsetMs = newOffset) else t
+            }
+            val updated = currentTrackValue ?: track.copy(subtitleOffsetMs = newOffset)
             loadSubtitlesForTrack(updated)
         }
     }
 
     fun resetSubtitleOffset() {
         val track = currentTrackValue ?: return
-        val updated = track.copy(subtitleOffsetMs = 0L)
         subtitleOffsetMs.value = 0L
         coroutineScope.launch(Dispatchers.IO) {
-            repository?.updateTrack(updated)
-            updateTrackState { updated }
+            updateTrackState { t ->
+                if (t.id == track.id) t.copy(subtitleOffsetMs = 0L) else t
+            }
+            val updated = currentTrackValue ?: track.copy(subtitleOffsetMs = 0L)
             loadSubtitlesForTrack(updated)
         }
     }

@@ -560,6 +560,7 @@ internal fun AudioPlayerManager.triggerPracticePause(segmentLengthMs: Long, boun
     accumulateActiveListeningTime()
     lastActivePlayTimestamp = 0L
     lastPracticePauseTimestamp = System.currentTimeMillis()
+    flushContinuousSegmentsOnEvent()
 
     coroutineScope.launch(Dispatchers.Main) {
         try {
