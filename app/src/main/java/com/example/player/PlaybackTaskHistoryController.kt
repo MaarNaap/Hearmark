@@ -10,6 +10,10 @@ import java.util.Locale
 
 internal object PlaybackTaskHistoryController {
 
+    // =========================================================================
+    // @LOCKED: Session History Sync & Task Completion Engine - STRICT FREEZE
+    // DO NOT MODIFY OR REFACTOR THIS BLOCK WITHOUT EXPLICIT PERMISSION IN PROMPT
+    // =========================================================================
     fun syncCurrentSessionHistory(isFinishing: Boolean = false) {
         with(AudioPlayerManager) {
             val track = currentTrackValue ?: return
@@ -192,4 +196,7 @@ internal object PlaybackTaskHistoryController {
             }
         }
     }
+    // =========================================================================
+    // @END_LOCKED: Session History Sync & Task Completion Engine
+    // =========================================================================
 }

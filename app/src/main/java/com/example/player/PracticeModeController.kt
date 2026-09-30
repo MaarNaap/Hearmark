@@ -464,6 +464,10 @@ fun AudioPlayerManager.togglePracticeMode(context: Context? = null, repository: 
     }
 }
 
+// =========================================================================
+// @LOCKED: Shadowing / Practice Mode Boundary & Pause State Machine - STRICT FREEZE
+// DO NOT MODIFY OR REFACTOR THIS BLOCK WITHOUT EXPLICIT PERMISSION IN PROMPT
+// =========================================================================
 internal fun AudioPlayerManager.resetPracticeSegmentTracking(pos: Long) {
     val segments = _currentPracticeSegments.value
     val nextIdx = segments.indexOfFirst { it > pos }
@@ -629,3 +633,6 @@ fun AudioPlayerManager.repeatPracticeSegment() {
         }
     }
 }
+// =========================================================================
+// @END_LOCKED: Shadowing / Practice Mode Boundary & Pause State Machine
+// =========================================================================

@@ -14,6 +14,10 @@ data class SubtitleCue(
 
 object SubtitleParser {
 
+    // =========================================================================
+    // @LOCKED: Subtitle Chaining, Cue Matching & Note Timestamp Resolution - STRICT FREEZE
+    // DO NOT MODIFY OR REFACTOR THIS BLOCK WITHOUT EXPLICIT PERMISSION IN PROMPT
+    // =========================================================================
     fun parseContent(content: String, offsetMs: Long = 0L): List<SubtitleCue> {
         if (content.isBlank()) return emptyList()
 
@@ -522,6 +526,9 @@ object SubtitleParser {
             .filter { it.isNotBlank() }
             .joinToString("\n")
     }
+    // =========================================================================
+    // @END_LOCKED: Subtitle Chaining, Cue Matching & Note Timestamp Resolution
+    // =========================================================================
 }
 
 

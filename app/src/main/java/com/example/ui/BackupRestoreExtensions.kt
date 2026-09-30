@@ -9,6 +9,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+// =========================================================================
+// @LOCKED: Full Backup & Restore Serialization Engine - STRICT FREEZE
+// DO NOT MODIFY OR REFACTOR THIS BLOCK WITHOUT EXPLICIT PERMISSION IN PROMPT
+// =========================================================================
 fun AppViewModel.exportBackupToJson(outputStream: java.io.OutputStream): Boolean {
     return try {
         val root = org.json.JSONObject()
@@ -707,3 +711,6 @@ fun AppViewModel.restoreLatestAutoBackup(onResult: (Boolean, String) -> Unit) {
 fun AppViewModel.getAutoBackupLastModified(): Long? {
     return com.example.util.AutoBackupManager.getLatestAutoBackupTimestamp(getApplication())
 }
+// =========================================================================
+// @END_LOCKED: Full Backup & Restore Serialization Engine
+// =========================================================================

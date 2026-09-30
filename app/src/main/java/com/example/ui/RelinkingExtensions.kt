@@ -12,6 +12,10 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
 
+// =========================================================================
+// @LOCKED: Automatic File & Stats Relinking Engine - STRICT FREEZE
+// DO NOT MODIFY OR REFACTOR THIS BLOCK WITHOUT EXPLICIT PERMISSION IN PROMPT
+// =========================================================================
 // --- AUTOMATIC FILE & STATS RELINKING ENGINE EXTENSIONS ---
 fun AppViewModel.searchRelinkCandidates(autoOpenDialog: Boolean = true) {
     viewModelScope.launch(Dispatchers.IO) {
@@ -396,3 +400,6 @@ fun AppViewModel.applyRelinkCandidates(
         }
     }
 }
+// =========================================================================
+// @END_LOCKED: Automatic File & Stats Relinking Engine
+// =========================================================================

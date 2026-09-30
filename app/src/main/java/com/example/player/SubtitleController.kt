@@ -56,6 +56,10 @@ internal object SubtitleController {
         Unit
     }
 
+    // =========================================================================
+    // @LOCKED: Active Subtitle Cue Resolution & Practice Pause Cue Retention - STRICT FREEZE
+    // DO NOT MODIFY OR REFACTOR THIS BLOCK WITHOUT EXPLICIT PERMISSION IN PROMPT
+    // =========================================================================
     fun updateActiveSubtitleCue(positionMs: Long) = with(AudioPlayerManager) {
         if (!isSubtitlesEnabled.value) {
             if (_activeSubtitleCue.value != null) _activeSubtitleCue.value = null
@@ -85,6 +89,9 @@ internal object SubtitleController {
             _activeSubtitleCue.value = null
         }
     }
+    // =========================================================================
+    // @END_LOCKED: Active Subtitle Cue Resolution & Practice Pause Cue Retention
+    // =========================================================================
 
     fun getCurrentSubtitlesRawText(): String = with(AudioPlayerManager) {
         val track = currentTrackValue ?: return ""

@@ -225,6 +225,10 @@ object AudioPlayerManager {
     fun getCompletionThreshold() = completionThreshold
     fun getSkipTimeSeconds() = skipTimeSeconds
 
+    // =========================================================================
+    // @LOCKED: Track Transition Lifecycle & Virtual Scene Initialization - STRICT FREEZE
+    // DO NOT MODIFY OR REFACTOR THIS BLOCK WITHOUT EXPLICIT PERMISSION IN PROMPT
+    // =========================================================================
     fun playTrack(track: AudioTrack, playlistTracks: List<AudioTrack> = emptyList()) {
         if (playlistTracks.isNotEmpty()) {
             currentQueue = playlistTracks
@@ -503,6 +507,9 @@ object AudioPlayerManager {
             e.printStackTrace()
         }
     }
+    // =========================================================================
+    // @END_LOCKED: Track Transition Lifecycle & Virtual Scene Initialization
+    // =========================================================================
 
     fun resume() {
         if (mediaPlayer == null) {
@@ -608,6 +615,10 @@ object AudioPlayerManager {
         stopPlaybackService()
     }
 
+    // =========================================================================
+    // @LOCKED: Virtual Scene & Physical Seek Math - STRICT FREEZE
+    // DO NOT MODIFY OR REFACTOR THIS BLOCK WITHOUT EXPLICIT PERMISSION IN PROMPT
+    // =========================================================================
     internal fun performSeek(mp: MediaPlayer, targetMs: Long) {
         val safeTarget = targetMs.coerceAtLeast(0L)
         try {
@@ -672,6 +683,9 @@ object AudioPlayerManager {
             Log.e(TAG, "seekTo error: ${e.message}")
         }
     }
+    // =========================================================================
+    // @END_LOCKED: Virtual Scene & Physical Seek Math
+    // =========================================================================
 
     fun skipForward() {
         val track = currentTrackValue

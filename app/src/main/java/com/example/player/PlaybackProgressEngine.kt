@@ -11,6 +11,10 @@ import kotlinx.coroutines.withContext
 
 internal object PlaybackProgressEngine {
 
+    // =========================================================================
+    // @LOCKED: Continuous Segment BitSet, Wall-Clock Delta & Cross-Track Isolation - STRICT FREEZE
+    // DO NOT MODIFY OR REFACTOR THIS BLOCK WITHOUT EXPLICIT PERMISSION IN PROMPT
+    // =========================================================================
     fun parseSegmentsIntoBitSet(rawSegments: String, targetBitSet: java.util.BitSet) {
         if (rawSegments.isEmpty()) return
         var current = 0
@@ -566,6 +570,9 @@ internal object PlaybackProgressEngine {
             }
         }
     }
+    // =========================================================================
+    // @END_LOCKED: Continuous Segment BitSet, Wall-Clock Delta & Cross-Track Isolation
+    // =========================================================================
 
     // =========================================================================
     // @LOCKED: Play Count Increment & Threshold Handling - STRICT FREEZE
@@ -690,9 +697,6 @@ internal object PlaybackProgressEngine {
                         if (t.id == track.id) t.copy(lastPosition = 0L) else t
                     }
                 }
-                // =========================================================================
-                // @END_LOCKED: End-of-File Lifecycle & Progress Reset
-                // =========================================================================
 
                 // Look for next track in the queue to auto play
                 var nextTrackPlayed = false
@@ -744,4 +748,7 @@ internal object PlaybackProgressEngine {
             }
         }
     }
+    // =========================================================================
+    // @END_LOCKED: End-of-File Lifecycle & Progress Reset
+    // =========================================================================
 }
