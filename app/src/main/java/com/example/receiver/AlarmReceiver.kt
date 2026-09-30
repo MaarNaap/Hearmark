@@ -302,19 +302,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 // Set to tomorrow at this same time
                 cal.add(Calendar.DAY_OF_YEAR, 1)
                 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    alarmManager.setExactAndAllowWhileIdle(
-                        android.app.AlarmManager.RTC_WAKEUP,
-                        cal.timeInMillis,
-                        pendingIntent
-                    )
-                } else {
-                    alarmManager.set(
-                        android.app.AlarmManager.RTC_WAKEUP,
-                        cal.timeInMillis,
-                        pendingIntent
-                    )
-                }
+                setExactAlarmSafely(alarmManager, cal.timeInMillis, pendingIntent)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -324,6 +312,40 @@ class AlarmReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_PLAY_TASK_TRACK = "com.example.ACTION_PLAY_TASK_TRACK"
         const val ACTION_SNOOZE_TASK = "com.example.ACTION_SNOOZE_TASK"
+
+        private fun setExactAlarmSafely(
+            alarmManager: android.app.AlarmManager,
+            triggerAtMillis: Long,
+            pendingIntent: PendingIntent
+        ) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        android.app.AlarmManager.RTC_WAKEUP,
+                        triggerAtMillis,
+                        pendingIntent
+                    )
+                } else {
+                    alarmManager.setAndAllowWhileIdle(
+                        android.app.AlarmManager.RTC_WAKEUP,
+                        triggerAtMillis,
+                        pendingIntent
+                    )
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    android.app.AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            } else {
+                alarmManager.set(
+                    android.app.AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            }
+        }
 
         fun snoozeAlarm(
             context: Context,
@@ -352,19 +374,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 flags
             )
             val triggerTime = System.currentTimeMillis() + (minutes * 60 * 1000L)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                alarmManager.setExactAndAllowWhileIdle(
-                    android.app.AlarmManager.RTC_WAKEUP,
-                    triggerTime,
-                    pendingIntent
-                )
-            } else {
-                alarmManager.set(
-                    android.app.AlarmManager.RTC_WAKEUP,
-                    triggerTime,
-                    pendingIntent
-                )
-            }
+            setExactAlarmSafely(alarmManager, triggerTime, pendingIntent)
             Log.d("AlarmReceiver", "Snoozed alarm for Task ID $taskId by $minutes minutes")
         }
 
@@ -432,19 +442,7 @@ class AlarmReceiver : BroadcastReceiver() {
                         cal.add(Calendar.DAY_OF_YEAR, 1)
                     }
                     
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        alarmManager.setExactAndAllowWhileIdle(
-                            android.app.AlarmManager.RTC_WAKEUP,
-                            cal.timeInMillis,
-                            pendingIntent
-                        )
-                    } else {
-                        alarmManager.set(
-                            android.app.AlarmManager.RTC_WAKEUP,
-                            cal.timeInMillis,
-                            pendingIntent
-                        )
-                    }
+                    setExactAlarmSafely(alarmManager, cal.timeInMillis, pendingIntent)
                     Log.d("AlarmReceiver", "Scheduled alarm for Task ID $taskId at ${cal.time}")
                 }
             } catch (e: Exception) {
