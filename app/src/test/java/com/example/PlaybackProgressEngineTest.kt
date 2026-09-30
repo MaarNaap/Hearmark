@@ -149,4 +149,31 @@ class PlaybackProgressEngineTest {
         assertTrue(evaluateTrigger(92, 100))
         assertFalse(evaluateTrigger(100, 100))
     }
+
+    @Test
+    fun saveCurrentPositionProgress_andUpdateTrackState_doNotLeakAcrossTrackTransitions() {
+        val track1 = AudioTrack(id = 1L, filePath = "/a/1.mp3", fileName = "Track1.mp3", duration = 120_000L, lastPosition = 0L)
+        val track2 = AudioTrack(id = 2L, filePath = "/a/2.mp3", fileName = "Track2.mp3", duration = 240_000L, lastPosition = 0L)
+
+        AudioPlayerManager.currentQueue = listOf(track1, track2)
+        AudioPlayerManager.currentTrackValue = track1
+        AudioPlayerManager._currentTrack.value = track1
+        AudioPlayerManager._currentPosition.value = 118_500L
+
+        // Trigger saveCurrentPositionProgress for Track 1, then immediately switch currentTrackValue to Track 2
+        PlaybackProgressEngine.saveCurrentPositionProgress()
+        AudioPlayerManager.currentTrackValue = track2
+        AudioPlayerManager._currentTrack.value = track2
+        AudioPlayerManager._currentPosition.value = 0L
+
+        // Verify Track 1 in queue received its saved position (118_500L), while Track 2 remains at 0L
+        // and active currentTrackValue / _currentTrack remain Track 2
+        val queuedTrack1 = AudioPlayerManager.currentQueue.first { it.id == 1L }
+        val queuedTrack2 = AudioPlayerManager.currentQueue.first { it.id == 2L }
+        assertEquals(118_500L, queuedTrack1.lastPosition)
+        assertEquals(0L, queuedTrack2.lastPosition)
+        assertEquals(2L, AudioPlayerManager.currentTrackValue?.id)
+        assertEquals(2L, AudioPlayerManager.currentTrack.value?.id)
+        assertEquals(0L, AudioPlayerManager.currentTrackValue?.lastPosition)
+    }
 }

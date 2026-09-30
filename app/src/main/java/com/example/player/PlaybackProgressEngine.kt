@@ -117,9 +117,17 @@ internal object PlaybackProgressEngine {
             currentTrackValue = updatedTrack
             _currentTrack.value = updatedTrack
 
+            val targetTrackId = track.id
             coroutineScope.launch(Dispatchers.IO) {
-                updateTrackState { t ->
-                    if (t.id == track.id) t.copy(currentPlayActualListeningMs = newTotal) else t
+                if (currentTrackValue?.id == targetTrackId) {
+                    updateTrackState { t ->
+                        if (t.id == targetTrackId) t.copy(currentPlayActualListeningMs = newTotal) else t
+                    }
+                } else {
+                    trackUpdateMutex.withLock {
+                        val dbTrack = repository?.getTrackById(targetTrackId) ?: updatedTrack
+                        repository?.updateTrack(dbTrack.copy(currentPlayActualListeningMs = newTotal))
+                    }
                 }
             }
         }
@@ -262,6 +270,7 @@ internal object PlaybackProgressEngine {
             trackUpdateMutex.withLock {
                 val track = currentTrackValue ?: return@withLock
                 var updated = transform(track)
+                if (updated.id != track.id) return@withLock
                 if (activeTrackSegmentTrackId == updated.id && !activeTrackSegmentsBitSet.isEmpty && updated.listenedSegments.isNotEmpty()) {
                     val mergedBitSet = getOrInitActiveBitSet(updated.id, updated.listenedSegments)
                     val mergedSerialized = serializeBitSet(mergedBitSet)
@@ -271,8 +280,10 @@ internal object PlaybackProgressEngine {
                 }
                 if (updated != track) {
                     repository?.updateTrack(updated)
-                    currentTrackValue = updated
-                    _currentTrack.value = updated
+                    if (currentTrackValue?.id == updated.id) {
+                        currentTrackValue = updated
+                        _currentTrack.value = updated
+                    }
                     val index = currentQueue.indexOfFirst { it.id == updated.id }
                     if (index != -1 && currentQueue[index] != updated) {
                         withContext(Dispatchers.Main) {
@@ -338,6 +349,10 @@ internal object PlaybackProgressEngine {
                             val maxContinuousDelta = computeMaxContinuousDeltaMs(nowWall)
 
                             if (track != null && track.isVirtualScene) {
+                                if (currentTrackValue?.id != track.id) {
+                                    delay(200)
+                                    continue
+                                }
                                 val virtualPos = (physicalPos - track.startOffsetMs).coerceIn(0L, track.duration)
                                 _currentPosition.value = virtualPos
                                 _duration.value = track.duration
@@ -369,14 +384,18 @@ internal object PlaybackProgressEngine {
                                     if (hadNewSegments || Math.abs(track.lastPosition - virtualPos) >= 2000L) {
                                         val serialized = serializeBitSet(bitSet)
                                         updateTrackState { t ->
-                                            t.copy(
-                                                lastPosition = virtualPos,
-                                                listenedSegments = serialized
-                                            )
+                                            if (t.id == track.id) {
+                                                t.copy(
+                                                    lastPosition = virtualPos,
+                                                    listenedSegments = serialized
+                                                )
+                                            } else {
+                                                t
+                                            }
                                         }
                                     }
 
-                                    val currentTrack = currentTrackValue
+                                    val currentTrack = currentTrackValue?.takeIf { it.id == track.id }
                                     if (currentTrack != null) {
                                         val progressPercent = currentTrack.getProgressPercent(numSegments)
                                         val shouldTriggerThreshold = when {
@@ -406,6 +425,10 @@ internal object PlaybackProgressEngine {
                                     return@launch
                                 }
                             } else {
+                                if (track != null && currentTrackValue?.id != track.id) {
+                                    delay(200)
+                                    continue
+                                }
                                 _currentPosition.value = physicalPos
                                 updateActiveSubtitleCue(physicalPos)
 
@@ -435,14 +458,18 @@ internal object PlaybackProgressEngine {
                                     if (hadNewSegments || Math.abs(track.lastPosition - physicalPos) >= 2000L) {
                                         val serialized = serializeBitSet(bitSet)
                                         updateTrackState { t ->
-                                            t.copy(
-                                                lastPosition = physicalPos,
-                                                listenedSegments = serialized
-                                            )
+                                            if (t.id == track.id) {
+                                                t.copy(
+                                                    lastPosition = physicalPos,
+                                                    listenedSegments = serialized
+                                                )
+                                            } else {
+                                                t
+                                            }
                                         }
                                     }
 
-                                    val currentTrack = currentTrackValue
+                                    val currentTrack = currentTrackValue?.takeIf { it.id == track.id }
                                     if (currentTrack != null) {
                                         val progressPercent = currentTrack.getProgressPercent(numSegments)
                                         val shouldTriggerThreshold = when {
@@ -480,10 +507,33 @@ internal object PlaybackProgressEngine {
 
     fun saveCurrentPositionProgress() {
         with(AudioPlayerManager) {
+            val targetTrack = currentTrackValue ?: return
+            val targetTrackId = targetTrack.id
             persistCurrentPlayListeningTime()
             val pos = _currentPosition.value
+            val latestSync = currentTrackValue
+            if (latestSync != null && latestSync.id == targetTrackId) {
+                val updatedSync = latestSync.copy(lastPosition = pos)
+                currentTrackValue = updatedSync
+                _currentTrack.value = updatedSync
+                val qIdx = currentQueue.indexOfFirst { it.id == targetTrackId }
+                if (qIdx != -1) {
+                    val updatedQueue = currentQueue.toMutableList()
+                    updatedQueue[qIdx] = updatedSync
+                    currentQueue = updatedQueue
+                }
+            }
             coroutineScope.launch(Dispatchers.IO) {
-                updateTrackState { t -> t.copy(lastPosition = pos) }
+                if (currentTrackValue?.id == targetTrackId) {
+                    updateTrackState { t ->
+                        if (t.id == targetTrackId) t.copy(lastPosition = pos) else t
+                    }
+                } else {
+                    trackUpdateMutex.withLock {
+                        val dbTrack = repository?.getTrackById(targetTrackId) ?: targetTrack
+                        repository?.updateTrack(dbTrack.copy(lastPosition = pos))
+                    }
+                }
             }
         }
     }
@@ -652,7 +702,15 @@ internal object PlaybackProgressEngine {
                         val nextTrackForPlayback = currentQueue[currentIndex + 1]
                         nextTrackPlayed = true
                         withContext(Dispatchers.Main) {
-                            playTrack(nextTrackForPlayback, currentQueue)
+                            // Clear finalized track session state so playTrack() does not re-save
+                            // the finished track's end position or leak it into the next track
+                            sessionActualListeningMs = 0L
+                            currentSessionHistoryId = null
+                            setLastTrackedPosition(null)
+                            _currentPosition.value = 0L
+                            currentTrackValue = null
+                            val latestNextTrack = currentQueue.firstOrNull { it.id == nextTrackForPlayback.id } ?: nextTrackForPlayback
+                            playTrack(latestNextTrack, currentQueue)
                         }
                     }
                 }

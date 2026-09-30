@@ -239,6 +239,9 @@ object AudioPlayerManager {
                 return
             }
 
+            // Stop background progress tracking immediately so old ticks cannot race with new track setup
+            stopProgressTracking()
+
             // 1. Sync & finish previous track session if one was active
             if (currentTrackValue != null) {
                 persistCurrentPlayListeningTime()
@@ -257,6 +260,7 @@ object AudioPlayerManager {
             lastPracticePauseTimestamp = 0L
             activeTrackSegmentTrackId = null
             activeTrackSegmentsBitSet.clear()
+            setLastTrackedPosition(null)
 
             val initialAccumulatedMs = maxOf(
                 trackAccumulatedListeningMsMap[track.id] ?: 0L,
@@ -270,6 +274,7 @@ object AudioPlayerManager {
             currentTrackValue = initialTrack
             _currentTrack.value = initialTrack
             _duration.value = initialTrack.duration
+            _currentPosition.value = initialTrack.lastPosition.coerceAtLeast(0L)
             initialSessionProgressPercent = initialTrack.getProgressPercent()
             isThresholdTriggeredForCurrentSession = false
             completedTaskIdsForCurrentSession.clear()
@@ -472,7 +477,7 @@ object AudioPlayerManager {
             } else {
                 if (_duration.value > 0) _duration.value else track.duration
             }
-            val baseTrack = currentTrackValue ?: initialTrack
+            val baseTrack = currentTrackValue?.takeIf { it.id == initialTrack.id } ?: initialTrack
             val activeTrack = baseTrack.copy(duration = effectiveDuration)
             currentTrackValue = activeTrack
             _currentTrack.value = activeTrack
