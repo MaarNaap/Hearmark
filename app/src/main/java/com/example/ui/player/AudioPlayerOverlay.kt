@@ -1,11 +1,5 @@
 package com.example.ui
 
-import android.app.Activity
-import android.content.pm.ActivityInfo
-import android.graphics.SurfaceTexture
-import android.view.Surface
-import android.view.TextureView
-import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -13,71 +7,26 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.*
 import com.example.player.*
-import com.example.ui.theme.*
 import kotlinx.coroutines.delay
-
-// Reusable Video Player View backed by TextureView with seamless Surface lifecycle
-@Composable
-fun VideoPlayerSurface(
-    modifier: Modifier = Modifier
-) {
-    val isPlayingState by AudioPlayerManager.isPlaying.collectAsStateWithLifecycle()
-    AndroidView(
-        factory = { ctx ->
-            TextureView(ctx).apply {
-                keepScreenOn = isPlayingState
-                surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-                    override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
-                        AudioPlayerManager.attachSurface(Surface(surface))
-                    }
-                    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
-                    override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
-                        AudioPlayerManager.attachSurface(null)
-                        return true
-                    }
-                    override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
-                }
-                if (isAvailable) {
-                    surfaceTexture?.let { AudioPlayerManager.attachSurface(Surface(it)) }
-                }
-            }
-        },
-        update = { view ->
-            view.keepScreenOn = isPlayingState
-            if (view.isAvailable) {
-                view.surfaceTexture?.let { AudioPlayerManager.attachSurface(Surface(it)) }
-            }
-        },
-        modifier = modifier
-    )
-}
 
 // --- SUB-SCREEN 4: AUDIO PLAYER FULL OVERLAY SCREEN ---
 @Composable
@@ -105,11 +54,9 @@ fun AudioPlayerOverlay(
     val isPracticeAnalyzing by AudioPlayerManager.isPracticeAnalyzing.collectAsStateWithLifecycle()
     val isPracticePausing by AudioPlayerManager.isPracticePausing.collectAsStateWithLifecycle()
     val practicePauseRemaining by AudioPlayerManager.practicePauseRemainingSeconds.collectAsStateWithLifecycle()
-    val practiceSegments by AudioPlayerManager.currentPracticeSegments.collectAsStateWithLifecycle()
 
     val subtitlesCuesState by AudioPlayerManager.subtitlesCues.collectAsStateWithLifecycle()
     val activeSubtitleCueState by AudioPlayerManager.activeSubtitleCue.collectAsStateWithLifecycle()
-    val isSubtitlesEnabledState by AudioPlayerManager.isSubtitlesEnabled.collectAsStateWithLifecycle()
     val videoSubtitleModeState by AudioPlayerManager.videoSubtitleMode.collectAsStateWithLifecycle()
     val subtitleOffsetMsState by AudioPlayerManager.subtitleOffsetMs.collectAsStateWithLifecycle()
     val subtitleFontSizeState by AudioPlayerManager.subtitleFontSize.collectAsStateWithLifecycle()
@@ -182,52 +129,13 @@ fun AudioPlayerOverlay(
     val context = LocalContext.current
     val pagerState = rememberPagerState(pageCount = { 2 })
 
-    // Keep screen ON only while video is active, playing, and visible on screen (both normal and fullscreen mode)
-    DisposableEffect(isTrackVideo, isPlayingState) {
-        val activity = context as? Activity
-        val window = activity?.window
-        if (isTrackVideo && isPlayingState) {
-            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } else {
-            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-        onDispose {
-            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-    }
-
-    // Auto rotate screen and enable full immersive mode (hide system bars and navigation bar) on full screen
-    DisposableEffect(isFullScreenVideo, isHorizontalVideo, isTrackVideo) {
-        val activity = context as? Activity
-        val window = activity?.window
-        val insetsController = if (window != null) {
-            androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
-        } else {
-            null
-        }
-
-        if (isInPipModeState || (isFullScreenVideo && isTrackVideo)) {
-            if (isHorizontalVideo) {
-                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            } else {
-                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            }
-
-            // Hide status bar and navigation buttons for 100% immersive video view
-            insetsController?.apply {
-                hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-                systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
-        } else {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            // Restore status bar and navigation buttons
-            insetsController?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-        }
-        onDispose {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            insetsController?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-        }
-    }
+    VideoScreenAndImmersiveEffects(
+        isTrackVideo = isTrackVideo,
+        isPlayingState = isPlayingState,
+        isFullScreenVideo = isFullScreenVideo,
+        isHorizontalVideo = isHorizontalVideo,
+        isInPipModeState = isInPipModeState
+    )
 
     var areFullScreenControlsVisible by remember { mutableStateOf(true) }
     LaunchedEffect(isFullScreenVideo, areFullScreenControlsVisible, isPlayingState) {
@@ -258,11 +166,7 @@ fun AudioPlayerOverlay(
     val liveTrack = allTracksList.find { it.id == track.id } ?: AudioPlayerManager.currentTrack.collectAsStateWithLifecycle().value ?: track
 
     // Display total listened segments percentage
-    val completedSegmentsCount = liveTrack.getListenedCount()
     val maxListenedPercent = liveTrack.getProgressPercent()
-
-    var isDraggingState by remember { mutableStateOf(false) }
-    var dragPercentState by remember { mutableStateOf(0f) }
 
     var relatedTasks by remember(track.id) { mutableStateOf<List<com.example.data.Task>>(emptyList()) }
     val allActiveTasks by viewModel.activeTasks.collectAsStateWithLifecycle()
@@ -503,7 +407,7 @@ fun AudioPlayerOverlay(
                                 onAddNoteFromCue = { cueText, startMs, endMs ->
                                     onQuickAddNotePrompt(track.id, startMs, endMs, cueText)
                                 },
-                                onAskAiAboutCue = { cueText, startMs, endMs ->
+                                onAskAiAboutCue = { cueText, startMs, _ ->
                                     val dur = durationState
                                     val formattedPos = if (dur > 0) "${formatDuration(startMs)} / ${formatDuration(dur)}" else formatDuration(startMs)
                                     viewModel.openChatWithContext(
@@ -552,147 +456,16 @@ fun AudioPlayerOverlay(
                             }
 
                             // PROGRESS SLIDER & TIMESTAMPS
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(
-                                        text = Loc.getText("max_listened_progress"),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 12.sp
-                                    )
-                                    Text(
-                                        text = "$maxListenedPercent%",
-                                        color = ColorSuccess,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 12.sp
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                val currentNeedlePercent = if (isDraggingState) dragPercentState else (if (durationState > 0) playPositionState.toFloat() / durationState.toFloat() else 0f)
-
-                                val numSegments = liveTrack.getAdaptiveNumSegments()
-                                val listenedRanges = remember(liveTrack.listenedSegments, numSegments) {
-                                    val bitSet = liveTrack.getListenedBitSet(numSegments)
-                                    val ranges = mutableListOf<IntRange>()
-                                    var start = -1
-                                    var prev = -1
-                                    var i = bitSet.nextSetBit(0)
-                                    while (i in 0 until numSegments) {
-                                        if (start == -1) {
-                                            start = i
-                                            prev = i
-                                        } else if (i == prev + 1) {
-                                            prev = i
-                                        } else {
-                                            ranges.add(start..prev)
-                                            start = i
-                                            prev = i
-                                        }
-                                        i = bitSet.nextSetBit(i + 1)
-                                    }
-                                    if (start != -1) {
-                                        ranges.add(start..prev)
-                                    }
-                                    ranges
-                                }
-
-                                BoxWithConstraints(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(12.dp),
-                                    contentAlignment = Alignment.CenterStart
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(5.dp)
-                                            .clip(RoundedCornerShape(2.5.dp))
-                                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                                    ) {
-                                        val segmentsColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
-                                        val noteMarkerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-                                        Canvas(modifier = Modifier.fillMaxSize()) {
-                                            if (numSegments > 0) {
-                                                val segmentWidth = size.width / numSegments
-                                                for (range in listenedRanges) {
-                                                    val startX = range.first * segmentWidth
-                                                    val rangeWidth = (range.last - range.first + 1) * segmentWidth
-                                                    drawRect(
-                                                        color = segmentsColor,
-                                                        topLeft = androidx.compose.ui.geometry.Offset(x = startX, y = 0f),
-                                                        size = androidx.compose.ui.geometry.Size(width = rangeWidth, height = size.height)
-                                                    )
-                                                }
-                                            }
-                                            if (durationState > 0 && trackNotes.isNotEmpty()) {
-                                                val markerWidth = 2.dp.toPx()
-                                                for (note in trackNotes) {
-                                                    val noteTargetMs = note.originStartMs
-                                                        ?: SubtitleParser.findDedicatedCueForNote(note, subtitlesCuesState)?.startMs
-                                                        ?: note.startTimestampMs
-                                                    val relTargetMs = if (track.isVirtualScene) {
-                                                        if (noteTargetMs >= track.startOffsetMs) noteTargetMs - track.startOffsetMs else noteTargetMs
-                                                    } else {
-                                                        noteTargetMs
-                                                    }
-                                                    if (relTargetMs in 0L..durationState) {
-                                                        val frac = (relTargetMs.toFloat() / durationState.toFloat()).coerceIn(0f, 1f)
-                                                        val noteX = frac * size.width
-                                                        drawRect(
-                                                            color = noteMarkerColor,
-                                                            topLeft = androidx.compose.ui.geometry.Offset(x = noteX - (markerWidth / 2f), y = 0f),
-                                                            size = androidx.compose.ui.geometry.Size(width = markerWidth, height = size.height)
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    val thumbSize = 10.dp
-                                    val safeNeedlePercent = currentNeedlePercent.coerceIn(0f, 1f)
-                                    val thumbOffset = ((maxWidth * safeNeedlePercent) - 5.dp).coerceIn(0.dp, maxWidth - 10.dp)
-                                    Box(
-                                        modifier = Modifier
-                                            .size(thumbSize)
-                                            .offset(x = thumbOffset)
-                                            .background(MaterialTheme.colorScheme.primary, CircleShape)
-                                    )
-
-                                    Slider(
-                                        value = safeNeedlePercent,
-                                        enabled = arePlaybackButtonsActive,
-                                        onValueChange = { percent ->
-                                            isDraggingState = true
-                                            dragPercentState = percent
-                                        },
-                                        onValueChangeFinished = {
-                                            val target = (dragPercentState * durationState).toLong()
-                                            AudioPlayerManager.seekTo(target, isPhysicalTimestamp = false)
-                                            isDraggingState = false
-                                        },
-                                        colors = SliderDefaults.colors(
-                                            thumbColor = Color.Transparent,
-                                            activeTrackColor = Color.Transparent,
-                                            inactiveTrackColor = Color.Transparent,
-                                            activeTickColor = Color.Transparent,
-                                            inactiveTickColor = Color.Transparent,
-                                            disabledThumbColor = Color.Transparent,
-                                            disabledActiveTrackColor = Color.Transparent,
-                                            disabledInactiveTrackColor = Color.Transparent
-                                        ),
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(2.dp))
-
-                                val displayPlayPosition = if (isDraggingState) (dragPercentState * durationState).toLong() else playPositionState
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(formatDuration(displayPlayPosition), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                                    Text(formatDuration(durationState), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                                }
-                            }
+                            PlayerSegmentedProgressBar(
+                                track = track,
+                                liveTrack = liveTrack,
+                                durationState = durationState,
+                                playPositionState = playPositionState,
+                                maxListenedPercent = maxListenedPercent,
+                                arePlaybackButtonsActive = arePlaybackButtonsActive,
+                                trackNotes = trackNotes,
+                                subtitlesCuesState = subtitlesCuesState
+                            )
 
                             // CONTROLLER BUTTONS
                             PlayerTransportControls(
