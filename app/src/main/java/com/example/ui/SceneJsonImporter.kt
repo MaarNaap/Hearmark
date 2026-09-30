@@ -54,13 +54,14 @@ enum class SceneImportMode {
 
 object SceneJsonParser {
 
-    fun parseTimestamp(value: Any?): Long? {
+    fun parseTimestamp(value: Any?, isExplicitMs: Boolean = false): Long? {
         if (value == null) return null
         when (value) {
             is Number -> {
                 val d = value.toDouble()
                 return if (d <= 0.0) 0L
-                else if (d % 1.0 != 0.0) (d * 1000).toLong()
+                else if (isExplicitMs && d % 1.0 == 0.0) d.toLong()
+                else if (d % 1.0 != 0.0 || d < 1000.0) (d * 1000).toLong()
                 else d.toLong()
             }
             is String -> {
@@ -92,7 +93,7 @@ object SceneJsonParser {
         for (k in msKeys) {
             if (obj.has(k)) {
                 val v = obj.get(k)
-                val parsed = parseTimestamp(v)
+                val parsed = parseTimestamp(v, isExplicitMs = true)
                 if (parsed != null) return parsed
             }
         }

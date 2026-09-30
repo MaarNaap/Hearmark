@@ -47,14 +47,14 @@ object AudioPlayerManager {
     private val _currentQueueFlow = MutableStateFlow<List<AudioTrack>>(emptyList())
     val currentQueueFlow: StateFlow<List<AudioTrack>> = _currentQueueFlow.asStateFlow()
 
-    private var currentQueue: List<AudioTrack> = emptyList()
+    internal var currentQueue: List<AudioTrack> = emptyList()
         set(value) {
             field = value
             _currentQueueFlow.value = value
             saveQueueToPreferences(value)
         }
 
-    private val _currentTrack = MutableStateFlow<AudioTrack?>(null)
+    internal val _currentTrack = MutableStateFlow<AudioTrack?>(null)
     val currentTrack: StateFlow<AudioTrack?> = _currentTrack.asStateFlow()
 
     val isAutoPlayEnabled = MutableStateFlow(true)
@@ -68,7 +68,7 @@ object AudioPlayerManager {
     internal val _duration = MutableStateFlow(0L)
     val duration: StateFlow<Long> = _duration.asStateFlow()
 
-    private val _playbackSpeed = MutableStateFlow(1.0f)
+    internal val _playbackSpeed = MutableStateFlow(1.0f)
     val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
 
     // Sleep Timer
@@ -214,7 +214,7 @@ object AudioPlayerManager {
     }
 
     // Headset & Media Buttons Control State
-    private var mediaSession: MediaSessionCompat? = null
+    internal var mediaSession: MediaSessionCompat? = null
     val mediaSessionToken: MediaSessionCompat.Token?
         get() = mediaSession?.sessionToken
 
@@ -223,9 +223,9 @@ object AudioPlayerManager {
     val isHeadsetControlsEnabled = MutableStateFlow(true)
     val headsetMultiClickAction = MutableStateFlow("NEXT_PREV") // "NEXT_PREV" or "SKIP_SECONDS"
 
-    private var headsetClickCount = 0
-    private val headsetClickHandler = Handler(Looper.getMainLooper())
-    private val headsetClickRunnable = Runnable {
+    internal var headsetClickCount = 0
+    internal val headsetClickHandler = Handler(Looper.getMainLooper())
+    internal val headsetClickRunnable = Runnable {
         val count = headsetClickCount
         headsetClickCount = 0
         if (!isHeadsetControlsEnabled.value) return@Runnable
@@ -269,7 +269,7 @@ object AudioPlayerManager {
     internal var lastPracticePauseTimestamp: Long = 0L
     private var currentSessionHistoryId: Long? = null
     // Thread-safe map tracking accumulated listening time (ms) for the current play in progress of each track across sessions
-    private val trackAccumulatedListeningMsMap = java.util.concurrent.ConcurrentHashMap<Long, Long>()
+    internal val trackAccumulatedListeningMsMap = java.util.concurrent.ConcurrentHashMap<Long, Long>()
 
     // In-memory cached bitset of listened segments for the active track to eliminate string parsing/splitting on playback ticks
     private var activeTrackSegmentTrackId: Long? = null
@@ -626,166 +626,6 @@ object AudioPlayerManager {
             } ?: return super.onMediaButtonEvent(mediaButtonEvent)
 
             return handleMediaKeyEvent(keyEvent) || super.onMediaButtonEvent(mediaButtonEvent)
-        }
-    }
-
-    fun handleMediaKeyEvent(keyEvent: KeyEvent): Boolean {
-        if (!isHeadsetControlsEnabled.value) return false
-
-        val keyCode = keyEvent.keyCode
-        val action = keyEvent.action
-
-        if (action != KeyEvent.ACTION_UP) {
-            return when (keyCode) {
-                KeyEvent.KEYCODE_HEADSETHOOK,
-                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
-                KeyEvent.KEYCODE_MEDIA_PLAY,
-                KeyEvent.KEYCODE_MEDIA_PAUSE,
-                KeyEvent.KEYCODE_MEDIA_NEXT,
-                KeyEvent.KEYCODE_MEDIA_PREVIOUS,
-                KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
-                KeyEvent.KEYCODE_MEDIA_REWIND,
-                KeyEvent.KEYCODE_MEDIA_STEP_FORWARD,
-                KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD,
-                KeyEvent.KEYCODE_MEDIA_STOP -> true
-                else -> false
-            }
-        }
-
-        when (keyCode) {
-            KeyEvent.KEYCODE_HEADSETHOOK,
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                headsetClickHandler.removeCallbacks(headsetClickRunnable)
-                headsetClickCount++
-                headsetClickHandler.postDelayed(headsetClickRunnable, 350L)
-                return true
-            }
-            KeyEvent.KEYCODE_MEDIA_PLAY -> {
-                resume()
-                return true
-            }
-            KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                pause()
-                return true
-            }
-            KeyEvent.KEYCODE_MEDIA_NEXT,
-            KeyEvent.KEYCODE_MEDIA_STEP_FORWARD -> {
-                playNextTrack()
-                return true
-            }
-            KeyEvent.KEYCODE_MEDIA_PREVIOUS,
-            KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD -> {
-                playPreviousTrack()
-                return true
-            }
-            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                skipForward()
-                return true
-            }
-            KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                skipBackward()
-                return true
-            }
-            KeyEvent.KEYCODE_MEDIA_STOP -> {
-                pause()
-                return true
-            }
-        }
-        return false
-    }
-
-    fun setHeadsetSettings(enabled: Boolean, action: String) {
-        isHeadsetControlsEnabled.value = enabled
-        headsetMultiClickAction.value = action
-        appContext?.let { ctx ->
-            try {
-                val sharedPref = ctx.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-                sharedPref.edit()
-                    .putBoolean("headset_controls_enabled", enabled)
-                    .putString("headset_multiclick_action", action)
-                    .apply()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error saving headset settings: ${e.message}")
-            }
-        }
-    }
-
-    private fun updateMediaSessionPlaybackState() {
-        val session = mediaSession ?: return
-        try {
-            val state = if (_isPlaying.value) {
-                PlaybackStateCompat.STATE_PLAYING
-            } else if (currentTrackValue != null) {
-                PlaybackStateCompat.STATE_PAUSED
-            } else {
-                PlaybackStateCompat.STATE_STOPPED
-            }
-
-            val actions = PlaybackStateCompat.ACTION_PLAY or
-                    PlaybackStateCompat.ACTION_PAUSE or
-                    PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                    PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                    PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-                    PlaybackStateCompat.ACTION_FAST_FORWARD or
-                    PlaybackStateCompat.ACTION_REWIND or
-                    PlaybackStateCompat.ACTION_SEEK_TO or
-                    PlaybackStateCompat.ACTION_STOP
-
-            val currentPos = try {
-                mediaPlayer?.currentPosition?.toLong()?.coerceAtLeast(0L) ?: _currentPosition.value
-            } catch (e: Exception) {
-                _currentPosition.value
-            }
-
-            val playbackSpeed = if (_isPlaying.value) _playbackSpeed.value else 0f
-            val stateBuilder = PlaybackStateCompat.Builder()
-                .setActions(actions)
-                .setState(state, currentPos, playbackSpeed, android.os.SystemClock.elapsedRealtime())
-
-            session.setPlaybackState(stateBuilder.build())
-        } catch (e: Exception) {
-            Log.e(TAG, "Error updating playback state: ${e.message}")
-        }
-    }
-
-    private fun updateMediaSessionMetadata(track: AudioTrack?) {
-        val session = mediaSession ?: return
-        if (track == null) {
-            session.setMetadata(null)
-            return
-        }
-        try {
-            val cleanTitle = track.getDisplayTitle()
-            val context = appContext
-            val isDark = isDarkThemeActive()
-            val artworkBitmap = context?.let { getLargeIconBitmap(it, isDark) }
-
-            val trackDuration = if (track.duration > 0) {
-                track.duration
-            } else {
-                try {
-                    mediaPlayer?.duration?.toLong()?.coerceAtLeast(0L) ?: 0L
-                } catch (e: Exception) {
-                    0L
-                }
-            }
-
-            val metadataBuilder = MediaMetadataCompat.Builder()
-                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, cleanTitle)
-                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Hearmark")
-                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "Audio Library")
-                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, trackDuration)
-                .putLong(MediaMetadataCompat.METADATA_KEY_TRACK_NUMBER, 1L)
-
-            if (artworkBitmap != null) {
-                metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, artworkBitmap)
-                metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, artworkBitmap)
-                metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, artworkBitmap)
-            }
-
-            session.setMetadata(metadataBuilder.build())
-        } catch (e: Exception) {
-            Log.e(TAG, "Error updating metadata: ${e.message}")
         }
     }
 
@@ -1208,78 +1048,6 @@ object AudioPlayerManager {
         }
     }
 
-    fun removeTracksFromQueue(indices: List<Int>) {
-        val newList = currentQueue.filterIndexed { index, _ -> index !in indices }
-        currentQueue = newList
-    }
-
-    fun removeTracksByIds(trackIds: Set<Long>) {
-        if (trackIds.isEmpty()) return
-        val newList = currentQueue.filter { it.id !in trackIds }
-        if (newList.size != currentQueue.size) {
-            currentQueue = newList
-        }
-    }
-
-    fun clearQueue() {
-        val current = currentTrackValue
-        currentQueue = if (current != null) listOf(current) else emptyList()
-    }
-
-    fun playNextTrack() {
-        val current = currentTrackValue ?: return
-        val currentIndex = currentQueue.indexOfFirst { it.id == current.id }
-        if (currentIndex != -1 && currentIndex < currentQueue.size - 1) {
-            playTrack(currentQueue[currentIndex + 1], currentQueue)
-        }
-    }
-
-    fun playPreviousTrack() {
-        val current = currentTrackValue ?: return
-        val currentIndex = currentQueue.indexOfFirst { it.id == current.id }
-        if (currentIndex > 0) {
-            playTrack(currentQueue[currentIndex - 1], currentQueue)
-        }
-    }
-
-    fun addTrackToQueueNext(track: AudioTrack) {
-        val current = currentTrackValue
-        if (current == null) {
-            playTrack(track)
-            return
-        }
-        val withoutTarget = currentQueue.filter { it.id != track.id }
-        val currentIndex = withoutTarget.indexOfFirst { it.id == current.id }
-        val newList = if (currentIndex != -1) {
-            val left = withoutTarget.subList(0, currentIndex + 1)
-            val right = withoutTarget.subList(currentIndex + 1, withoutTarget.size)
-            left + track + right
-        } else {
-            withoutTarget + track
-        }
-        currentQueue = newList
-    }
-
-    fun addTracksToQueueNext(tracks: List<AudioTrack>) {
-        if (tracks.isEmpty()) return
-        val current = currentTrackValue
-        if (current == null) {
-            playTrack(tracks.first(), tracks)
-            return
-        }
-        val targetIds = tracks.map { it.id }.toSet()
-        val withoutTarget = currentQueue.filter { it.id !in targetIds }
-        val currentIndex = withoutTarget.indexOfFirst { it.id == current.id }
-        val newList = if (currentIndex != -1) {
-            val left = withoutTarget.subList(0, currentIndex + 1)
-            val right = withoutTarget.subList(currentIndex + 1, withoutTarget.size)
-            left + tracks + right
-        } else {
-            withoutTarget + tracks
-        }
-        currentQueue = newList
-    }
-
     fun resume() {
         if (mediaPlayer == null) {
             currentTrackValue?.let { playTrack(it) }
@@ -1382,35 +1150,6 @@ object AudioPlayerManager {
         updateMediaSessionPlaybackState()
         cancelNotification()
         stopPlaybackService()
-    }
-
-    private fun startPlaybackService() {
-        appContext?.let { ctx ->
-            try {
-                val intent = Intent(ctx, HearmarkPlaybackService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && _isPlaying.value) {
-                    ContextCompat.startForegroundService(ctx, intent)
-                } else {
-                    ctx.startService(intent)
-                }
-            } catch (e: Exception) {
-                try {
-                    ctx.startService(Intent(ctx, HearmarkPlaybackService::class.java))
-                } catch (e2: Exception) {
-                    Log.e(TAG, "Failed to start HearmarkPlaybackService: ${e2.message}")
-                }
-            }
-        }
-    }
-
-    private fun stopPlaybackService() {
-        appContext?.let { ctx ->
-            try {
-                ctx.stopService(Intent(ctx, HearmarkPlaybackService::class.java))
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to stop HearmarkPlaybackService: ${e.message}")
-            }
-        }
     }
 
     private fun performSeek(mp: MediaPlayer, targetMs: Long) {
@@ -2220,523 +1959,9 @@ object AudioPlayerManager {
     }
 
     // Notifications and Services
-    private const val CHANNEL_ID = "smart_audio_player_channel"
     internal const val NOTIFICATION_ID = 404
 
-    fun isDarkThemeActive(): Boolean {
-        val context = appContext ?: return true
-        return try {
-            val sharedPref = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-            val themeSetting = sharedPref.getString("theme", "dark") ?: "dark"
-            when (themeSetting) {
-                "light" -> false
-                "dark" -> true
-                else -> {
-                    val nightModeFlags = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
-                    nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES
-                }
-            }
-        } catch (e: Exception) {
-            true
-        }
-    }
-
-    internal fun buildNotification(context: Context? = appContext): android.app.Notification? {
-        val ctx = context ?: appContext ?: return null
-        val track = currentTrackValue ?: return null
-        return try {
-            val notificationManager = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val channel = NotificationChannel(
-                    CHANNEL_ID,
-                    "Hearmark Playback Control",
-                    NotificationManager.IMPORTANCE_LOW
-                )
-                notificationManager?.createNotificationChannel(channel)
-            }
-
-            // Intents for controls
-            val intentOpen = Intent(ctx, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            val pendingIntentOpen = PendingIntent.getActivity(
-                ctx, 0, intentOpen,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            val playIcon = if (_isPlaying.value) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
-            val playActionTitle = if (_isPlaying.value) Loc.getText("pause") else Loc.getText("play")
-
-            val playIntent = Intent("com.example.ACTION_PLAY_PAUSE").apply {
-                `package` = ctx.packageName
-            }
-            val playPendingIntent = PendingIntent.getBroadcast(
-                ctx, 10, playIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            val skipForwardIntent = Intent("com.example.ACTION_SKIP_FORWARD").apply {
-                `package` = ctx.packageName
-            }
-            val skipForwardPendingIntent = PendingIntent.getBroadcast(
-                ctx, 20, skipForwardIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            val skipBackwardIntent = Intent("com.example.ACTION_SKIP_BACKWARD").apply {
-                `package` = ctx.packageName
-            }
-            val skipBackwardPendingIntent = PendingIntent.getBroadcast(
-                ctx, 30, skipBackwardIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            val isDark = isDarkThemeActive()
-            val largeIcon = getLargeIconBitmap(ctx, isDark)
-            val cleanTitle = track.getDisplayTitle()
-            val statusText = if (_isPlaying.value) {
-                "Hearmark • ${Loc.getText("listening")}"
-            } else {
-                "Hearmark • ${Loc.getText("paused")}"
-            }
-
-            val mediaStyle = androidx.media.app.NotificationCompat.MediaStyle()
-                .setShowActionsInCompactView(0, 1, 2)
-                .setMediaSession(mediaSession?.sessionToken)
-
-            val notificationBgColor = if (isDark) {
-                0xFF1E1A22.toInt()
-            } else {
-                0xFFF4EEF8.toInt()
-            }
-
-            val durationMs = if (_duration.value > 0) _duration.value else track.duration
-            val currentPosMs = _currentPosition.value
-
-            NotificationCompat.Builder(ctx, CHANNEL_ID)
-                .setSmallIcon(com.example.R.drawable.ic_logo)
-                .setContentTitle(cleanTitle)
-                .setContentText(statusText)
-                .setContentIntent(pendingIntentOpen)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setOngoing(_isPlaying.value)
-                .setColor(notificationBgColor)
-                .setColorized(true)
-                .setStyle(mediaStyle)
-                .apply {
-                    if (durationMs > 0) {
-                        setProgress(durationMs.toInt(), currentPosMs.toInt(), false)
-                    }
-                    if (largeIcon != null) {
-                        setLargeIcon(largeIcon)
-                    }
-                }
-                .addAction(android.R.drawable.ic_media_rew, "⏪", skipBackwardPendingIntent)
-                .addAction(playIcon, playActionTitle, playPendingIntent)
-                .addAction(android.R.drawable.ic_media_ff, "⏩", skipForwardPendingIntent)
-                .build()
-        } catch (e: Exception) {
-            Log.w(TAG, "buildNotification failed: ${e.message}")
-            null
-        }
-    }
-
-    fun showNotification() {
-        val context = appContext ?: return
-        try {
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
-            val notification = buildNotification(context) ?: return
-            notificationManager.notify(NOTIFICATION_ID, notification)
-        } catch (e: Exception) {
-            Log.w(TAG, "showNotification failed: ${e.message}")
-        }
-    }
-
-    fun updateNotification() {
-        if (_isPlaying.value || currentTrackValue != null) {
-            showNotification()
-        }
-    }
-
-    private fun getLargeIconBitmap(context: Context, isDark: Boolean = isDarkThemeActive()): android.graphics.Bitmap? {
-        return try {
-            val size = (64 * context.resources.displayMetrics.density).toInt()
-            val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
-            val canvas = android.graphics.Canvas(bitmap)
-
-            // Draw a themed circular background plate for clear contrast
-            val bgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                color = if (isDark) 0xFF352C42.toInt() else 0xFFEADBFC.toInt()
-                style = android.graphics.Paint.Style.FILL
-            }
-            val radius = size / 2f
-            canvas.drawCircle(radius, radius, radius, bgPaint)
-
-            val drawable = androidx.core.content.ContextCompat.getDrawable(context, com.example.R.drawable.ic_logo)?.mutate() ?: return bitmap
-            val tintColor = if (isDark) 0xFFD3C2FF.toInt() else 0xFF6750A4.toInt()
-            androidx.core.graphics.drawable.DrawableCompat.setTint(drawable, tintColor)
-
-            val padding = (size * 0.16f).toInt()
-            drawable.setBounds(padding, padding, size - padding, size - padding)
-            drawable.draw(canvas)
-            bitmap
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    private fun cancelNotification() {
-        try {
-            val notificationManager = appContext?.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            notificationManager?.cancel(NOTIFICATION_ID)
-        } catch (e: Exception) {
-            Log.e(TAG, "Notification cancel error: ${e.message}")
-        }
-    }
-
-    private fun sendTaskCompletionNotification(task: Task) {
-        // Disabled per user request: "I do not want to receive notifications for completed tasks."
-    }
-
-    private fun saveQueueToPreferences(queue: List<AudioTrack>) {
-        val context = appContext ?: return
-        coroutineScope.launch(Dispatchers.IO) {
-            try {
-                val sharedPref = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-                val idsStr = queue.map { it.id }.joinToString(",")
-                sharedPref.edit().putString("current_queue_ids", idsStr).apply()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error saving queue to preferences: ${e.message}")
-            }
-        }
-    }
-
-    private fun saveCurrentTrackToPreferences(trackId: Long?) {
-        val context = appContext ?: return
-        coroutineScope.launch(Dispatchers.IO) {
-            try {
-                val sharedPref = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-                sharedPref.edit().putLong("current_track_id", trackId ?: -1L).apply()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error saving track to preferences: ${e.message}")
-            }
-        }
-    }
-
-    private fun restoreQueueAndTrack() {
-        val context = appContext ?: return
-        val repo = repository ?: return
-        coroutineScope.launch(Dispatchers.IO) {
-            try {
-                if (_isPlaying.value || mediaPlayer != null || currentTrackValue != null || _currentTrack.value != null) {
-                    Log.d(TAG, "Playback is already active or track is loaded; skipping restore.")
-                    return@launch
-                }
-                val sharedPref = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-                val currentTrackId = sharedPref.getLong("current_track_id", -1L)
-                val queueIdsStr = sharedPref.getString("current_queue_ids", "") ?: ""
-                
-                if (queueIdsStr.isNotEmpty()) {
-                    val idList = queueIdsStr.split(",").mapNotNull { it.toLongOrNull() }
-                    if (idList.isNotEmpty()) {
-                        val fetchedTracks = mutableListOf<AudioTrack>()
-                        for (id in idList) {
-                            val track = repo.getTrackById(id)
-                            if (track != null) {
-                                fetchedTracks.add(track)
-                            }
-                        }
-                        
-                        withContext(Dispatchers.Main) {
-                            if (!_isPlaying.value && mediaPlayer == null && currentTrackValue == null && _currentTrack.value == null) {
-                                currentQueue = fetchedTracks
-                            }
-                        }
-                    }
-                }
-                
-                if (currentTrackId != -1L) {
-                    val track = repo.getTrackById(currentTrackId)
-                    if (track != null) {
-                        trackAccumulatedListeningMsMap[track.id] = track.currentPlayActualListeningMs
-                        // Let's make sure the track isn't missing
-                        val file = File(track.filePath)
-                        if (file.exists()) {
-                            withContext(Dispatchers.Main) {
-                                if (!_isPlaying.value && mediaPlayer == null && currentTrackValue == null && _currentTrack.value == null) {
-                                    currentTrackValue = track
-                                    _currentTrack.value = track
-                                    _duration.value = track.duration
-                                    _currentPosition.value = track.lastPosition
-                                    loadSubtitlesForTrack(track)
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error restoring queue/track state: ${e.message}")
-            }
-        }
-    }
-
-    // --- SUBTITLE & LYRICS MANAGEMENT ---
-
-    fun loadSubtitlesForTrack(track: AudioTrack) {
-        coroutineScope.launch(Dispatchers.IO) {
-            val rawCues = when {
-                !track.subtitleContent.isNullOrBlank() -> {
-                    SubtitleParser.parseContent(track.subtitleContent, track.subtitleOffsetMs)
-                }
-                !track.subtitlePath.isNullOrBlank() -> {
-                    val file = File(track.subtitlePath)
-                    SubtitleParser.parseFile(file, track.subtitleOffsetMs)
-                }
-                else -> {
-                    val autoFile = SubtitleParser.findMatchingSubtitleFile(track.filePath)
-                    if (autoFile != null) {
-                        updateTrackState { t ->
-                            if (t.id == track.id) t.copy(subtitlePath = autoFile.absolutePath) else t
-                        }
-                        SubtitleParser.parseFile(autoFile, track.subtitleOffsetMs)
-                    } else {
-                        emptyList()
-                    }
-                }
-            }
-            val cues = if (track.isVirtualScene) {
-                val sceneStart = track.startOffsetMs
-                val sceneEnd = track.endOffsetMs ?: (track.startOffsetMs + track.duration)
-                rawCues.filter { cue ->
-                    if (!cue.isTimed || cue.startMs < 0) true
-                    else {
-                        val cueEnd = if (cue.endMs > cue.startMs) cue.endMs else cue.startMs + 5000L
-                        cueEnd >= sceneStart && cue.startMs <= sceneEnd
-                    }
-                }
-            } else {
-                rawCues
-            }
-            withContext(Dispatchers.Main) {
-                _subtitlesCues.value = cues
-                subtitleOffsetMs.value = track.subtitleOffsetMs
-                val currentPhys = if (track.isVirtualScene) track.startOffsetMs + _currentPosition.value else _currentPosition.value
-                updateActiveSubtitleCue(currentPhys)
-            }
-        }
-    }
-
-    fun updateActiveSubtitleCue(positionMs: Long) {
-        if (!isSubtitlesEnabled.value) {
-            if (_activeSubtitleCue.value != null) _activeSubtitleCue.value = null
-            return
-        }
-        val cues = _subtitlesCues.value
-        if (cues.isEmpty()) {
-            if (_activeSubtitleCue.value != null) _activeSubtitleCue.value = null
-            return
-        }
-        // When practice pause is active, preserve the current/previous cue for speech imitation
-        if (_isPracticeMode.value && _isPracticePausing.value && _activeSubtitleCue.value != null) {
-            return
-        }
-        val track = currentTrackValue
-        val effectivePos = if (track != null && track.isVirtualScene && positionMs < track.startOffsetMs) {
-            track.startOffsetMs + positionMs
-        } else {
-            positionMs
-        }
-        val active = cues.firstOrNull { 
-            it.isTimed && it.startMs >= 0 && effectivePos >= it.startMs && (effectivePos < it.endMs || (it.id == cues.lastOrNull { c -> c.isTimed }?.id && effectivePos <= it.endMs))
-        }
-        if (active != null) {
-            _activeSubtitleCue.value = active
-        } else if (!_isPracticeMode.value || !_isPracticePausing.value) {
-            _activeSubtitleCue.value = null
-        }
-    }
-
-    fun getCurrentSubtitlesRawText(): String {
-        val track = currentTrackValue ?: return ""
-        if (!track.subtitleContent.isNullOrBlank()) {
-            return SubtitleParser.formatForEditor(track.subtitleContent)
-        }
-        if (!track.subtitlePath.isNullOrBlank()) {
-            try {
-                val file = File(track.subtitlePath)
-                if (file.exists() && file.canRead()) {
-                    return SubtitleParser.formatForEditor(file.readText())
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-        val cues = _subtitlesCues.value
-        if (cues.isNotEmpty()) {
-            val hasTimings = cues.any { it.isTimed && it.startMs >= 0 }
-            return if (hasTimings) {
-                val isSrtLike = cues.any { it.endMs > it.startMs + 1000L }
-                if (isSrtLike) {
-                    cues.joinToString("\n\n") { cue ->
-                        val start = formatSubtitleTimestamp(cue.startMs)
-                        val end = formatSubtitleTimestamp(cue.endMs)
-                        "${cue.id}\n$start --> $end\n${cue.text}"
-                    }
-                } else {
-                    cues.joinToString("\n\n") { cue ->
-                        "${SubtitleParser.formatTimestampTag(cue.startMs)} ${cue.text}"
-                    }
-                }
-            } else {
-                cues.joinToString("\n\n") { it.text }
-            }
-        }
-        return ""
-    }
-
-    private fun formatSubtitleTimestamp(ms: Long): String {
-        val safeMs = ms.coerceAtLeast(0L)
-        val hours = safeMs / 3600_000
-        val rem = safeMs % 3600_000
-        val mins = rem / 60_000
-        val secs = (rem % 60_000) / 1000
-        val millis = rem % 1000
-        return String.format(java.util.Locale.US, "%02d:%02d:%02d,%03d", hours, mins, secs, millis)
-    }
-
-    fun setSubtitleContentForCurrentTrack(content: String) {
-        val trackId = currentTrackValue?.id ?: return
-        setSubtitleContentForTrack(trackId, content)
-    }
-
-    fun setSubtitleContentForTrack(targetTrackId: Long, content: String) {
-        val repo = repository ?: return
-        coroutineScope.launch(Dispatchers.IO) {
-            val current = currentTrackValue
-            if (current != null && (current.id == targetTrackId || current.parentTrackId == targetTrackId)) {
-                updateTrackState { t -> t.copy(subtitleContent = content) }
-                val updated = currentTrackValue ?: current.copy(subtitleContent = content)
-                loadSubtitlesForTrack(updated)
-                if (segmentSource == "SUBTITLES" || _isPracticeMode.value) {
-                    val ctx = appContext
-                    if (ctx != null) {
-                        reanalyzePracticeSegmentsInternal(updated, ctx, repo, silent = false)
-                    }
-                }
-            } else {
-                // Background update: persist to database so track has subtitles ready when played later
-                val targetTrack = repo.getTrackById(targetTrackId)
-                if (targetTrack != null) {
-                    val updated = targetTrack.copy(subtitleContent = content)
-                    repo.updateTrack(updated)
-                }
-            }
-        }
-    }
-
-    fun setSubtitleFileForCurrentTrack(filePath: String) {
-        val track = currentTrackValue ?: return
-        coroutineScope.launch(Dispatchers.IO) {
-            updateTrackState { t ->
-                if (t.id == track.id) t.copy(subtitlePath = filePath) else t
-            }
-            val updated = currentTrackValue ?: track.copy(subtitlePath = filePath)
-            loadSubtitlesForTrack(updated)
-            if (segmentSource == "SUBTITLES" || _isPracticeMode.value) {
-                val repo = repository
-                val ctx = appContext
-                if (repo != null && ctx != null) {
-                    reanalyzePracticeSegmentsInternal(updated, ctx, repo, silent = false)
-                }
-            }
-        }
-    }
-
-    fun clearSubtitlesForCurrentTrack() {
-        val track = currentTrackValue ?: return
-        coroutineScope.launch(Dispatchers.IO) {
-            updateTrackState { t ->
-                if (t.id == track.id) t.copy(subtitleContent = null, subtitlePath = null) else t
-            }
-            withContext(Dispatchers.Main) {
-                _subtitlesCues.value = emptyList()
-                _activeSubtitleCue.value = null
-            }
-        }
-    }
-
-    fun adjustSubtitleOffset(deltaMs: Long) {
-        val track = currentTrackValue ?: return
-        val newOffset = track.subtitleOffsetMs + deltaMs
-        subtitleOffsetMs.value = newOffset
-        coroutineScope.launch(Dispatchers.IO) {
-            updateTrackState { t ->
-                if (t.id == track.id) t.copy(subtitleOffsetMs = newOffset) else t
-            }
-            val updated = currentTrackValue ?: track.copy(subtitleOffsetMs = newOffset)
-            loadSubtitlesForTrack(updated)
-        }
-    }
-
-    fun resetSubtitleOffset() {
-        val track = currentTrackValue ?: return
-        subtitleOffsetMs.value = 0L
-        coroutineScope.launch(Dispatchers.IO) {
-            updateTrackState { t ->
-                if (t.id == track.id) t.copy(subtitleOffsetMs = 0L) else t
-            }
-            val updated = currentTrackValue ?: track.copy(subtitleOffsetMs = 0L)
-            loadSubtitlesForTrack(updated)
-        }
-    }
-
-    fun setSubtitleFontSize(size: Float) {
-        subtitleFontSize.value = size
-        val ctx = appContext ?: return
-        try {
-            val sharedPref = ctx.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-            sharedPref.edit().putFloat("subtitle_font_size", size).apply()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error saving subtitle font size: ${e.message}")
-        }
-    }
-
     // --- PRACTICE MODE (Silence Detection & Imitation Pauses) ---
-
-    fun hasAvailableSubtitles(track: AudioTrack): Boolean {
-        if (!track.subtitleContent.isNullOrBlank()) return true
-        if (!track.subtitlePath.isNullOrBlank()) {
-            val f = File(track.subtitlePath)
-            if (f.exists() && f.length() > 0) return true
-        }
-        val autoFile = SubtitleParser.findMatchingSubtitleFile(track.filePath)
-        if (autoFile != null && autoFile.length() > 0) return true
-        if (_subtitlesCues.value.isNotEmpty() && currentTrackValue?.id == track.id) return true
-        return false
-    }
-
-    fun getOrParseCuesForTrack(track: AudioTrack): List<SubtitleCue> {
-        if (!track.subtitleContent.isNullOrBlank()) {
-            val parsed = SubtitleParser.parseContent(track.subtitleContent, track.subtitleOffsetMs)
-            if (parsed.isNotEmpty()) return parsed
-        }
-        if (!track.subtitlePath.isNullOrBlank()) {
-            val file = File(track.subtitlePath)
-            if (file.exists() && file.canRead()) {
-                val parsed = SubtitleParser.parseFile(file, track.subtitleOffsetMs)
-                if (parsed.isNotEmpty()) return parsed
-            }
-        }
-        val autoFile = SubtitleParser.findMatchingSubtitleFile(track.filePath)
-        if (autoFile != null && autoFile.canRead()) {
-            val parsed = SubtitleParser.parseFile(autoFile, track.subtitleOffsetMs)
-            if (parsed.isNotEmpty()) return parsed
-        }
-        if (currentTrackValue?.id == track.id && _subtitlesCues.value.isNotEmpty()) {
-            return _subtitlesCues.value
-        }
-        return emptyList()
-    }
 
     data class PracticeTrackSourcesInfo(
         val hasManualCuts: Boolean,
@@ -2749,4 +1974,44 @@ object AudioPlayerManager {
 
     internal var practiceLastPlayedSegmentStartMs = 0L
     internal var practiceRepeatSegmentStartMs = 0L
+
+    // --- Delegated Subtitle Controller Operations ---
+    internal fun loadSubtitlesForTrack(track: AudioTrack) = SubtitleController.loadSubtitlesForTrack(track)
+    internal fun updateActiveSubtitleCue(positionMs: Long) = SubtitleController.updateActiveSubtitleCue(positionMs)
+    fun getCurrentSubtitlesRawText(): String = SubtitleController.getCurrentSubtitlesRawText()
+    fun setSubtitleContentForCurrentTrack(content: String) = SubtitleController.setSubtitleContentForCurrentTrack(content)
+    fun setSubtitleContentForTrack(targetTrackId: Long, content: String) = SubtitleController.setSubtitleContentForTrack(targetTrackId, content)
+    fun setSubtitleFileForCurrentTrack(filePath: String) = SubtitleController.setSubtitleFileForCurrentTrack(filePath)
+    fun clearSubtitlesForCurrentTrack() = SubtitleController.clearSubtitlesForCurrentTrack()
+    fun adjustSubtitleOffset(deltaMs: Long) = SubtitleController.adjustSubtitleOffset(deltaMs)
+    fun resetSubtitleOffset() = SubtitleController.resetSubtitleOffset()
+    fun setSubtitleFontSize(size: Float) = SubtitleController.setSubtitleFontSize(size)
+    fun hasAvailableSubtitles(track: AudioTrack): Boolean = SubtitleController.hasAvailableSubtitles(track)
+    fun getOrParseCuesForTrack(track: AudioTrack): List<SubtitleCue> = SubtitleController.getOrParseCuesForTrack(track)
+
+    // --- Delegated Notification & MediaSession Controller Operations ---
+    fun handleMediaKeyEvent(keyEvent: KeyEvent): Boolean = PlaybackNotificationController.handleMediaKeyEvent(keyEvent)
+    fun setHeadsetSettings(enabled: Boolean, action: String) = PlaybackNotificationController.setHeadsetSettings(enabled, action)
+    internal fun updateMediaSessionPlaybackState() = PlaybackNotificationController.updateMediaSessionPlaybackState()
+    internal fun updateMediaSessionMetadata(track: AudioTrack?) = PlaybackNotificationController.updateMediaSessionMetadata(track)
+    internal fun startPlaybackService() = PlaybackNotificationController.startPlaybackService()
+    internal fun stopPlaybackService() = PlaybackNotificationController.stopPlaybackService()
+    internal fun isDarkThemeActive(): Boolean = PlaybackNotificationController.isDarkThemeActive()
+    fun buildNotification(context: Context? = appContext): android.app.Notification? = PlaybackNotificationController.buildNotification(context)
+    internal fun showNotification() = PlaybackNotificationController.showNotification()
+    fun updateNotification() = PlaybackNotificationController.updateNotification()
+    internal fun cancelNotification() = PlaybackNotificationController.cancelNotification()
+    internal fun sendTaskCompletionNotification(task: Task) = PlaybackNotificationController.sendTaskCompletionNotification(task)
+
+    // --- Delegated Playback Queue Controller Operations ---
+    fun removeTracksFromQueue(indices: List<Int>) = PlaybackQueueController.removeTracksFromQueue(indices)
+    fun removeTracksByIds(trackIds: Set<Long>) = PlaybackQueueController.removeTracksByIds(trackIds)
+    fun clearQueue() = PlaybackQueueController.clearQueue()
+    fun playNextTrack() = PlaybackQueueController.playNextTrack()
+    fun playPreviousTrack() = PlaybackQueueController.playPreviousTrack()
+    fun addTrackToQueueNext(track: AudioTrack) = PlaybackQueueController.addTrackToQueueNext(track)
+    fun addTracksToQueueNext(tracks: List<AudioTrack>) = PlaybackQueueController.addTracksToQueueNext(tracks)
+    internal fun saveQueueToPreferences(queue: List<AudioTrack>) = PlaybackQueueController.saveQueueToPreferences(queue)
+    internal fun saveCurrentTrackToPreferences(trackId: Long?) = PlaybackQueueController.saveCurrentTrackToPreferences(trackId)
+    internal fun restoreQueueAndTrack() = PlaybackQueueController.restoreQueueAndTrack()
 }

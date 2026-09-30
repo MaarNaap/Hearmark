@@ -4,7 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.viewModelScope
 import com.example.data.AudioTrack
-import com.example.player.AudioPlayerManager
+import com.example.player.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -85,3 +85,64 @@ fun AppViewModel.resetTrackSegments(track: AudioTrack) {
         }
     }
 }
+
+fun AppViewModel.selectActiveApiKey(keyId: String) {
+    val target = savedApiKeys.firstOrNull { it.id == keyId }
+    if (target != null) {
+        persistApiKeys(savedApiKeys, target.id)
+    }
+}
+
+fun AppViewModel.addSavedApiKey(name: String, key: String, setAsActive: Boolean = true): AppViewModel.SavedApiKey {
+    val trimmedKey = key.trim()
+    val trimmedName = name.trim().ifBlank { "Key ${savedApiKeys.size + 1}" }
+    val newKey = AppViewModel.SavedApiKey(name = trimmedName, key = trimmedKey)
+    val updated = savedApiKeys + newKey
+    val newActiveId = if (setAsActive || activeApiKeyId.isBlank() || savedApiKeys.none { it.id == activeApiKeyId }) {
+        newKey.id
+    } else {
+        activeApiKeyId
+    }
+    persistApiKeys(updated, newActiveId)
+    return newKey
+}
+
+fun AppViewModel.updateSavedApiKey(id: String, newName: String, newKey: String) {
+    val trimmedKey = newKey.trim()
+    val trimmedName = newName.trim().ifBlank { "Key" }
+    val updated = savedApiKeys.map {
+        if (it.id == id) it.copy(name = trimmedName, key = trimmedKey) else it
+    }
+    persistApiKeys(updated, activeApiKeyId)
+}
+
+fun AppViewModel.deleteSavedApiKey(id: String) {
+    val updated = savedApiKeys.filterNot { it.id == id }
+    val newActiveId = if (activeApiKeyId == id) {
+        updated.firstOrNull()?.id ?: ""
+    } else {
+        activeApiKeyId
+    }
+    persistApiKeys(updated, newActiveId)
+}
+
+fun AppViewModel.updateCustomGeminiApiKey(key: String) {
+    val trimmed = key.trim()
+    if (trimmed.isBlank()) {
+        if (activeApiKeyId.isNotBlank()) {
+            deleteSavedApiKey(activeApiKeyId)
+        } else {
+            customGeminiApiKey = ""
+            val sharedPref = getApplication<Application>().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            sharedPref.edit().putString("custom_gemini_api_key", "").apply()
+        }
+    } else {
+        val existing = savedApiKeys.firstOrNull { it.id == activeApiKeyId }
+        if (existing != null) {
+            updateSavedApiKey(existing.id, existing.name, trimmed)
+        } else {
+            addSavedApiKey("Key 1", trimmed, setAsActive = true)
+        }
+    }
+}
+
