@@ -114,13 +114,13 @@ object SceneJsonParser {
 
     fun parse(jsonString: String): Result<List<ParsedSceneItem>> {
         return try {
-            val trimmed = jsonString.trim()
-            val jsonClean = if (trimmed.startsWith("```json")) {
-                trimmed.removePrefix("```json").substringBeforeLast("```").trim()
-            } else if (trimmed.startsWith("```")) {
-                trimmed.removePrefix("```").substringBeforeLast("```").trim()
-            } else {
-                trimmed
+            val cleanBOM = jsonString.trim().removePrefix("\uFEFF")
+            val jsonClean = when {
+                cleanBOM.startsWith("```json", ignoreCase = true) ->
+                    cleanBOM.substringAfter("\n").substringBeforeLast("```").trim()
+                cleanBOM.startsWith("```") ->
+                    cleanBOM.substringAfter("\n").substringBeforeLast("```").trim()
+                else -> cleanBOM
             }
 
             val tokener = JSONTokener(jsonClean)
@@ -128,8 +128,10 @@ object SceneJsonParser {
             val jsonArray = when (root) {
                 is JSONArray -> root
                 is JSONObject -> {
-                    val arrayKey = listOf("scenes", "virtual_scenes", "virtualScenes", "items", "chapters", "segments", "data")
-                        .firstOrNull { root.has(it) && root.optJSONArray(it) != null }
+                    val arrayKey = listOf(
+                        "scenes", "virtual_scenes", "virtualScenes", "items",
+                        "chapters", "segments", "data", "track_scenes", "trackScenes", "sceneList"
+                    ).firstOrNull { root.has(it) && root.optJSONArray(it) != null }
                     if (arrayKey != null) {
                         root.getJSONArray(arrayKey)
                     } else {
@@ -257,12 +259,24 @@ fun AppViewModel.importScenesFromJson(
             val existingScenes = repository.getScenesForParentTrack(parentTrack.id)
             val existingSceneIds = existingScenes.map { it.id }.toSet()
 
-            // If audio player is currently playing one of the scenes being replaced, safely switch back to parent track
-            val currentPlaying = AudioPlayerManager.currentTrack.value
-            if (currentPlaying != null && (currentPlaying.id in existingSceneIds || (mode == SceneImportMode.REPLACE && currentPlaying.parentTrackId == parentTrack.id))) {
-                withContext(Dispatchers.Main) {
-                    AudioPlayerManager.pause()
-                    AudioPlayerManager.playTrack(parentTrack)
+            // If audio player is currently playing one of the scenes being replaced, safely stop or switch
+            withContext(Dispatchers.Main) {
+                try {
+                    val currentPlaying = AudioPlayerManager.currentTrack.value
+                    if (currentPlaying != null && (currentPlaying.id in existingSceneIds || (mode == SceneImportMode.REPLACE && currentPlaying.parentTrackId == parentTrack.id))) {
+                        val wasPlaying = AudioPlayerManager.isPlaying.value
+                        AudioPlayerManager.pause()
+                        if (wasPlaying) {
+                            AudioPlayerManager.playTrack(parentTrack)
+                        } else {
+                            AudioPlayerManager.stop()
+                        }
+                    }
+                    if (existingSceneIds.isNotEmpty()) {
+                        AudioPlayerManager.removeTracksByIds(existingSceneIds)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("SceneJsonImporter", "Error handling player during scene replacement: ${e.message}")
                 }
             }
 
@@ -271,11 +285,22 @@ fun AppViewModel.importScenesFromJson(
 
             when (mode) {
                 SceneImportMode.REPLACE -> {
-                    targetFolderId = existingScenes.firstOrNull()?.parentFolderId
+                    val candidateFolderId = existingScenes.firstOrNull()?.parentFolderId
+                    // Validate folder still exists in repository
+                    targetFolderId = if (candidateFolderId != null && repository.getFolderById(candidateFolderId) != null) {
+                        candidateFolderId
+                    } else {
+                        null
+                    }
                     startingSceneNum = 1
                 }
                 SceneImportMode.APPEND -> {
-                    targetFolderId = existingScenes.firstOrNull()?.parentFolderId
+                    val candidateFolderId = existingScenes.firstOrNull()?.parentFolderId
+                    targetFolderId = if (candidateFolderId != null && repository.getFolderById(candidateFolderId) != null) {
+                        candidateFolderId
+                    } else {
+                        null
+                    }
                     startingSceneNum = (existingScenes.maxOfOrNull { it.sceneNumber ?: 0 } ?: 0) + 1
                 }
                 SceneImportMode.CREATE_NEW -> {

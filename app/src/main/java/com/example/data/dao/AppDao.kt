@@ -85,12 +85,20 @@ interface AppDao {
     @Query("DELETE FROM audio_tracks WHERE parentTrackId = :parentTrackId")
     suspend fun deleteScenesForParentTrack(parentTrackId: Long)
 
+    @Query("DELETE FROM playlist_tracks WHERE trackId = :trackId")
+    suspend fun deletePlaylistTracksByTrackId(trackId: Long)
+
+    @Query("DELETE FROM task_track_progress WHERE trackId = :trackId")
+    suspend fun deleteTaskTrackProgressByTrackId(trackId: Long)
+
     @Transaction
     suspend fun replaceScenesForParentTrack(parentTrackId: Long, newScenes: List<AudioTrack>): List<Long> {
         val oldScenes = getScenesForParentTrack(parentTrackId)
         for (old in oldScenes) {
             deleteNotesForTrack(old.id)
             deleteQuizQuestionsForTrack(old.id)
+            deletePlaylistTracksByTrackId(old.id)
+            deleteTaskTrackProgressByTrackId(old.id)
         }
         deleteScenesForParentTrack(parentTrackId)
         return if (newScenes.isNotEmpty()) {

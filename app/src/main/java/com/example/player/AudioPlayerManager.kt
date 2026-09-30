@@ -1213,6 +1213,14 @@ object AudioPlayerManager {
         currentQueue = newList
     }
 
+    fun removeTracksByIds(trackIds: Set<Long>) {
+        if (trackIds.isEmpty()) return
+        val newList = currentQueue.filter { it.id !in trackIds }
+        if (newList.size != currentQueue.size) {
+            currentQueue = newList
+        }
+    }
+
     fun clearQueue() {
         val current = currentTrackValue
         currentQueue = if (current != null) listOf(current) else emptyList()

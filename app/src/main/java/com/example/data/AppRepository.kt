@@ -76,6 +76,8 @@ class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
         }
         dao.deleteNotesForTrack(track.id)
         dao.deleteQuizQuestionsForTrack(track.id)
+        dao.deletePlaylistTracksByTrackId(track.id)
+        dao.deleteTaskTrackProgressByTrackId(track.id)
         dao.deleteTrack(track)
 
         if (!track.isVirtualScene) {
