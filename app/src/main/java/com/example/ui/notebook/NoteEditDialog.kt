@@ -1,17 +1,15 @@
 package com.example.ui
 
 import android.widget.Toast
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -225,70 +222,53 @@ fun AddEditNoteModal(
         }
     }
 
-    val maxDuration = maxBound
-
     val canAddPrevious = remember(trackCues, currentStartCueIndex, startMs) {
-        if (trackCues.isEmpty()) false
-        else {
-            val sIdx = currentStartCueIndex ?: trackCues.indexOfFirst { it.startMs >= startMs }.takeIf { it >= 0 } ?: 0
-            sIdx > 0
-        }
+        canAddPreviousCue(trackCues, currentStartCueIndex, startMs)
     }
 
     val canAddNext = remember(trackCues, currentEndCueIndex, endMs) {
-        if (trackCues.isEmpty()) false
-        else {
-            val eIdx = currentEndCueIndex ?: trackCues.indexOfLast { it.startMs <= endMs }.takeIf { it >= 0 } ?: 0
-            eIdx < trackCues.size - 1
-        }
+        canAddNextCue(trackCues, currentEndCueIndex, endMs)
     }
 
     val handleAddPreviousCue: () -> Unit = {
-        if (trackCues.isNotEmpty()) {
-            val sIdx = currentStartCueIndex ?: trackCues.indexOfFirst { it.startMs >= startMs }.takeIf { it >= 0 } ?: 0
-            val targetIdx = sIdx - 1
-            if (targetIdx in trackCues.indices) {
-                val prevCue = trackCues[targetIdx]
-                currentStartCueIndex = targetIdx
-                if (currentEndCueIndex == null) {
-                    currentEndCueIndex = sIdx
-                }
-                // Update start timestamp to encompass the earlier segment
-                startMs = prevCue.startMs.coerceAtLeast(minBound)
-                if (endMs < startMs + 500L) {
-                    endMs = (startMs + 1000L).coerceAtMost(maxBound)
-                }
-                // Prepend previous cue text
-                val prevText = prevCue.text.trim()
-                val currText = noteText.trim()
-                noteText = if (currText.isEmpty()) prevText else "$prevText $currText"
-                Toast.makeText(context, Loc.getText("added_previous_cue"), Toast.LENGTH_SHORT).show()
-            }
+        val merged = mergePreviousCue(
+            trackCues = trackCues,
+            currentStartCueIndex = currentStartCueIndex,
+            currentEndCueIndex = currentEndCueIndex,
+            startMs = startMs,
+            endMs = endMs,
+            noteText = noteText,
+            minBound = minBound,
+            maxBound = maxBound
+        )
+        if (merged != null) {
+            currentStartCueIndex = merged.newStartCueIndex
+            currentEndCueIndex = merged.newEndCueIndex
+            startMs = merged.newStartMs
+            endMs = merged.newEndMs
+            noteText = merged.newNoteText
+            Toast.makeText(context, Loc.getText("added_previous_cue"), Toast.LENGTH_SHORT).show()
         }
     }
 
     val handleAddNextCue: () -> Unit = {
-        if (trackCues.isNotEmpty()) {
-            val eIdx = currentEndCueIndex ?: trackCues.indexOfLast { it.startMs <= endMs || it.endMs <= endMs }.takeIf { it >= 0 } ?: (currentStartCueIndex ?: 0)
-            val targetIdx = eIdx + 1
-            if (targetIdx in trackCues.indices) {
-                val nextCue = trackCues[targetIdx]
-                currentEndCueIndex = targetIdx
-                if (currentStartCueIndex == null) {
-                    currentStartCueIndex = eIdx
-                }
-                // Update end timestamp to encompass the later segment
-                val newEnd = if (nextCue.endMs > nextCue.startMs) nextCue.endMs else nextCue.startMs + 4000L
-                endMs = newEnd.coerceAtMost(maxBound)
-                if (startMs > endMs) {
-                    startMs = nextCue.startMs.coerceAtLeast(minBound)
-                }
-                // Append next cue text
-                val nextText = nextCue.text.trim()
-                val currText = noteText.trim()
-                noteText = if (currText.isEmpty()) nextText else "$currText $nextText"
-                Toast.makeText(context, Loc.getText("added_next_cue"), Toast.LENGTH_SHORT).show()
-            }
+        val merged = mergeNextCue(
+            trackCues = trackCues,
+            currentStartCueIndex = currentStartCueIndex,
+            currentEndCueIndex = currentEndCueIndex,
+            startMs = startMs,
+            endMs = endMs,
+            noteText = noteText,
+            minBound = minBound,
+            maxBound = maxBound
+        )
+        if (merged != null) {
+            currentStartCueIndex = merged.newStartCueIndex
+            currentEndCueIndex = merged.newEndCueIndex
+            startMs = merged.newStartMs
+            endMs = merged.newEndMs
+            noteText = merged.newNoteText
+            Toast.makeText(context, Loc.getText("added_next_cue"), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -387,7 +367,6 @@ fun AddEditNoteModal(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        // Previous Cue Button
                         OutlinedButton(
                             onClick = handleAddPreviousCue,
                             enabled = canAddPrevious,
@@ -413,7 +392,6 @@ fun AddEditNoteModal(
                             )
                         }
 
-                        // Next Cue Button
                         OutlinedButton(
                             onClick = handleAddNextCue,
                             enabled = canAddNext,
@@ -444,7 +422,6 @@ fun AddEditNoteModal(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Note / Quote Text Field
             OutlinedTextField(
                 value = noteText,
                 onValueChange = { noteText = it },
@@ -457,466 +434,60 @@ fun AddEditNoteModal(
                 shape = RoundedCornerShape(12.dp)
             )
 
-            // Dedicated Subtitle Cue Selector (when a note covers multiple cues)
-            if (spannedCues.size > 1) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Bookmark,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = Loc.getText("dedicated_cue"),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = Loc.getText("dedicated_cue_desc"),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(spannedCues) { cue ->
-                            val isSelected = originStartMs != null && (
-                                originStartMs == cue.startMs || (
-                                    originStartMs!! in cue.startMs..(if (cue.endMs > cue.startMs) cue.endMs else cue.startMs + 4000L)
-                                )
-                            )
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { originStartMs = cue.startMs },
-                                label = {
-                                    Text(
-                                        text = "${cue.text.take(22)} (${formatDuration(cue.startMs)})",
-                                        fontSize = 11.sp,
-                                        maxLines = 1
-                                    )
-                                },
-                                leadingIcon = if (isSelected) {
-                                    {
-                                        Icon(
-                                            imageVector = Icons.Filled.Check,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                } else null
-                            )
-                        }
-                    }
-                }
-            }
+            NoteCueSelector(
+                spannedCues = spannedCues,
+                originStartMs = originStartMs,
+                onSelectCueStart = { originStartMs = it }
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Explanation / Comment Field
-            Text(
-                text = Loc.getText("note_comment"),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Explanation / Comment Field (Prompt input or AI output)
-            OutlinedTextField(
-                value = commentText,
-                onValueChange = { commentText = it },
-                label = { Text(Loc.getText("note_comment")) },
-                placeholder = { Text(Loc.getText("ai_note_comment_placeholder"), fontSize = 12.5.sp) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("note_comment_input"),
-                minLines = 2,
-                maxLines = 5,
-                shape = RoundedCornerShape(12.dp),
-                trailingIcon = {
-                    IconButton(
-                        onClick = { triggerAiExplanationGeneration() },
-                        enabled = !isGeneratingAiExplanation,
-                        modifier = Modifier.testTag("ai_generate_note_button")
-                    ) {
-                        if (isGeneratingAiExplanation) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Filled.AutoAwesome,
-                                contentDescription = Loc.getText("ai_generate_note_button"),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
+            NoteExplanationSection(
+                commentText = commentText,
+                isGeneratingAiExplanation = isGeneratingAiExplanation,
+                onCommentTextChange = { commentText = it },
+                onTriggerAiGeneration = { triggerAiExplanationGeneration() }
             )
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Audio Segment Time Adjuster (if track is selected)
             if (selectedTrack != null) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        // Header: Track name + Play / Unlink buttons
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = getTrackFileIcon(selectedTrack),
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = selectedTrack.fileName,
-                                    fontSize = 12.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                val clipDurationSec = ((endMs - startMs) / 1000).coerceAtLeast(1)
-                                FilledTonalButton(
-                                    onClick = {
-                                        if (isCurrentSnippetPlaying) {
-                                            NoteAudioPlayer.stop()
-                                        } else {
-                                            NoteAudioPlayer.playSnippet(context, selectedTrack.filePath, -1L, startMs, endMs)
-                                        }
-                                    },
-                                    colors = if (isCurrentSnippetPlaying) {
-                                        ButtonDefaults.filledTonalButtonColors(
-                                            containerColor = MaterialTheme.colorScheme.primary,
-                                            contentColor = MaterialTheme.colorScheme.onPrimary
-                                        )
-                                    } else {
-                                        ButtonDefaults.filledTonalButtonColors()
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                    shape = RoundedCornerShape(6.dp),
-                                    modifier = Modifier.height(28.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (isCurrentSnippetPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                        contentDescription = if (isCurrentSnippetPlaying) "Pause" else "Play",
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text("${clipDurationSec}s", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-
-                                TextButton(
-                                    onClick = { selectedTrackId = null },
-                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                                    modifier = Modifier.height(28.dp)
-                                ) {
-                                    Text(Loc.getText("unlink_audio"), fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
-                                }
-                            }
-                        }
-
-                        HorizontalDivider(
-                            modifier = Modifier.fillMaxWidth(),
-                            thickness = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                        )
-
-                        // Start Time Section (Single Row with -1s, Timestamp, +1s)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.AccessTime,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Text(
-                                    text = Loc.getText("start_time"),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                FilledTonalButton(
-                                    onClick = {
-                                        startMs = (startMs - 1000L).coerceAtLeast(minBound)
-                                        if (endMs < startMs + 500L) endMs = (startMs + 1000L).coerceAtMost(maxBound)
-                                        if (isCurrentSnippetPlaying) {
-                                            NoteAudioPlayer.playSnippet(context, selectedTrack.filePath, -1L, startMs, endMs)
-                                        }
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                    shape = RoundedCornerShape(6.dp),
-                                    modifier = Modifier.height(28.dp)
-                                ) {
-                                    Text("-1s", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                }
-
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
-                                ) {
-                                    Text(
-                                        text = formatDuration(startMs),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
-                                }
-
-                                FilledTonalButton(
-                                    onClick = {
-                                        startMs = (startMs + 1000L).coerceAtMost(maxBound)
-                                        if (endMs < startMs + 500L) endMs = (startMs + 1000L).coerceAtMost(maxBound)
-                                        if (isCurrentSnippetPlaying) {
-                                            NoteAudioPlayer.playSnippet(context, selectedTrack.filePath, -1L, startMs, endMs)
-                                        }
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                    shape = RoundedCornerShape(6.dp),
-                                    modifier = Modifier.height(28.dp)
-                                ) {
-                                    Text("+1s", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-                        }
-
-                        // End Time Section (Single Row with -1s, Timestamp, +1s)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.AccessTimeFilled,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Text(
-                                    text = Loc.getText("end_time"),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                FilledTonalButton(
-                                    onClick = {
-                                        endMs = (endMs - 1000L).coerceAtLeast(startMs + 500L)
-                                        if (isCurrentSnippetPlaying) {
-                                            NoteAudioPlayer.playSnippet(context, selectedTrack.filePath, -1L, startMs, endMs)
-                                        }
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                    shape = RoundedCornerShape(6.dp),
-                                    modifier = Modifier.height(28.dp)
-                                ) {
-                                    Text("-1s", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                }
-
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
-                                ) {
-                                    Text(
-                                        text = formatDuration(endMs),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
-                                }
-
-                                FilledTonalButton(
-                                    onClick = {
-                                        endMs = (endMs + 1000L).coerceAtMost(maxBound)
-                                        if (isCurrentSnippetPlaying) {
-                                            NoteAudioPlayer.playSnippet(context, selectedTrack.filePath, -1L, startMs, endMs)
-                                        }
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                    shape = RoundedCornerShape(6.dp),
-                                    modifier = Modifier.height(28.dp)
-                                ) {
-                                    Text("+1s", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-                        }
-                    }
-                }
+                NoteTimeAdjuster(
+                    selectedTrack = selectedTrack,
+                    startMs = startMs,
+                    endMs = endMs,
+                    minBound = minBound,
+                    maxBound = maxBound,
+                    isCurrentSnippetPlaying = isCurrentSnippetPlaying,
+                    context = context,
+                    onUpdateRange = { newStart, newEnd ->
+                        startMs = newStart
+                        endMs = newEnd
+                    },
+                    onUnlinkTrack = { selectedTrackId = null }
+                )
             } else if (allTracks.isNotEmpty()) {
-                // Option to link audio track
-                val currentPlayingTrack = AudioPlayerManager.currentTrack.collectAsStateWithLifecycle().value
-                if (currentPlayingTrack != null) {
-                    FilledTonalButton(
-                        onClick = {
-                            selectedTrackId = currentPlayingTrack.id
-                            val currentPos = if (currentPlayingTrack.isVirtualScene) {
-                                currentPlayingTrack.startOffsetMs + AudioPlayerManager.currentPosition.value
-                            } else {
-                                AudioPlayerManager.currentPosition.value
-                            }
-                            val maxLimit = if (currentPlayingTrack.isVirtualScene) {
-                                currentPlayingTrack.endOffsetMs ?: (currentPlayingTrack.startOffsetMs + currentPlayingTrack.duration)
-                            } else {
-                                currentPlayingTrack.duration
-                            }
-                            startMs = currentPos
-                            endMs = (startMs + 5000L).coerceAtMost(maxLimit)
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = getTrackFileIcon(currentPlayingTrack),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(Loc.getText("link_current_audio"), fontSize = 12.sp)
+                NoteLinkTrackRow(
+                    onLinkTrack = { linkedId, newStart, newEnd ->
+                        selectedTrackId = linkedId
+                        startMs = newStart
+                        endMs = newEnd
                     }
-                }
+                )
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Tags Section
-            Text(
-                text = Loc.getText("tags"),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold
+            NoteTagsSection(
+                availableTags = availableTags,
+                selectedTags = selectedTags,
+                newTagInput = newTagInput,
+                isNewTagFieldVisible = isNewTagFieldVisible,
+                isFavoriteTag = isFavoriteTag,
+                onSelectedTagsChange = { selectedTags = it },
+                onNewTagInputChange = { newTagInput = it },
+                onNewTagFieldVisibleChange = { isNewTagFieldVisible = it }
             )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                // Add New Tag Button
-                item {
-                    AssistChip(
-                        onClick = { isNewTagFieldVisible = !isNewTagFieldVisible },
-                        label = { Text(Loc.getText("add_new_tag"), fontSize = 11.sp) },
-                        leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(14.dp)) }
-                    )
-                }
-
-                // Existing Tags suggestions (unique & active)
-                availableTags.forEach { tagStr ->
-                    item(key = tagStr) {
-                        val isSelected = selectedTags.any { it.equals(tagStr, ignoreCase = true) }
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = {
-                                selectedTags = if (isSelected) {
-                                    selectedTags.filterNot { it.equals(tagStr, ignoreCase = true) }.toSet()
-                                } else {
-                                    selectedTags + tagStr
-                                }
-                            },
-                            label = { Text("#$tagStr", fontSize = 11.sp) }
-                        )
-                    }
-                }
-            }
-
-            if (isNewTagFieldVisible) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = newTagInput,
-                        onValueChange = { newTagInput = it },
-                        placeholder = { Text(Loc.getText("new_tag_name"), fontSize = 12.sp) },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true,
-                        shape = RoundedCornerShape(10.dp)
-                    )
-
-                    Button(
-                        onClick = {
-                            val trimmed = newTagInput.trim()
-                            if (trimmed.isNotEmpty()) {
-                                if (!isFavoriteTag(trimmed) && selectedTags.none { it.equals(trimmed, ignoreCase = true) }) {
-                                    selectedTags = selectedTags + trimmed
-                                }
-                                newTagInput = ""
-                                isNewTagFieldVisible = false
-                            }
-                        },
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(Loc.getText("add"))
-                    }
-                }
-            }
 
             Spacer(modifier = Modifier.height(16.dp))
 

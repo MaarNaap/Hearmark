@@ -1,109 +1,34 @@
 package com.example.ui
 
-import android.app.TimePickerDialog
-import android.content.Context
-import android.net.Uri
-import android.widget.Toast
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.*
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Note
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
-import androidx.compose.ui.text.style.LineHeightStyle
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
-import kotlin.math.roundToInt
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.BackHandler
-import kotlinx.coroutines.delay
-import androidx.activity.result.contract.ActivityResultContracts
-import android.app.Activity
-import android.app.PictureInPictureParams
-import android.os.Build
-import android.util.Rational
-import android.content.pm.ActivityInfo
-import android.graphics.SurfaceTexture
-import android.view.Surface
-import android.view.WindowManager
-import android.view.SurfaceHolder
-import android.view.SurfaceView
-import android.view.TextureView
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.graphics.RectangleShape
-import com.example.data.*
-import com.example.player.*
-import com.example.ui.theme.*
-import com.example.R
-import com.example.util.AudioMetadataExtractor
-import com.example.util.TrackMetadata
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.res.painterResource
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.*
+import com.example.data.Note
+import com.example.player.SubtitleCue
+import com.example.player.SubtitleParser
 import kotlinx.coroutines.launch
 
 @Composable
@@ -254,476 +179,59 @@ fun SubtitlesPageContent(
             .fillMaxSize()
             .padding(horizontal = 20.dp, vertical = 4.dp)
     ) {
-        // Top Action Header with Expandable Search and Three-Dotted Menu
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AnimatedVisibility(
-                visible = isSearchExpanded,
-                enter = fadeIn() + expandHorizontally(),
-                exit = fadeOut() + shrinkHorizontally(),
-                modifier = Modifier.weight(1f)
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = if (isDarkBg) Color(0xFF1E2430) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                    border = BorderStroke(1.dp, if (isDarkBg) Color(0xFF334155) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(42.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Search,
-                            contentDescription = null,
-                            tint = if (isDarkBg) Color(0xFF93C5FD) else MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        androidx.compose.foundation.text.BasicTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            singleLine = true,
-                            textStyle = androidx.compose.ui.text.TextStyle(
-                                color = if (isDarkBg) Color.White else MaterialTheme.colorScheme.onSurface,
-                                fontSize = 13.sp
-                            ),
-                            cursorBrush = SolidColor(if (isDarkBg) Color.White else MaterialTheme.colorScheme.primary),
-                            modifier = Modifier
-                                .weight(1f)
-                                .focusRequester(focusRequester),
-                            decorationBox = { innerTextField ->
-                                if (searchQuery.isEmpty()) {
-                                    Text(
-                                        text = Loc.getText("search_subtitles_hint"),
-                                        color = if (isDarkBg) Color(0xFF94A3B8) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                        fontSize = 13.sp
-                                    )
-                                }
-                                innerTextField()
-                            }
-                        )
-
-                        if (searchQuery.isNotBlank()) {
-                            if (matchingCueIndices.isNotEmpty()) {
-                                Text(
-                                    text = "${currentMatchIndex + 1}/${matchingCueIndices.size}",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (isDarkBg) Color(0xFF93C5FD) else MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 4.dp)
-                                )
-                                IconButton(
-                                    onClick = {
-                                        if (matchingCueIndices.isNotEmpty()) {
-                                            val prev = if (currentMatchIndex <= 0) matchingCueIndices.size - 1 else currentMatchIndex - 1
-                                            currentMatchIndex = prev
-                                            coroutineScope.launch {
-                                                listState.animateScrollToItem((matchingCueIndices[prev] - 1).coerceAtLeast(0))
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.KeyboardArrowUp,
-                                        contentDescription = "Previous Match",
-                                        modifier = Modifier.size(18.dp),
-                                        tint = if (isDarkBg) Color.White else MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                IconButton(
-                                    onClick = {
-                                        if (matchingCueIndices.isNotEmpty()) {
-                                            val next = (currentMatchIndex + 1) % matchingCueIndices.size
-                                            currentMatchIndex = next
-                                            coroutineScope.launch {
-                                                listState.animateScrollToItem((matchingCueIndices[next] - 1).coerceAtLeast(0))
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.KeyboardArrowDown,
-                                        contentDescription = "Next Match",
-                                        modifier = Modifier.size(18.dp),
-                                        tint = if (isDarkBg) Color.White else MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            } else {
-                                Text(
-                                    text = Loc.getText("no_matches_found"),
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.padding(horizontal = 4.dp)
-                                )
-                            }
-                        }
-
-                        IconButton(
-                            onClick = {
-                                if (searchQuery.isNotEmpty()) {
-                                    searchQuery = ""
-                                } else {
-                                    isSearchExpanded = false
-                                }
-                            },
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = "Close Search",
-                                modifier = Modifier.size(18.dp),
-                                tint = if (isDarkBg) Color(0xFF94A3B8) else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+        SubtitleViewerTopHeader(
+            hasCues = cues.isNotEmpty(),
+            hasTimings = hasTimings,
+            isDarkBg = isDarkBg,
+            isSearchExpanded = isSearchExpanded,
+            searchQuery = searchQuery,
+            matchingCueCount = matchingCueIndices.size,
+            currentMatchIndex = currentMatchIndex,
+            showMenu = showMenu,
+            showTimestamps = showTimestamps,
+            fontSize = fontSize,
+            offsetMs = offsetMs,
+            focusRequester = focusRequester,
+            onSearchExpandedChange = { isSearchExpanded = it },
+            onSearchQueryChange = { searchQuery = it },
+            onPreviousMatch = {
+                if (matchingCueIndices.isNotEmpty()) {
+                    val prev = if (currentMatchIndex <= 0) matchingCueIndices.size - 1 else currentMatchIndex - 1
+                    currentMatchIndex = prev
+                    coroutineScope.launch {
+                        listState.animateScrollToItem((matchingCueIndices[prev] - 1).coerceAtLeast(0))
                     }
                 }
-            }
-
-            if (!isSearchExpanded) {
-                Spacer(modifier = Modifier.weight(1f))
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                if (!isSearchExpanded) {
-                    IconButton(
-                        onClick = { isSearchExpanded = true },
-                        modifier = Modifier.size(36.dp),
-                        enabled = cues.isNotEmpty()
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Search,
-                            contentDescription = "Search Subtitles",
-                            tint = if (isDarkBg) {
-                                if (cues.isNotEmpty()) Color(0xFFE2E8F0) else Color(0xFF64748B)
-                            } else {
-                                if (cues.isNotEmpty()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                            }
-                        )
+            },
+            onNextMatch = {
+                if (matchingCueIndices.isNotEmpty()) {
+                    val next = (currentMatchIndex + 1) % matchingCueIndices.size
+                    currentMatchIndex = next
+                    coroutineScope.launch {
+                        listState.animateScrollToItem((matchingCueIndices[next] - 1).coerceAtLeast(0))
                     }
                 }
-
-                Box {
-                    IconButton(
-                        onClick = { showMenu = true },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.MoreVert,
-                            contentDescription = "Subtitle Controls",
-                            tint = if (isDarkBg) Color(0xFFE2E8F0) else MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false },
-                        modifier = Modifier.widthIn(min = 160.dp)
-                    ) {
-                        // 0. Tap to Sync (المزامنة الحية)
-                        DropdownMenuItem(
-                            text = { Text(Loc.getText("tap_to_sync"), fontSize = 13.sp, fontWeight = FontWeight.SemiBold) },
-                            onClick = {
-                                showMenu = false
-                                onTapToSyncClick()
-                            }
-                        )
-
-                        // 0.5 Toggle Timestamps Visibility (إظهار / إخفاء التوقيت)
-                        if (hasTimings) {
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        if (showTimestamps) Loc.getText("hide_timestamps") else Loc.getText("show_timestamps"),
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                },
-                                onClick = {
-                                    showMenu = false
-                                    onToggleTimestamps()
-                                }
-                            )
-                        }
-
-                        // 1. Copy All Subtitles / Text
-                        DropdownMenuItem(
-                            text = { Text(Loc.getText("copy_full_subtitles"), fontSize = 13.sp) },
-                            enabled = cues.isNotEmpty(),
-                            onClick = {
-                                showMenu = false
-                                onCopyAllSubtitlesClick()
-                            }
-                        )
-
-                        // 2. Edit Subtitles / Text
-                        DropdownMenuItem(
-                            text = { Text(Loc.getText("edit_subtitles"), fontSize = 13.sp) },
-                            enabled = cues.isNotEmpty(),
-                            onClick = {
-                                showMenu = false
-                                onEditSubtitlesClick()
-                            }
-                        )
-
-                        // 3. Import Subtitles
-                        DropdownMenuItem(
-                            text = { Text(Loc.getText("load_subtitles"), fontSize = 13.sp) },
-                            onClick = {
-                                showMenu = false
-                                onImportSrtClick()
-                            }
-                        )
-
-                        // 4. Paste Subtitles / Lyrics
-                        DropdownMenuItem(
-                            text = { Text(Loc.getText("paste_subtitles"), fontSize = 13.sp) },
-                            onClick = {
-                                showMenu = false
-                                onPasteLyricsClick()
-                            }
-                        )
-
-                        // 5. Delete Subtitles
-                        DropdownMenuItem(
-                            text = { Text(Loc.getText("clear_subtitles"), fontSize = 13.sp, color = MaterialTheme.colorScheme.error) },
-                            enabled = cues.isNotEmpty(),
-                            onClick = {
-                                showMenu = false
-                                onDeleteSubtitlesClick()
-                            }
-                        )
-
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-
-                        // 6. Font Size Controls
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = "${Loc.getText("subtitles_size")} (${fontSize.toInt()})",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                OutlinedButton(
-                                    onClick = { onFontSizeChange((fontSize - 2f).coerceAtLeast(10f)) },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(32.dp),
-                                    contentPadding = PaddingValues(0.dp),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text("A-", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                                OutlinedButton(
-                                    onClick = { onFontSizeChange((fontSize + 2f).coerceAtMost(32f)) },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(32.dp),
-                                    contentPadding = PaddingValues(0.dp),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text("A+", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-
-                        if (hasTimings) {
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-
-                            // 7. Sync Delay Controls (Open-ended adjustment with reset)
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 4.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = Loc.getText("subtitles_offset"),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    val offsetSec = offsetMs / 1000.0
-                                    val formattedOffset = if (offsetMs == 0L) "0.0s" else String.format(Locale.US, "%+.1fs", offsetSec)
-                                    Surface(
-                                        color = if (offsetMs != 0L) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                        shape = RoundedCornerShape(4.dp)
-                                    ) {
-                                        Text(
-                                            text = formattedOffset,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (offsetMs != 0L) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                // Fast Adjust (+/- 0.5s)
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    OutlinedButton(
-                                        onClick = { onAdjustOffset(-500L) },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(32.dp),
-                                        contentPadding = PaddingValues(0.dp),
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text("-0.5s", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                    }
-                                    OutlinedButton(
-                                        onClick = { onAdjustOffset(500L) },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(32.dp),
-                                        contentPadding = PaddingValues(0.dp),
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text("+0.5s", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                // Fine Adjust (+/- 0.1s)
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    OutlinedButton(
-                                        onClick = { onAdjustOffset(-100L) },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(28.dp),
-                                        contentPadding = PaddingValues(0.dp),
-                                        shape = RoundedCornerShape(6.dp)
-                                    ) {
-                                        Text("-0.1s", fontSize = 10.sp)
-                                    }
-                                    OutlinedButton(
-                                        onClick = { onAdjustOffset(100L) },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(28.dp),
-                                        contentPadding = PaddingValues(0.dp),
-                                        shape = RoundedCornerShape(6.dp)
-                                    ) {
-                                        Text("+0.1s", fontSize = 10.sp)
-                                    }
-                                }
-
-                                if (offsetMs != 0L) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    FilledTonalButton(
-                                        onClick = { onResetOffset() },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(30.dp),
-                                        contentPadding = PaddingValues(0.dp),
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text(Loc.getText("reset_offset"), fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+            },
+            onShowMenuChange = { showMenu = it },
+            onTapToSyncClick = onTapToSyncClick,
+            onToggleTimestamps = onToggleTimestamps,
+            onCopyAllSubtitlesClick = onCopyAllSubtitlesClick,
+            onEditSubtitlesClick = onEditSubtitlesClick,
+            onImportSrtClick = onImportSrtClick,
+            onPasteLyricsClick = onPasteLyricsClick,
+            onDeleteSubtitlesClick = onDeleteSubtitlesClick,
+            onFontSizeChange = onFontSizeChange,
+            onAdjustOffset = onAdjustOffset,
+            onResetOffset = onResetOffset
+        )
 
         if (cues.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(
-                        text = Loc.getText("no_subtitles_found"),
-                        fontSize = 13.sp,
-                        color = if (isDarkBg) Color(0xFF94A3B8) else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        FilledTonalIconButton(
-                            onClick = onTapToSyncClick,
-                            modifier = Modifier.size(56.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.TouchApp,
-                                contentDescription = Loc.getText("tap_to_sync"),
-                                modifier = Modifier.size(26.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        FilledTonalIconButton(
-                            onClick = onImportSrtClick,
-                            modifier = Modifier.size(56.dp),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.FileUpload,
-                                contentDescription = Loc.getText("load_subtitles"),
-                                modifier = Modifier.size(26.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        FilledTonalIconButton(
-                            onClick = onPasteLyricsClick,
-                            modifier = Modifier.size(56.dp),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.EditNote,
-                                contentDescription = Loc.getText("paste_subtitles"),
-                                modifier = Modifier.size(26.dp),
-                                tint = MaterialTheme.colorScheme.secondary
-                            )
-                        }
-                    }
-                }
-            }
+            SubtitleViewerEmptyState(
+                isDarkBg = isDarkBg,
+                onTapToSyncClick = onTapToSyncClick,
+                onImportSrtClick = onImportSrtClick,
+                onPasteLyricsClick = onPasteLyricsClick
+            )
         } else {
             SelectionContainer {
                 LazyColumn(
