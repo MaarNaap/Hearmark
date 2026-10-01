@@ -89,5 +89,32 @@ class ContextMenuPolicyTest {
         )
     }
 
+    @Test
+    fun testNoRedundantPlayOptionInTrackContextMenu() {
+        val rootCandidates = listOf(
+            File("src/main/java"),
+            File("app/src/main/java"),
+            File("../app/src/main/java")
+        )
+        val sourceDir = rootCandidates.find { it.exists() && it.isDirectory }
+        assertTrue("Could not locate source directory for lint test", sourceDir != null)
+
+        val trackRowFile = File(sourceDir, "com/example/ui/dialogs/TrackRow.kt")
+        assertTrue("TrackRow.kt must exist", trackRowFile.exists())
+
+        val text = trackRowFile.readText()
+        val startFunc = text.indexOf("fun UnifiedTrackDropdownMenu")
+        assertTrue("UnifiedTrackDropdownMenu must exist", startFunc != -1)
+        val endFunc = text.indexOf("fun UnifiedAudioTrackRow", startFunc)
+        assertTrue("UnifiedAudioTrackRow must follow", endFunc != -1)
+        val menuBody = text.substring(startFunc, endFunc)
+
+        val hasPlayOption = menuBody.contains("Loc.getText(\"play\")")
+        assertTrue(
+            "Track context menu should not have redundant 'Play' option (users tap the track directly to play)",
+            !hasPlayOption
+        )
+    }
+
     private fun String.find(sub: String, startIndex: Int): Int = indexOf(sub, startIndex)
 }

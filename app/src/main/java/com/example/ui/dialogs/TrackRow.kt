@@ -41,13 +41,6 @@ fun UnifiedTrackDropdownMenu(
     val context = LocalContext.current
     DropdownMenu(expanded = expanded, onDismissRequest = onDismissRequest) {
         DropdownMenuItem(
-            text = { Text(Loc.getText("play")) },
-            onClick = {
-                onDismissRequest()
-                onPlay()
-            }
-        )
-        DropdownMenuItem(
             text = { Text(Loc.getText("play_next")) },
             onClick = {
                 onDismissRequest()
@@ -421,7 +414,6 @@ fun UnifiedAudioTrackRow(
                         onCreateTask = { onCreateTask("TRACKS", track.id) },
                         onShowAssociatedTasks = { onShowAssociatedTasks("TRACKS", track.id, track.getDisplayTitle()) },
                         onAddToPlaylist = { onTrackPlaylistMenuClicked(track) },
-                        onPlay = { onClick() },
                         onViewInfo = { showInfoDialog = true },
                         onEditScene = { showEditSceneDialog = true },
                         onReviewScenes = { showReviewScenesDialog = true },
