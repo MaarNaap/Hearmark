@@ -256,7 +256,7 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = if (isPlayingState) currentTrackState!!.getDisplayTitle() else middleEllipse(currentTrackState!!.getDisplayTitle(), 26), modifier = if (isPlayingState) Modifier.basicMarquee() else Modifier,
+                                        text = if (isPlayingState) currentTrackState!!.getDisplayTitle() else middleEllipse(currentTrackState!!.getDisplayTitle(), 38), modifier = if (isPlayingState) Modifier.basicMarquee() else Modifier,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 1,

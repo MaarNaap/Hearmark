@@ -321,7 +321,7 @@ fun HomeView(
                         Spacer(modifier = Modifier.height(6.dp))
                         
                         Text(
-                            text = middleEllipse(latestResumableTrack.getDisplayTitle(), 30),
+                            text = middleEllipse(latestResumableTrack.getDisplayTitle(), 42),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,

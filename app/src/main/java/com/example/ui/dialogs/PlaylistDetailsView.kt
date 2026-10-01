@@ -252,7 +252,7 @@ fun PlaylistDetailsView(
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = middleEllipse(track.getDisplayTitle(), maxLength = 26),
+                                                text = middleEllipse(track.getDisplayTitle(), maxLength = 42),
                                                 fontWeight = FontWeight.SemiBold,
                                                 fontSize = 13.sp,
                                                 maxLines = 1,

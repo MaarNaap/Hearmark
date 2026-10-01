@@ -194,7 +194,8 @@ fun UnifiedAudioTrackRow(
     onLongClick: () -> Unit = {},
     customStartIcon: ImageVector? = null,
     customStartIconTint: Color? = null,
-    taskProgressText: String? = null
+    taskProgressText: String? = null,
+    titleMaxLength: Int = 42
 ) {
     var showTrackMenu by remember { mutableStateOf(false) }
     var showInfoDialog by remember { mutableStateOf(false) }
@@ -307,7 +308,7 @@ fun UnifiedAudioTrackRow(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (isCurrentExecuting) displayName else middleEllipse(displayName, 26), modifier = if (isCurrentExecuting) Modifier.basicMarquee() else Modifier,
+                    text = if (isCurrentExecuting) displayName else middleEllipse(displayName, titleMaxLength), modifier = if (isCurrentExecuting) Modifier.basicMarquee() else Modifier,
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontSize = 13.5.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -455,7 +456,7 @@ fun UnifiedAudioTrackRow(
     }
 }
 
-fun middleEllipse(text: String, maxLength: Int = 26): String {
+fun middleEllipse(text: String, maxLength: Int = 42): String {
     if (text.length <= maxLength) return text
     val half = (maxLength - 3) / 2
     return text.take(half) + "..." + text.takeLast(maxLength - 3 - half)
@@ -467,7 +468,7 @@ fun SmartFileNameText(
     isActive: Boolean = false,
     style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium,
     modifier: Modifier = Modifier,
-    maxLength: Int = 26
+    maxLength: Int = 42
 ) {
     Text(
         text = if (isActive) text else middleEllipse(text, maxLength),
