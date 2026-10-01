@@ -84,18 +84,7 @@ fun UnifiedTrackDropdownMenu(
             }
         )
         DropdownMenuItem(
-            text = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Filled.RestartAlt,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(Loc.getText("reset_segments"))
-                }
-            },
+            text = { Text(Loc.getText("reset_segments")) },
             onClick = {
                 onDismissRequest()
                 viewModel.resetTrackSegments(track)
@@ -120,14 +109,6 @@ fun UnifiedTrackDropdownMenu(
             )
             DropdownMenuItem(
                 text = { Text(Loc.getText("ai_scene_detection_option")) },
-                leadingIcon = {
-                    Icon(
-                        Icons.Filled.MovieCreation,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                },
                 onClick = {
                     onDismissRequest()
                     viewModel.openAiHub(
@@ -138,14 +119,6 @@ fun UnifiedTrackDropdownMenu(
             )
             DropdownMenuItem(
                 text = { Text(Loc.getText("import_scenes_json_option")) },
-                leadingIcon = {
-                    Icon(
-                        Icons.Filled.FileUpload,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                },
                 onClick = {
                     onDismissRequest()
                     onImportScenesJson()

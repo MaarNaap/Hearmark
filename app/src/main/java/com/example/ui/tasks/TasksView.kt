@@ -412,16 +412,6 @@ fun TasksView(
                                         color = if (selectedLabelFilter == null) MaterialTheme.colorScheme.primary else Color.Unspecified
                                     )
                                 },
-                                trailingIcon = if (selectedLabelFilter == null) {
-                                    {
-                                        Icon(
-                                            imageVector = Icons.Filled.Check,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                } else null,
                                 onClick = {
                                     selectedLabelFilter = null
                                     showTagFilterMenu = false
@@ -451,16 +441,6 @@ fun TasksView(
                                                 color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Unspecified
                                             )
                                         },
-                                        trailingIcon = if (isSelected) {
-                                            {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Check,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
-                                        } else null,
                                         onClick = {
                                             selectedLabelFilter = if (isSelected) null else label
                                             showTagFilterMenu = false

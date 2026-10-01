@@ -280,13 +280,6 @@ fun UnifiedAiHubSheet(
                                     fontWeight = if (selectedFunction == AiFunctionType.CHAT) FontWeight.Bold else FontWeight.Normal
                                 )
                             },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Filled.SmartToy,
-                                    contentDescription = null,
-                                    tint = if (selectedFunction == AiFunctionType.CHAT) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
                             onClick = {
                                 selectedFunction = AiFunctionType.CHAT
                                 functionMenuExpanded = false
@@ -297,13 +290,6 @@ fun UnifiedAiHubSheet(
                                 Text(
                                     text = Loc.getText("ai_hub_function_subtitles"),
                                     fontWeight = if (selectedFunction == AiFunctionType.SUBTITLES) FontWeight.Bold else FontWeight.Normal
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Filled.Subtitles,
-                                    contentDescription = null,
-                                    tint = if (selectedFunction == AiFunctionType.SUBTITLES) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             },
                             onClick = {
@@ -319,13 +305,6 @@ fun UnifiedAiHubSheet(
                                     fontWeight = if (selectedFunction == AiFunctionType.SCENES) FontWeight.Bold else FontWeight.Normal
                                 )
                             },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Filled.MovieCreation,
-                                    contentDescription = null,
-                                    tint = if (selectedFunction == AiFunctionType.SCENES) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
                             onClick = {
                                 selectedFunction = AiFunctionType.SCENES
                                 selectedContextType = AiContextType.TRACK
@@ -337,13 +316,6 @@ fun UnifiedAiHubSheet(
                                 Text(
                                     text = Loc.getText("ai_hub_function_quiz"),
                                     fontWeight = if (selectedFunction == AiFunctionType.QUIZ) FontWeight.Bold else FontWeight.Normal
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.HelpOutline,
-                                    contentDescription = null,
-                                    tint = if (selectedFunction == AiFunctionType.QUIZ) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             },
                             onClick = {
@@ -431,13 +403,6 @@ fun UnifiedAiHubSheet(
                                         fontWeight = if (selectedContextType == AiContextType.FREE) FontWeight.Bold else FontWeight.Normal
                                     )
                                 },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Filled.Public,
-                                        contentDescription = null,
-                                        tint = if (selectedContextType == AiContextType.FREE) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                },
                                 onClick = {
                                     selectedContextType = AiContextType.FREE
                                     contextMenuExpanded = false
@@ -451,13 +416,6 @@ fun UnifiedAiHubSheet(
                                     Text(
                                         text = Loc.getText("ai_hub_context_files"),
                                         fontWeight = if (selectedContextType == AiContextType.TRACK) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Filled.Folder,
-                                        contentDescription = null,
-                                        tint = if (selectedContextType == AiContextType.TRACK) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 },
                                 onClick = {
@@ -475,13 +433,6 @@ fun UnifiedAiHubSheet(
                                         fontWeight = if (selectedContextType == AiContextType.NOTEBOOK) FontWeight.Bold else FontWeight.Normal
                                     )
                                 },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Filled.MenuBook,
-                                        contentDescription = null,
-                                        tint = if (selectedContextType == AiContextType.NOTEBOOK) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                },
                                 onClick = {
                                     selectedContextType = AiContextType.NOTEBOOK
                                     contextMenuExpanded = false
@@ -495,13 +446,6 @@ fun UnifiedAiHubSheet(
                                     Text(
                                         text = Loc.getText("ai_hub_context_tasks"),
                                         fontWeight = if (selectedContextType == AiContextType.TASK) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Filled.Assignment,
-                                        contentDescription = null,
-                                        tint = if (selectedContextType == AiContextType.TASK) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 },
                                 onClick = {
