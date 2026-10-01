@@ -375,20 +375,39 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
         // Automatic backup snapshot & silent recovery guard
         viewModelScope.launch(Dispatchers.IO) {
-            delay(2000L) // Wait for initial database flows to load
-            val tasksEmpty = allTasks.value.isEmpty()
-            val historyEmpty = playbackHistory.value.isEmpty()
-            val notesEmpty = notes.value.isEmpty()
+            val dbTasks = repository.dao.getAllTasksDirect()
+            val dbProgress = repository.dao.getAllTaskProgressDirect()
+            val dbHistory = repository.dao.getPlaybackHistoryDirect()
+            val dbNotes = repository.dao.getAllNotesDirect()
+            val dbTracks = repository.dao.getAllTracksDirect()
 
-            if (tasksEmpty && historyEmpty && notesEmpty) {
+            if (dbTasks.isEmpty() && dbProgress.isEmpty() && dbHistory.isEmpty() && dbNotes.isEmpty() && dbTracks.isEmpty()) {
                 val latestSnapshot = com.example.util.AutoBackupManager.getLatestAutoBackupString(application)
                 if (!latestSnapshot.isNullOrBlank()) {
                     Log.i("AppViewModel", "Database empty on launch. Automatically recovering from latest snapshot...")
-                    restoreBackupFromJsonString(latestSnapshot)
+                    restoreBackupFromJsonString(latestSnapshot, isAutoRecovery = true)
                 }
             } else {
-                triggerAutoBackup()
+                com.example.util.AutoBackupManager.saveAutoBackupFromRepository(application, repository)
             }
+        }
+
+        // Continuously keep auto-backup snapshot in sync whenever tasks, task progress, history, or notes change
+        @OptIn(kotlinx.coroutines.FlowPreview::class)
+        viewModelScope.launch(Dispatchers.IO) {
+            combine(
+                repository.allTasks,
+                repository.getAllTaskProgressFlow(),
+                repository.playbackHistory,
+                repository.allNotes
+            ) { tasksList, progressList, historyList, notesList ->
+                tasksList.hashCode() * 31 + progressList.hashCode() * 17 + historyList.size + notesList.size
+            }
+                .drop(1)
+                .debounce(1000L)
+                .collect {
+                    com.example.util.AutoBackupManager.saveAutoBackupFromRepository(application, repository)
+                }
         }
 
         // Asynchronously extract and cache track metadata for easy real-time searching by title/artist

@@ -1,5 +1,13 @@
 package com.example
 
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import com.example.data.AppDatabase
+import com.example.data.AppRepository
+import com.example.data.Task
+import com.example.data.TaskTrackProgress
+import com.example.util.AutoBackupManager
+import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -11,6 +19,60 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
 class BackupRestoreParsingTest {
+
+    @Test
+    fun testDirectRepositoryBackupPreservesCompletedTaskAndProgress() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val repo = AppRepository(db.appDao(), db.vocabularyItemDao())
+
+        try {
+            val taskId = repo.insertTask(
+                Task(
+                    id = 10L,
+                    title = "Daily Listening Goal",
+                    sourceType = "TRACKS",
+                    sourceId = null,
+                    targetType = "PLAY_COUNT",
+                    targetValue = 3,
+                    scheduledDays = "SUNDAY,MONDAY",
+                    reminderTime = "08:00 AM",
+                    startDate = 1000L,
+                    endDate = null,
+                    isCompleted = true,
+                    status = "COMPLETED"
+                )
+            )
+            repo.insertTaskProgress(
+                TaskTrackProgress(
+                    taskId = taskId,
+                    trackId = 99L,
+                    completedPlayCount = 3,
+                    isTrackCompleted = true
+                )
+            )
+
+            // Build backup directly from repository without any UI StateFlow subscribers
+            val jsonObj = AutoBackupManager.buildBackupJsonFromRepository(repo, requireNonEmpty = true)
+            assertNotNull(jsonObj)
+
+            val tasksArr = jsonObj!!.getJSONArray("tasks")
+            assertEquals(1, tasksArr.length())
+            val exportedTask = tasksArr.getJSONObject(0)
+            assertTrue(exportedTask.getBoolean("isCompleted"))
+            assertEquals("COMPLETED", exportedTask.getString("status"))
+
+            val progressArr = jsonObj.getJSONArray("taskProgress")
+            assertEquals(1, progressArr.length())
+            val exportedProgress = progressArr.getJSONObject(0)
+            assertEquals(3, exportedProgress.getInt("completedPlayCount"))
+            assertTrue(exportedProgress.getBoolean("isTrackCompleted"))
+        } finally {
+            db.close()
+        }
+    }
 
     @Test
     fun testBomStripping() {

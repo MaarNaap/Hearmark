@@ -189,6 +189,9 @@ interface AppDao {
     @Query("SELECT * FROM task_track_progress")
     fun getAllTaskProgressFlow(): Flow<List<TaskTrackProgress>>
 
+    @Query("SELECT * FROM task_track_progress")
+    suspend fun getAllTaskProgressDirect(): List<TaskTrackProgress>
+
     @Query("SELECT * FROM task_track_progress WHERE taskId = :taskId")
     fun getProgressForTaskFlow(taskId: Long): Flow<List<TaskTrackProgress>>
 
@@ -231,6 +234,9 @@ interface AppDao {
     @Query("SELECT * FROM task_daily_progress WHERE taskId = :taskId")
     fun getAllDailyProgressForTask(taskId: Long): Flow<List<TaskDailyProgress>>
 
+    @Query("SELECT * FROM task_daily_progress")
+    suspend fun getAllTaskDailyProgressDirect(): List<TaskDailyProgress>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTaskDailyProgress(progress: TaskDailyProgress)
 
@@ -240,6 +246,9 @@ interface AppDao {
     // Stats / Playback History
     @Query("SELECT * FROM playback_history ORDER BY completedAt DESC")
     fun getPlaybackHistoryFlow(): Flow<List<PlaybackHistory>>
+
+    @Query("SELECT * FROM playback_history ORDER BY completedAt DESC")
+    suspend fun getPlaybackHistoryDirect(): List<PlaybackHistory>
 
     @Query("SELECT * FROM playback_history WHERE completedAt >= :startTime AND completedAt <= :endTime ORDER BY completedAt DESC")
     fun getPlaybackHistoryFilteredFlow(startTime: Long, endTime: Long): Flow<List<PlaybackHistory>>

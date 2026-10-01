@@ -37,6 +37,7 @@ object AutoBackupManager {
      * Writes an automatic JSON snapshot to both internal files and external app files dir.
      * Keeps the latest snapshot and rolling daily history (up to 5 days).
      */
+    @Synchronized
     fun saveAutoBackup(context: Context, jsonString: String) {
         if (jsonString.isBlank()) return
         try {
@@ -47,12 +48,10 @@ object AutoBackupManager {
             val latestFile = File(internalDir, LATEST_BACKUP_NAME)
             latestFile.writeText(jsonString, Charsets.UTF_8)
 
-            // Rolling daily snapshot
+            // Rolling daily snapshot (always refresh today's file so it reflects latest completed tasks/progress)
             val dateTag = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
             val dailyFile = File(internalDir, "hearmark_autosnapshot_$dateTag.json")
-            if (!dailyFile.exists()) {
-                dailyFile.writeText(jsonString, Charsets.UTF_8)
-            }
+            dailyFile.writeText(jsonString, Charsets.UTF_8)
 
             // Prune snapshots older than MAX_DAILY_SNAPSHOTS
             val allDaily = internalDir.listFiles { _, name ->
@@ -137,5 +136,179 @@ object AutoBackupManager {
      */
     fun isAutoBackupAvailable(context: Context): Boolean {
         return getLatestAutoBackupTimestamp(context) != null
+    }
+
+    /**
+     * Queries the Room database directly via [repository] and builds a complete backup JSON object.
+     * Avoids relying on uncollected or stale UI StateFlows.
+     */
+    suspend fun buildBackupJsonFromRepository(
+        repository: com.example.data.AppRepository,
+        requireNonEmpty: Boolean = false
+    ): org.json.JSONObject? {
+        val historyList = repository.dao.getPlaybackHistoryDirect()
+        val tasksList = repository.dao.getAllTasksDirect()
+        val progressList = repository.dao.getAllTaskProgressDirect()
+        val dailyProgressList = repository.dao.getAllTaskDailyProgressDirect()
+        val notesList = repository.dao.getAllNotesDirect()
+        val tagsList = repository.dao.getAllTagsDirect()
+        val labelsList = repository.dao.getAllTaskLabelsDirect()
+        val vocabList = repository.vocabDao?.getAllVocabularyItemsDirect() ?: emptyList()
+
+        if (requireNonEmpty &&
+            tasksList.isEmpty() &&
+            progressList.isEmpty() &&
+            historyList.isEmpty() &&
+            notesList.isEmpty() &&
+            vocabList.isEmpty()
+        ) {
+            return null
+        }
+
+        val root = org.json.JSONObject()
+        root.put("version", 1)
+        root.put("exportedAt", System.currentTimeMillis())
+        root.put("appName", "Hearmark")
+
+        val historyArray = org.json.JSONArray()
+        historyList.forEach { item ->
+            val obj = org.json.JSONObject()
+            obj.put("id", item.id)
+            obj.put("trackId", item.trackId)
+            obj.put("trackName", item.trackName)
+            obj.put("completedAt", item.completedAt)
+            obj.put("durationMs", item.durationMs)
+            obj.put("playbackSpeed", item.playbackSpeed.toDouble())
+            obj.put("actualListenedMs", item.actualListenedMs)
+            obj.put("activeTasks", item.activeTasks)
+            historyArray.put(obj)
+        }
+        root.put("playbackHistory", historyArray)
+
+        val tasksArray = org.json.JSONArray()
+        tasksList.forEach { task ->
+            val obj = org.json.JSONObject()
+            obj.put("id", task.id)
+            obj.put("title", task.title)
+            obj.put("sourceType", task.sourceType)
+            obj.put("sourceId", task.sourceId)
+            obj.put("targetType", task.targetType)
+            obj.put("targetValue", task.targetValue)
+            obj.put("scheduledDays", task.scheduledDays)
+            obj.put("reminderTime", task.reminderTime)
+            obj.put("startDate", task.startDate)
+            if (task.endDate != null) obj.put("endDate", task.endDate)
+            obj.put("isCompleted", task.isCompleted)
+            obj.put("status", task.status)
+            if (task.customThreshold != null) obj.put("customThreshold", task.customThreshold)
+            obj.put("labels", task.labels)
+            if (task.dailyTargetValue != null) obj.put("dailyTargetValue", task.dailyTargetValue)
+            tasksArray.put(obj)
+        }
+        root.put("tasks", tasksArray)
+
+        val progressArray = org.json.JSONArray()
+        progressList.forEach { progress ->
+            val obj = org.json.JSONObject()
+            obj.put("taskId", progress.taskId)
+            obj.put("trackId", progress.trackId)
+            obj.put("completedPlayCount", progress.completedPlayCount)
+            obj.put("completedDays", progress.completedDays)
+            obj.put("isTrackCompleted", progress.isTrackCompleted)
+            progressArray.put(obj)
+        }
+        root.put("taskProgress", progressArray)
+
+        val dailyArray = org.json.JSONArray()
+        dailyProgressList.forEach { dp ->
+            val obj = org.json.JSONObject()
+            obj.put("taskId", dp.taskId)
+            obj.put("date", dp.date)
+            obj.put("completedPlayCount", dp.completedPlayCount)
+            dailyArray.put(obj)
+        }
+        root.put("taskDailyProgress", dailyArray)
+
+        val notesArray = org.json.JSONArray()
+        notesList.forEach { note ->
+            val obj = org.json.JSONObject()
+            obj.put("id", note.id)
+            obj.put("text", note.text)
+            obj.put("comment", note.comment)
+            if (note.trackId != null) obj.put("trackId", note.trackId)
+            if (note.trackName != null) obj.put("trackName", note.trackName)
+            if (note.folderId != null) obj.put("folderId", note.folderId)
+            if (note.folderName != null) obj.put("folderName", note.folderName)
+            obj.put("startTimestampMs", note.startTimestampMs)
+            obj.put("endTimestampMs", note.endTimestampMs)
+            if (note.originStartMs != null) obj.put("originStartMs", note.originStartMs)
+            obj.put("tags", note.tags)
+            obj.put("createdAt", note.createdAt)
+            obj.put("updatedAt", note.updatedAt)
+            if (note.targetWord != null) obj.put("targetWord", note.targetWord)
+            if (note.meaning != null) obj.put("meaning", note.meaning)
+            if (note.contextSentence != null) obj.put("contextSentence", note.contextSentence)
+            notesArray.put(obj)
+        }
+        root.put("notes", notesArray)
+
+        val tagsArray = org.json.JSONArray()
+        tagsList.forEach { tag ->
+            val obj = org.json.JSONObject()
+            obj.put("id", tag.id)
+            obj.put("name", tag.name)
+            if (tag.colorHex != null) obj.put("colorHex", tag.colorHex)
+            obj.put("createdAt", tag.createdAt)
+            tagsArray.put(obj)
+        }
+        root.put("noteTags", tagsArray)
+
+        val labelsArray = org.json.JSONArray()
+        labelsList.forEach { label ->
+            val obj = org.json.JSONObject()
+            obj.put("id", label.id)
+            obj.put("name", label.name)
+            obj.put("createdAt", label.createdAt)
+            labelsArray.put(obj)
+        }
+        root.put("taskLabels", labelsArray)
+
+        val vocabArray = org.json.JSONArray()
+        vocabList.forEach { v ->
+            val obj = org.json.JSONObject()
+            obj.put("id", v.id)
+            obj.put("targetWord", v.targetWord)
+            obj.put("meaning", v.meaning)
+            obj.put("contextSentence", v.contextSentence)
+            if (v.noteId != null) obj.put("noteId", v.noteId)
+            if (v.trackId != null) obj.put("trackId", v.trackId)
+            if (v.timestampMs != null) obj.put("timestampMs", v.timestampMs)
+            obj.put("timesReviewed", v.timesReviewed)
+            obj.put("timesCorrect", v.timesCorrect)
+            obj.put("isMastered", v.isMastered)
+            if (v.lastReviewedAt != null) obj.put("lastReviewedAt", v.lastReviewedAt)
+            obj.put("createdAt", v.createdAt)
+            vocabArray.put(obj)
+        }
+        root.put("vocabularyItems", vocabArray)
+
+        return root
+    }
+
+    /**
+     * Immediately exports the latest Room database state to the auto-backup snapshot files.
+     */
+    suspend fun saveAutoBackupFromRepository(
+        context: Context?,
+        repository: com.example.data.AppRepository?
+    ) {
+        val ctx = context ?: return
+        val repo = repository ?: return
+        try {
+            val root = buildBackupJsonFromRepository(repo, requireNonEmpty = true) ?: return
+            saveAutoBackup(ctx, root.toString(2))
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save auto-backup from repository", e)
+        }
     }
 }

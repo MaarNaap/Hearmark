@@ -69,6 +69,7 @@ internal object PlaybackTaskHistoryController {
                     if (currentSessionHistoryId == null && newId > 0L) {
                         currentSessionHistoryId = newId
                     }
+                    com.example.util.AutoBackupManager.saveAutoBackupFromRepository(appContext, repository)
                 } catch (e: Exception) {
                     Log.e(TAG, "syncCurrentSessionHistory error: ${e.message}")
                 } finally {
@@ -131,6 +132,7 @@ internal object PlaybackTaskHistoryController {
                                 appContext?.let { com.example.receiver.AlarmReceiver.cancelAlarm(it, task.id) }
                                 sendTaskCompletionNotification(task)
                             }
+                            com.example.util.AutoBackupManager.saveAutoBackupFromRepository(appContext, repo)
                         }
                     }
                 }
@@ -145,6 +147,7 @@ internal object PlaybackTaskHistoryController {
             val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
 
             val activeTasksList = repo.getAllTasksDirect()
+            var anyTaskUpdated = false
 
             for (task in activeTasksList) {
                 if (task.isCompleted) continue
@@ -183,6 +186,7 @@ internal object PlaybackTaskHistoryController {
                     }
 
                     repo.insertTaskProgress(updatedProgress)
+                    anyTaskUpdated = true
 
                     val refreshedProgresses = repo.getProgressForTask(task.id)
                     val allTracksCompleted = refreshedProgresses.isNotEmpty() && refreshedProgresses.all { it.isTrackCompleted }
@@ -193,6 +197,10 @@ internal object PlaybackTaskHistoryController {
                         sendTaskCompletionNotification(task)
                     }
                 }
+            }
+
+            if (anyTaskUpdated) {
+                com.example.util.AutoBackupManager.saveAutoBackupFromRepository(appContext, repo)
             }
         }
     }

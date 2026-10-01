@@ -15,126 +15,12 @@ import kotlinx.coroutines.withContext
 // =========================================================================
 fun AppViewModel.exportBackupToJson(outputStream: java.io.OutputStream): Boolean {
     return try {
-        val root = org.json.JSONObject()
-        root.put("version", 1)
-        root.put("exportedAt", System.currentTimeMillis())
-        root.put("appName", "Hearmark")
-
-        // Playback history
-        val historyArray = org.json.JSONArray()
-        playbackHistory.value.forEach { item ->
-            val obj = org.json.JSONObject()
-            obj.put("id", item.id)
-            obj.put("trackId", item.trackId)
-            obj.put("trackName", item.trackName)
-            obj.put("completedAt", item.completedAt)
-            obj.put("durationMs", item.durationMs)
-            obj.put("playbackSpeed", item.playbackSpeed.toDouble())
-            obj.put("actualListenedMs", item.actualListenedMs)
-            obj.put("activeTasks", item.activeTasks)
-            historyArray.put(obj)
-        }
-        root.put("playbackHistory", historyArray)
-
-        // Tasks
-        val tasksArray = org.json.JSONArray()
-        allTasks.value.forEach { task ->
-            val obj = org.json.JSONObject()
-            obj.put("id", task.id)
-            obj.put("title", task.title)
-            obj.put("sourceType", task.sourceType)
-            obj.put("sourceId", task.sourceId)
-            obj.put("targetType", task.targetType)
-            obj.put("targetValue", task.targetValue)
-            obj.put("scheduledDays", task.scheduledDays)
-            obj.put("reminderTime", task.reminderTime)
-            obj.put("startDate", task.startDate)
-            if (task.endDate != null) obj.put("endDate", task.endDate)
-            obj.put("isCompleted", task.isCompleted)
-            obj.put("status", task.status)
-            if (task.customThreshold != null) obj.put("customThreshold", task.customThreshold)
-            obj.put("labels", task.labels)
-            if (task.dailyTargetValue != null) obj.put("dailyTargetValue", task.dailyTargetValue)
-            tasksArray.put(obj)
-        }
-        root.put("tasks", tasksArray)
-
-        // Task Progress
-        val progressArray = org.json.JSONArray()
-        allTaskProgress.value.forEach { progress ->
-            val obj = org.json.JSONObject()
-            obj.put("taskId", progress.taskId)
-            obj.put("trackId", progress.trackId)
-            obj.put("completedPlayCount", progress.completedPlayCount)
-            obj.put("completedDays", progress.completedDays)
-            obj.put("isTrackCompleted", progress.isTrackCompleted)
-            progressArray.put(obj)
-        }
-        root.put("taskProgress", progressArray)
-
-        // Notes & Tags Backup
-        val notesArray = org.json.JSONArray()
-        notes.value.forEach { note ->
-            val obj = org.json.JSONObject()
-            obj.put("id", note.id)
-            obj.put("text", note.text)
-            obj.put("comment", note.comment)
-            if (note.trackId != null) obj.put("trackId", note.trackId)
-            if (note.trackName != null) obj.put("trackName", note.trackName)
-            if (note.folderId != null) obj.put("folderId", note.folderId)
-            if (note.folderName != null) obj.put("folderName", note.folderName)
-            obj.put("startTimestampMs", note.startTimestampMs)
-            obj.put("endTimestampMs", note.endTimestampMs)
-            if (note.originStartMs != null) obj.put("originStartMs", note.originStartMs)
-            obj.put("tags", note.tags)
-            obj.put("createdAt", note.createdAt)
-            obj.put("updatedAt", note.updatedAt)
-            if (note.targetWord != null) obj.put("targetWord", note.targetWord)
-            if (note.meaning != null) obj.put("meaning", note.meaning)
-            if (note.contextSentence != null) obj.put("contextSentence", note.contextSentence)
-            notesArray.put(obj)
-        }
-        root.put("notes", notesArray)
-
-        val tagsArray = org.json.JSONArray()
-        noteTags.value.forEach { tag ->
-            val obj = org.json.JSONObject()
-            obj.put("id", tag.id)
-            obj.put("name", tag.name)
-            if (tag.colorHex != null) obj.put("colorHex", tag.colorHex)
-            obj.put("createdAt", tag.createdAt)
-            tagsArray.put(obj)
-        }
-        root.put("noteTags", tagsArray)
-
-        val labelsArray = org.json.JSONArray()
-        taskLabels.value.forEach { label ->
-            val obj = org.json.JSONObject()
-            obj.put("id", label.id)
-            obj.put("name", label.name)
-            obj.put("createdAt", label.createdAt)
-            labelsArray.put(obj)
-        }
-        root.put("taskLabels", labelsArray)
-
-        val vocabArray = org.json.JSONArray()
-        allVocabularyItems.value.forEach { v ->
-            val obj = org.json.JSONObject()
-            obj.put("id", v.id)
-            obj.put("targetWord", v.targetWord)
-            obj.put("meaning", v.meaning)
-            obj.put("contextSentence", v.contextSentence)
-            if (v.noteId != null) obj.put("noteId", v.noteId)
-            if (v.trackId != null) obj.put("trackId", v.trackId)
-            if (v.timestampMs != null) obj.put("timestampMs", v.timestampMs)
-            obj.put("timesReviewed", v.timesReviewed)
-            obj.put("timesCorrect", v.timesCorrect)
-            obj.put("isMastered", v.isMastered)
-            if (v.lastReviewedAt != null) obj.put("lastReviewedAt", v.lastReviewedAt)
-            obj.put("createdAt", v.createdAt)
-            vocabArray.put(obj)
-        }
-        root.put("vocabularyItems", vocabArray)
+        val root = kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+            com.example.util.AutoBackupManager.buildBackupJsonFromRepository(
+                repository = repository,
+                requireNonEmpty = false
+            )
+        } ?: return false
 
         outputStream.write(root.toString(2).toByteArray(Charsets.UTF_8))
         outputStream.flush()
@@ -165,17 +51,19 @@ fun AppViewModel.restoreBackupFromJson(inputStream: java.io.InputStream) {
         jsonBytes[2] == 0xBF.toByte()
     ) 3 else 0
     val jsonString = String(jsonBytes, offset, jsonBytes.size - offset, Charsets.UTF_8)
-    restoreBackupFromJsonString(jsonString)
+    restoreBackupFromJsonString(jsonString, isAutoRecovery = false)
 }
 
-fun AppViewModel.restoreBackupFromJsonString(jsonString: String) {
+fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery: Boolean = false) {
     viewModelScope.launch(Dispatchers.IO) {
         try {
             val cleanJson = jsonString.trim().removePrefix("\uFEFF").trim()
             if (cleanJson.isBlank()) {
-                withContext(Dispatchers.Main) {
-                    val context = getApplication<Application>()
-                    Toast.makeText(context, Loc.getText("restore_failed"), Toast.LENGTH_LONG).show()
+                if (!isAutoRecovery) {
+                    withContext(Dispatchers.Main) {
+                        val context = getApplication<Application>()
+                        Toast.makeText(context, Loc.getText("restore_failed"), Toast.LENGTH_LONG).show()
+                    }
                 }
                 return@launch
             }
@@ -333,6 +221,10 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String) {
                 val labels = optStringSafe(obj, "labels", defaultVal = "")
                 val dailyTargetValue = optNullableIntSafe(obj, "dailyTargetValue", "daily_target_value")
 
+                val existingTask = if (isAutoRecovery && id > 0L) repository.getTaskById(id) else null
+                val finalIsCompleted = if (existingTask?.isCompleted == true) true else isCompleted
+                val finalStatus = if (finalIsCompleted) "COMPLETED" else status
+
                 val task = Task(
                     id = id,
                     title = title,
@@ -344,8 +236,8 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String) {
                     reminderTime = reminderTime,
                     startDate = startDate,
                     endDate = endDate,
-                    isCompleted = isCompleted,
-                    status = status,
+                    isCompleted = finalIsCompleted,
+                    status = finalStatus,
                     customThreshold = customThreshold,
                     labels = labels,
                     dailyTargetValue = dailyTargetValue
@@ -362,12 +254,27 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String) {
                 val isTrackCompleted = optBooleanSafe(obj, "isTrackCompleted", "is_track_completed", defaultVal = false)
 
                 if (taskId > 0L) {
+                    val existingProgress = if (isAutoRecovery) {
+                        repository.getProgressForTask(taskId).find { it.trackId == trackId }
+                    } else null
+
+                    val mergedPlayCount = if (existingProgress != null) {
+                        maxOf(existingProgress.completedPlayCount, completedPlayCount)
+                    } else completedPlayCount
+
+                    val mergedDays = if (existingProgress != null) {
+                        val combined = (existingProgress.getDaysList() + completedDays.split(",").map { it.trim() }.filter { it.isNotEmpty() }).toSet()
+                        combined.joinToString(",")
+                    } else completedDays
+
+                    val mergedCompleted = (existingProgress?.isTrackCompleted == true) || isTrackCompleted
+
                     val p = TaskTrackProgress(
                         taskId = taskId,
                         trackId = trackId,
-                        completedPlayCount = completedPlayCount,
-                        completedDays = completedDays,
-                        isTrackCompleted = isTrackCompleted
+                        completedPlayCount = mergedPlayCount,
+                        completedDays = mergedDays,
+                        isTrackCompleted = mergedCompleted
                     )
                     repository.insertTaskProgress(p)
                     progressCount++
@@ -662,19 +569,24 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String) {
             }
 
             val totalRestored = historyCount + tasksCount + progressCount + notesCount + tagsCount + labelsCount + dailyProgressCount + vocabCount
-            withContext(Dispatchers.Main) {
-                val context = getApplication<Application>()
-                if (totalRestored > 0 || cleanJson.contains("Hearmark", ignoreCase = true) || cleanJson.contains("version", ignoreCase = true)) {
-                    Toast.makeText(context, "${Loc.getText("restore_success")} ($totalRestored records)", Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(context, Loc.getText("restore_failed"), Toast.LENGTH_LONG).show()
+            if (!isAutoRecovery) {
+                com.example.util.AutoBackupManager.saveAutoBackupFromRepository(getApplication(), repository)
+                withContext(Dispatchers.Main) {
+                    val context = getApplication<Application>()
+                    if (totalRestored > 0 || cleanJson.contains("Hearmark", ignoreCase = true) || cleanJson.contains("version", ignoreCase = true)) {
+                        Toast.makeText(context, "${Loc.getText("restore_success")} ($totalRestored records)", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(context, Loc.getText("restore_failed"), Toast.LENGTH_LONG).show()
+                    }
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            withContext(Dispatchers.Main) {
-                val context = getApplication<Application>()
-                Toast.makeText(context, Loc.getText("restore_failed"), Toast.LENGTH_LONG).show()
+            if (!isAutoRecovery) {
+                withContext(Dispatchers.Main) {
+                    val context = getApplication<Application>()
+                    Toast.makeText(context, Loc.getText("restore_failed"), Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -682,19 +594,7 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String) {
 
 fun AppViewModel.triggerAutoBackup() {
     viewModelScope.launch(Dispatchers.IO) {
-        try {
-            if (allTasks.value.isEmpty() && playbackHistory.value.isEmpty() && notes.value.isEmpty()) {
-                return@launch
-            }
-            val byteArrayOutputStream = java.io.ByteArrayOutputStream()
-            val success = exportBackupToJson(byteArrayOutputStream)
-            if (success) {
-                val jsonStr = byteArrayOutputStream.toString(Charsets.UTF_8.name())
-                com.example.util.AutoBackupManager.saveAutoBackup(getApplication(), jsonStr)
-            }
-        } catch (e: Exception) {
-            Log.e("AppViewModel", "Auto-backup failed", e)
-        }
+        com.example.util.AutoBackupManager.saveAutoBackupFromRepository(getApplication(), repository)
     }
 }
 
