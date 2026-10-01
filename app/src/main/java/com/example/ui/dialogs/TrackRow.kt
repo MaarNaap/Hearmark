@@ -195,7 +195,7 @@ fun UnifiedAudioTrackRow(
     customStartIcon: ImageVector? = null,
     customStartIconTint: Color? = null,
     taskProgressText: String? = null,
-    titleMaxLength: Int = 42
+    titleMaxLength: Int = 44
 ) {
     var showTrackMenu by remember { mutableStateOf(false) }
     var showInfoDialog by remember { mutableStateOf(false) }
@@ -263,7 +263,7 @@ fun UnifiedAudioTrackRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 14.dp, top = 10.dp, end = 4.dp, bottom = 10.dp),
+                .padding(start = 10.dp, top = 8.dp, end = 4.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (isBulkSelectMode) {
@@ -271,18 +271,18 @@ fun UnifiedAudioTrackRow(
                     checked = isSelected,
                     onCheckedChange = { _ -> onLongClick() }
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(6.dp))
             } else {
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(34.dp)
                         .background(
                             if (track.isMissing) {
                                 MaterialTheme.colorScheme.error.copy(alpha = 0.08f)
                             } else {
                                 MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)
                             },
-                            RoundedCornerShape(12.dp)
+                            RoundedCornerShape(9.dp)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
@@ -300,17 +300,17 @@ fun UnifiedAudioTrackRow(
                         } else {
                             MaterialTheme.colorScheme.primary
                         },
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(14.dp))
+                Spacer(modifier = Modifier.width(10.dp))
             }
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = if (isCurrentExecuting) displayName else middleEllipse(displayName, titleMaxLength), modifier = if (isCurrentExecuting) Modifier.basicMarquee() else Modifier,
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = 13.5.sp,
+                        fontSize = 12.5.sp,
                         fontWeight = FontWeight.SemiBold,
                         fontFamily = FontFamily.SansSerif
                     ),
@@ -340,26 +340,51 @@ fun UnifiedAudioTrackRow(
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
                         )
 
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "•",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "${track.getProgressPercent()}%",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
                         )
-                        if (!taskProgressText.isNullOrEmpty()) {
-                            Spacer(modifier = Modifier.width(8.dp))
+
+                        if (track.playCount > 0) {
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "•",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Filled.Headphones,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "${track.playCount}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+                                )
+                            }
+                        }
+
+                        if (!taskProgressText.isNullOrEmpty()) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "•",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 if (taskProgressText.startsWith("🎧")) {
                                     Icon(
@@ -400,27 +425,6 @@ fun UnifiedAudioTrackRow(
                 }
             }
 
-            if (taskId == null && taskProgressText.isNullOrEmpty() && !track.isMissing && track.playCount > 0) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(end = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Headphones,
-                        contentDescription = "Plays count",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "${track.playCount}",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-
             if (!isBulkSelectMode) {
                 Box {
                     IconButton(
@@ -456,7 +460,7 @@ fun UnifiedAudioTrackRow(
     }
 }
 
-fun middleEllipse(text: String, maxLength: Int = 42): String {
+fun middleEllipse(text: String, maxLength: Int = 44): String {
     if (text.length <= maxLength) return text
     val half = (maxLength - 3) / 2
     return text.take(half) + "..." + text.takeLast(maxLength - 3 - half)
@@ -468,7 +472,7 @@ fun SmartFileNameText(
     isActive: Boolean = false,
     style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium,
     modifier: Modifier = Modifier,
-    maxLength: Int = 42
+    maxLength: Int = 44
 ) {
     Text(
         text = if (isActive) text else middleEllipse(text, maxLength),

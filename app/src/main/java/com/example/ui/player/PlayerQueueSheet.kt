@@ -197,9 +197,9 @@ internal fun PlayerQueueSheet(
                                 modifier = Modifier.width(24.dp)
                             )
                             Text(
-                                text = if (isRunning) qTrack.getDisplayTitle() else middleEllipse(qTrack.getDisplayTitle(), 42),
+                                text = if (isRunning) qTrack.getDisplayTitle() else middleEllipse(qTrack.getDisplayTitle(), 44),
                                 modifier = if (isRunning) Modifier.basicMarquee() else Modifier,
-                                fontSize = 13.sp,
+                                fontSize = 12.5.sp,
                                 fontWeight = if (isRunning) FontWeight.Bold else FontWeight.Normal,
                                 color = if (isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,

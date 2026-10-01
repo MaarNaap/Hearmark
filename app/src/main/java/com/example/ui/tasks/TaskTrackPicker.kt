@@ -293,8 +293,8 @@ fun TaskTrackPicker(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = middleEllipse(track.getDisplayTitle(), maxLength = 42),
-                                        fontSize = 13.sp,
+                                        text = middleEllipse(track.getDisplayTitle(), maxLength = 44),
+                                        fontSize = 12.5.sp,
                                         fontWeight = if (isTrackSelected) FontWeight.SemiBold else FontWeight.Normal,
                                         color = if (isTrackSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1,
@@ -439,8 +439,8 @@ fun TaskTrackPicker(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = middleEllipse(track.getDisplayTitle(), maxLength = 42),
-                                        fontSize = 13.sp,
+                                        text = middleEllipse(track.getDisplayTitle(), maxLength = 44),
+                                        fontSize = 12.5.sp,
                                         fontWeight = if (isTrackSelected) FontWeight.SemiBold else FontWeight.Normal,
                                         color = if (isTrackSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1,
