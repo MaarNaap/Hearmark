@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -617,7 +618,7 @@ fun StatsTracksPerformanceTab(
                 Box {
                     IconButton(onClick = { onShowSortMenuChange(true) }) {
                         Icon(
-                            imageVector = Icons.Filled.Sort,
+                            imageVector = Icons.AutoMirrored.Filled.Sort,
                             contentDescription = Loc.getText("sort_by"),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
@@ -701,7 +702,7 @@ fun StatsTracksPerformanceTab(
                 }
             }
         } else {
-            items(trackStats) { item ->
+            items(trackStats, key = { it.trackId }) { item ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),

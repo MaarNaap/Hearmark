@@ -330,7 +330,7 @@ fun TaskDetailsView(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(sortedProgressWithTracks) { (progress, track) ->
+            items(sortedProgressWithTracks, key = { it.first.trackId }) { (progress, track) ->
                 val isCurrentExecuting = AudioPlayerManager.currentTrack.collectAsStateWithLifecycle().value?.id == track.id
                 val isPlaying = AudioPlayerManager.isPlaying.collectAsStateWithLifecycle().value
 

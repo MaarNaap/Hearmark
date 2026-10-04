@@ -31,25 +31,16 @@ data class DaySummaryItem(
 )
 
 fun formatStatsDuration(ms: Long): String {
-    if (ms <= 0L) return if (Loc.currentLanguage == "ar") "0 د" else "0m"
+    if (ms <= 0L) return Loc.getText("stats_duration_zero")
     val totalSeconds = ms / 1000
     val hours = totalSeconds / 3600
     val minutes = (totalSeconds % 3600) / 60
     val seconds = totalSeconds % 60
-    return if (Loc.currentLanguage == "ar") {
-        when {
-            hours > 0 && minutes > 0 -> "$hours س $minutes د"
-            hours > 0 -> "$hours س"
-            minutes > 0 -> "$minutes د"
-            else -> "$seconds ث"
-        }
-    } else {
-        when {
-            hours > 0 && minutes > 0 -> "${hours}h ${minutes}m"
-            hours > 0 -> "${hours}h"
-            minutes > 0 -> "${minutes}m"
-            else -> "${seconds}s"
-        }
+    return when {
+        hours > 0 && minutes > 0 -> String.format(Locale.US, Loc.getText("stats_duration_hm"), hours, minutes)
+        hours > 0 -> String.format(Locale.US, Loc.getText("stats_duration_h"), hours)
+        minutes > 0 -> String.format(Locale.US, Loc.getText("stats_duration_m"), minutes)
+        else -> String.format(Locale.US, Loc.getText("stats_duration_s"), seconds)
     }
 }
 

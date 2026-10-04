@@ -1006,6 +1006,27 @@ object Loc {
         "ai_scenes_background" to mapOf("en" to "Detecting scenes in background...", "ar" to "جاري تقسيم المشاهد في الخلفية..."),
         "ai_background_badge" to mapOf("en" to "Background", "ar" to "بالخلفية"),
         "ai_cancel_task" to mapOf("en" to "Cancel", "ar" to "إلغاء"),
-        "ai_task_running_bg_hint" to mapOf("en" to "Running in background • You can play files and use the app normally", "ar" to "تعمل في الخلفية • يمكنك تشغيل المقاطع واستخدام التطبيق كالمعتاد")
+        "ai_task_running_bg_hint" to mapOf("en" to "Running in background • You can play files and use the app normally", "ar" to "تعمل في الخلفية • يمكنك تشغيل المقاطع واستخدام التطبيق كالمعتاد"),
+        "loading" to mapOf("en" to "Loading...", "ar" to "جاري التحميل..."),
+        "tracks" to mapOf("en" to "Tracks", "ar" to "المقاطع"),
+        "cuts_imported_from_silence" to mapOf("en" to "%d cuts imported from silence", "ar" to "تم استيراد %d فواصل من الصمت"),
+        "cuts_auto_detected_from_silence" to mapOf("en" to "%d cuts auto-detected from silence", "ar" to "تم اكتشاف %d فواصل تلقائياً من الصمت"),
+        "cuts_imported_from_subtitles" to mapOf("en" to "%d cuts imported from subtitles", "ar" to "تم استيراد %d فواصل من الترجمة"),
+        "vocab_review_mistakes_btn" to mapOf("en" to "Review (%d)", "ar" to "مراجعة الأخطاء (%d)"),
+        "vocab_question_breakdown" to mapOf("en" to "Question Breakdown", "ar" to "تفصيل الأسئلة"),
+        "vocab_filter_all_count" to mapOf("en" to "All (%d)", "ar" to "الكل (%d)"),
+        "vocab_no_questions_match_filter" to mapOf("en" to "No questions match your filter.", "ar" to "لا توجد أسئلة تطابق الفلتر."),
+        "vocab_accuracy_format" to mapOf("en" to "Accuracy: %d%% (%d/%d)", "ar" to "الدقة: %d%% (%d/%d)"),
+        "wizard_manual_files_selected" to mapOf("en" to "%d files selected manually", "ar" to "%d ملف(ات) صوتية محددة"),
+        "wizard_completion_threshold_label" to mapOf("en" to "Completion Threshold: ", "ar" to "عتبة الاكتمال: "),
+        "wizard_default_threshold" to mapOf("en" to "Default Settings Threshold", "ar" to "تلقائي (حسب الإعدادات)"),
+        "stats_duration_zero" to mapOf("en" to "0m", "ar" to "0 د"),
+        "stats_duration_hm" to mapOf("en" to "%dh %dm", "ar" to "%d س %d د"),
+        "stats_duration_h" to mapOf("en" to "%dh", "ar" to "%d س"),
+        "stats_duration_m" to mapOf("en" to "%dm", "ar" to "%d د"),
+        "stats_duration_s" to mapOf("en" to "%ds", "ar" to "%d ث"),
+        "wizard_alert_schedule_label" to mapOf("en" to "Alert Schedule: ", "ar" to "جدولة التنبيهات: "),
+        "wizard_alert_schedule_format" to mapOf("en" to "On [%s] at %s", "ar" to "كل [%s] الساعة %s"),
+        "wizard_daily_goal_label" to mapOf("en" to "Daily Goal: ", "ar" to "الهدف اليومي: ")
     )
 }

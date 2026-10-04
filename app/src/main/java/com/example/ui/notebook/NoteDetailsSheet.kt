@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.StarOutline
@@ -306,7 +307,7 @@ fun ViewNoteDetailsModal(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.MenuBook,
+                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp)
@@ -626,7 +627,7 @@ fun ViewNoteDetailsModal(
                     }
 
                     // Clickable Tag Chips -> Filters notebook by tag
-                    items(tagsList) { t ->
+                    items(tagsList, key = { it }) { t ->
                         SuggestionChip(
                             onClick = {
                                 onSelectTagFilter(t)

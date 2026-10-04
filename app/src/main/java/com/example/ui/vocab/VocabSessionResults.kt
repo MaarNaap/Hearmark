@@ -97,7 +97,7 @@ fun VocabReviewSessionResults(
                                 onClick = onPracticeMistakes,
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("Review ($mistakeCount)")
+                                Text(String.format(Loc.getText("vocab_review_mistakes_btn"), mistakeCount))
                             }
                         }
                     }
@@ -110,13 +110,13 @@ fun VocabReviewSessionResults(
 
         item {
             Text(
-                text = "Question Breakdown",
+                text = Loc.getText("vocab_question_breakdown"),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
         }
 
-        itemsIndexed(questions) { index, q ->
+        itemsIndexed(questions, key = { index, q -> "${q.id}_$index" }) { index, q ->
             val userChoice = userAnswers[index]
             val isCorrect = userChoice == q.correctIndex
             val options = q.getOptions()

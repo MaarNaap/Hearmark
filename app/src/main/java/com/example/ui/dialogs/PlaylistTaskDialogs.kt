@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -60,7 +61,7 @@ fun AddToPlaylistDialog(
                         modifier = Modifier.heightIn(max = 300.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        items(playlists) { playlist ->
+                        items(playlists, key = { it.id }) { playlist ->
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -78,7 +79,7 @@ fun AddToPlaylistDialog(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.PlaylistPlay,
+                                        imageVector = Icons.AutoMirrored.Filled.PlaylistPlay,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.primary
                                     )
@@ -199,7 +200,7 @@ fun AssociatedTasksDialog(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = PaddingValues(vertical = 4.dp)
                     ) {
-                        items(itemTasks) { task ->
+                        items(itemTasks, key = { it.id }) { task ->
                             val progresses by viewModel.repository.getProgressForTaskFlow(task.id).collectAsStateWithLifecycle(emptyList())
                             val overallPercent = if (progresses.isNotEmpty()) {
                                 var totalCompleted = 0

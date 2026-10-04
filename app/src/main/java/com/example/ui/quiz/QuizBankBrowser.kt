@@ -177,20 +177,25 @@ internal fun QuizBankBrowserView(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row {
-                                if (q.timestampMs != null && q.timestampMs!! > 0) {
-                                    val isPlaying = isPlayingAudio && currentlyPlayingTs == q.timestampMs
+                                val ts = q.timestampMs
+                                if (ts != null && ts > 0) {
+                                    val isPlaying = isPlayingAudio && currentlyPlayingTs == ts
                                     IconButton(
-                                        onClick = { onTogglePlayAudio(q.timestampMs!!, q.trackId) },
+                                        onClick = { onTogglePlayAudio(ts, q.trackId) },
                                         modifier = Modifier.size(28.dp)
                                     ) {
-                                        Icon(if (isPlaying) Icons.Filled.Pause else Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Icon(
+                                            imageVector = if (isPlaying) Icons.Filled.Pause else Icons.AutoMirrored.Filled.VolumeUp,
+                                            contentDescription = if (isPlaying) Loc.getText("pause_clip") else Loc.getText("play_clip"),
+                                            modifier = Modifier.size(16.dp)
+                                        )
                                     }
                                 }
                                 IconButton(
                                     onClick = { onDeleteQuestion(q.id) },
                                     modifier = Modifier.size(28.dp)
                                 ) {
-                                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Filled.Delete, contentDescription = Loc.getText("delete"), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                                 }
                             }
                         }

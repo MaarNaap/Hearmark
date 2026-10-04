@@ -115,7 +115,7 @@ internal fun QuizSessionActiveRunner(
             }
 
             // Options
-            itemsIndexed(options) { idx, optionText ->
+            itemsIndexed(options, key = { idx, _ -> idx }) { idx, optionText ->
                 val isSelected = selectedOption == idx
                 val isCorrect = idx == currentQuestion.correctIndex
                 val containerColor = when {

@@ -27,7 +27,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -299,7 +301,7 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                                         Spacer(modifier = Modifier.width(10.dp))
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(
-                                                imageVector = Icons.Filled.TrendingUp,
+                                                imageVector = Icons.AutoMirrored.Filled.TrendingUp,
                                                 contentDescription = "Max Progress",
                                                 tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(13.dp)
@@ -400,7 +402,7 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                                 editingTaskTarget = null
                                 isCreatingTask = false
                             },
-                            icon = { Icon(Icons.Filled.MenuBook, "Notebook") },
+                            icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, "Notebook") },
                             label = { Text(Loc.getText("notebook"), fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                             modifier = Modifier.testTag("nav_notebook")
                         )

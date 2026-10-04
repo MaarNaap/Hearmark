@@ -145,7 +145,7 @@ internal fun ColumnScope.WaveformSegmentsSection(
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            itemsIndexed(cuts) { idx, cutMs ->
+            itemsIndexed(cuts, key = { _, cutMs -> cutMs }) { idx, cutMs ->
                 val startMs = if (idx > 0) cuts[idx - 1] else 0L
                 val durationSec = (cutMs - startMs) / 1000f
                 val isSelected = (selectedCutIndex == idx)

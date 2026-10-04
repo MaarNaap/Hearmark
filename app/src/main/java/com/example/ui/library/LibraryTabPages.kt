@@ -149,7 +149,7 @@ fun LibraryTracksPage(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(filteredIndependentTracks) { track ->
+                items(filteredIndependentTracks, key = { it.id }) { track ->
                     val isSelected = selectedTrackIdsSet.contains(track.id)
                     val isCurrentExecuting = AudioPlayerManager.currentTrack.collectAsStateWithLifecycle().value?.id == track.id
                     val isPlaying = AudioPlayerManager.isPlaying.collectAsStateWithLifecycle().value
@@ -208,7 +208,7 @@ fun LibraryPlaylistsPage(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(filteredPlaylists) { playlist ->
+                items(filteredPlaylists, key = { it.id }) { playlist ->
                     val tracksInPl by viewModel.repository.getTracksForPlaylistFlow(playlist.id).collectAsStateWithLifecycle(emptyList())
                     val isSelected = selectedPlaylistIds.contains(playlist.id)
                     var showMenu by remember { mutableStateOf(false) }

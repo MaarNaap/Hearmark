@@ -15,7 +15,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Assignment
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -358,8 +361,8 @@ fun UnifiedAiHubSheet(
                                     imageVector = when (selectedContextType) {
                                         AiContextType.FREE -> Icons.Filled.Public
                                         AiContextType.TRACK -> Icons.Filled.Folder
-                                        AiContextType.NOTEBOOK -> Icons.Filled.MenuBook
-                                        AiContextType.TASK -> Icons.Filled.Assignment
+                                        AiContextType.NOTEBOOK -> Icons.AutoMirrored.Filled.MenuBook
+                                        AiContextType.TASK -> Icons.AutoMirrored.Filled.Assignment
                                         null -> Icons.Filled.Tune
                                     },
                                     contentDescription = null,
@@ -636,7 +639,7 @@ fun UnifiedAiHubSheet(
             ) {
                 Icon(
                     imageVector = when (selectedFunction) {
-                        AiFunctionType.CHAT -> Icons.Filled.Chat
+                        AiFunctionType.CHAT -> Icons.AutoMirrored.Filled.Chat
                         AiFunctionType.SUBTITLES -> Icons.Filled.Subtitles
                         AiFunctionType.SCENES -> Icons.Filled.MovieCreation
                         AiFunctionType.QUIZ -> Icons.Filled.PlayArrow

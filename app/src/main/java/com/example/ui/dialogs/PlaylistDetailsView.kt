@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -142,7 +143,7 @@ fun PlaylistDetailsView(
                     modifier = Modifier.padding(24.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.PlaylistPlay,
+                        imageVector = Icons.AutoMirrored.Filled.PlaylistPlay,
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
                         tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
@@ -171,7 +172,7 @@ fun PlaylistDetailsView(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(tracks) { track ->
+                items(tracks, key = { it.id }) { track ->
                     val isCurrentExecuting = AudioPlayerManager.currentTrack.collectAsStateWithLifecycle().value?.id == track.id
                     val isPlaying = AudioPlayerManager.isPlaying.collectAsStateWithLifecycle().value
 
@@ -218,7 +219,7 @@ fun PlaylistDetailsView(
                             modifier = Modifier.heightIn(max = 280.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            items(eligibleTracks) { track ->
+                            items(eligibleTracks, key = { it.id }) { track ->
                                 val isChecked = selectedIds.contains(track.id)
                                 Card(
                                     modifier = Modifier

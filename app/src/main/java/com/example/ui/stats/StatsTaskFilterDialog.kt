@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -69,6 +70,7 @@ fun StatsTaskFilterDialog(
             modifier = Modifier
                 .fillMaxWidth(0.94f)
                 .fillMaxHeight(0.85f)
+                .imePadding()
         ) {
             Column(
                 modifier = Modifier
@@ -190,7 +192,7 @@ fun StatsTaskFilterDialog(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.Label,
+                            imageVector = Icons.AutoMirrored.Filled.Label,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(16.dp)
@@ -217,7 +219,7 @@ fun StatsTaskFilterDialog(
                                 modifier = Modifier.height(32.dp)
                             )
                         }
-                        items(allDialogTaskLabels) { label ->
+                        items(allDialogTaskLabels, key = { it }) { label ->
                             val isSelected = selectedLabelFilterInDialog.equals(label, ignoreCase = true)
                             FilterChip(
                                 selected = isSelected,

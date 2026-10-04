@@ -186,7 +186,7 @@ fun WaveformSegmentEditorDialog(
         cuts[idx] = updated
     }
 
-    val importFromSilence: (String) -> Unit = { toastSuffix ->
+    val importFromSilence: (String) -> Unit = { locKey ->
         coroutineScope.launch {
             val silenceCuts = SilenceDetector.detectBoundaries(
                 context = context,
@@ -196,7 +196,7 @@ fun WaveformSegmentEditorDialog(
             cuts.clear()
             cuts.addAll(silenceCuts)
             selectedCutIndex = if (cuts.isNotEmpty()) 0 else null
-            Toast.makeText(context, "${silenceCuts.size} $toastSuffix", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, String.format(Loc.getText(locKey), silenceCuts.size), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -205,7 +205,7 @@ fun WaveformSegmentEditorDialog(
         cuts.clear()
         cuts.addAll(subCuts)
         selectedCutIndex = if (cuts.isNotEmpty()) 0 else null
-        Toast.makeText(context, "${subCuts.size} cuts imported from subtitles", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, String.format(Loc.getText("cuts_imported_from_subtitles"), subCuts.size), Toast.LENGTH_SHORT).show()
     }
 
     Dialog(
@@ -464,7 +464,7 @@ fun WaveformSegmentEditorDialog(
                 WaveformPresetsRow(
                     hasSubtitles = subtitlesCues.isNotEmpty(),
                     hasCuts = cuts.isNotEmpty(),
-                    onImportFromSilence = { importFromSilence("cuts imported from silence") },
+                    onImportFromSilence = { importFromSilence("cuts_imported_from_silence") },
                     onImportFromSubtitles = importFromSubtitles,
                     onClearAllCuts = {
                         cuts.clear()
@@ -479,7 +479,7 @@ fun WaveformSegmentEditorDialog(
                     selectedCutIndex = selectedCutIndex,
                     effectiveDuration = effectiveDuration,
                     hasSubtitles = subtitlesCues.isNotEmpty(),
-                    onAutoDetectSilence = { importFromSilence("cuts auto-detected from silence") },
+                    onAutoDetectSilence = { importFromSilence("cuts_auto_detected_from_silence") },
                     onImportFromSubtitles = importFromSubtitles,
                     onAddCutAtPlayhead = { addCut(positionMs()) },
                     onSelectSegment = { idx, startMs, cutMs ->

@@ -27,7 +27,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -320,7 +322,7 @@ fun TasksView(
                             modifier = Modifier.testTag("sort_tasks_button")
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.Sort,
+                                imageVector = Icons.AutoMirrored.Filled.Sort,
                                 contentDescription = "Sort tasks",
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(24.dp)
@@ -392,7 +394,7 @@ fun TasksView(
                                 }
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.Label,
+                                    imageVector = Icons.AutoMirrored.Filled.Label,
                                     contentDescription = Loc.getText("filter_by_tag"),
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(24.dp)
@@ -483,7 +485,7 @@ fun TasksView(
                     label = { Text(selectedLabelFilter!!, fontSize = 12.sp) },
                     leadingIcon = {
                         Icon(
-                            imageVector = Icons.Filled.Label,
+                            imageVector = Icons.AutoMirrored.Filled.Label,
                             contentDescription = null,
                             modifier = Modifier.size(14.dp)
                         )
@@ -584,7 +586,7 @@ fun TasksView(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(filteredAndSortedTasks) { (task, overallPercent, taskTracks) ->
+                        items(filteredAndSortedTasks, key = { it.first.id }) { (task, overallPercent, taskTracks) ->
                             val isSelected = selectedTaskIds.contains(task.id)
 
                             Card(

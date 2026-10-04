@@ -130,7 +130,7 @@ internal fun LazyListScope.quizNoteSelectorItems(
                             label = { Text(Loc.getText("notebook_quiz_all_tags"), fontSize = 11.5.sp) }
                         )
                     }
-                    items(allTags) { tag ->
+                    items(allTags, key = { it }) { tag ->
                         FilterChip(
                             selected = selectedTagFilter == tag,
                             onClick = { onSelectTagFilter(if (selectedTagFilter == tag) null else tag) },

@@ -12,6 +12,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -178,7 +180,7 @@ fun PlayerFooterUtilitiesCard(
                         modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
-                            imageVector = if (isAutoPlay) Icons.Filled.PlaylistPlay else Icons.Filled.PlaylistRemove,
+                            imageVector = if (isAutoPlay) Icons.AutoMirrored.Filled.PlaylistPlay else Icons.Filled.PlaylistRemove,
                             contentDescription = "Autoplay",
                             tint = if (isAutoPlay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
                             modifier = Modifier.size(24.dp)
@@ -209,7 +211,7 @@ fun PlayerFooterUtilitiesCard(
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.QueueMusic,
+                            imageVector = Icons.AutoMirrored.Filled.QueueMusic,
                             contentDescription = "Queue Icon",
                             tint = if (showQueueSheet) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(18.dp)

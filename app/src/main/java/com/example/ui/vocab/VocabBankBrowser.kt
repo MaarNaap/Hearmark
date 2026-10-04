@@ -6,11 +6,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -61,6 +61,7 @@ fun VocabBankBrowserView(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .imePadding()
             .padding(horizontal = 16.dp)
     ) {
         Spacer(modifier = Modifier.height(12.dp))
@@ -90,12 +91,12 @@ fun VocabBankBrowserView(
         // Filter chips row
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val filters = listOf(
-                "ALL" to "All (${allQuestions.size})",
+                "ALL" to String.format(Loc.getText("vocab_filter_all_count"), allQuestions.size),
                 "MASTERED" to Loc.getText("vocab_review_mastered"),
                 "NEEDS_PRACTICE" to Loc.getText("vocab_review_needs_practice"),
                 "UNTESTED" to Loc.getText("vocab_review_untested")
             )
-            items(filters) { (key, label) ->
+            items(filters, key = { it.first }) { (key, label) ->
                 FilterChip(
                     selected = filterMode == key,
                     onClick = { onFilterModeChange(key) },
@@ -114,7 +115,7 @@ fun VocabBankBrowserView(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "No questions match your filter.",
+                    text = Loc.getText("vocab_no_questions_match_filter"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -150,7 +151,7 @@ fun VocabBankBrowserView(
                                     shape = RoundedCornerShape(6.dp)
                                 ) {
                                     Text(
-                                        text = if (accuracy != null) "Accuracy: $accuracy% (${q.timesCorrect}/${q.timesAnswered})" else Loc.getText("quiz_never_answered"),
+                                        text = if (accuracy != null) String.format(Loc.getText("vocab_accuracy_format"), accuracy, q.timesCorrect, q.timesAnswered) else Loc.getText("quiz_never_answered"),
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = when {
@@ -169,7 +170,7 @@ fun VocabBankBrowserView(
                                             modifier = Modifier.size(32.dp)
                                         ) {
                                             Icon(
-                                                imageVector = if (isPlayingAudio && currentlyPlayingTs == q.timestampMs) Icons.Filled.Pause else Icons.Filled.VolumeUp,
+                                                imageVector = if (isPlayingAudio && currentlyPlayingTs == q.timestampMs) Icons.Filled.Pause else Icons.AutoMirrored.Filled.VolumeUp,
                                                 contentDescription = "Play context audio",
                                                 tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(18.dp)

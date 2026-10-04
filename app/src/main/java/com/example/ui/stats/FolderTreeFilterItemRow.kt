@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -59,7 +60,7 @@ internal fun FolderTreeFilterItemRow(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable {
+                        .clickable(role = Role.Checkbox) {
                             val willSelect = (triState != ToggleableState.On)
                             if (willSelect) {
                                 onUpdateSelectedFolders(tempSelectedFolderIds + item.allSubfolderIds)
@@ -81,7 +82,7 @@ internal fun FolderTreeFilterItemRow(
                         ) {
                             Icon(
                                 imageVector = if (item.isExpanded) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = null,
+                                contentDescription = if (item.isExpanded) Loc.getText("collapse_all") else Loc.getText("expand_all"),
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -150,7 +151,7 @@ internal fun FolderTreeFilterItemRow(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable {
+                        .clickable(role = Role.Checkbox) {
                             onUpdateSelectedTracks(
                                 if (isTrackChecked) {
                                     tempSelectedTrackIds - track.id
@@ -220,7 +221,7 @@ internal fun FolderTreeFilterItemRow(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onToggleIndependentExpanded() }
+                        .clickable(role = Role.Button) { onToggleIndependentExpanded() }
                         .padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -230,7 +231,7 @@ internal fun FolderTreeFilterItemRow(
                     ) {
                         Icon(
                             imageVector = if (item.isExpanded) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
+                            contentDescription = if (item.isExpanded) Loc.getText("collapse_all") else Loc.getText("expand_all"),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )

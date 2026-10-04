@@ -53,7 +53,7 @@ fun NoteCueSelector(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(spannedCues) { cue ->
+                items(spannedCues, key = { "${it.startMs}_${it.endMs}" }) { cue ->
                     val isSelected = originStartMs != null && (
                         originStartMs == cue.startMs || (
                             originStartMs in cue.startMs..(if (cue.endMs > cue.startMs) cue.endMs else cue.startMs + 4000L)

@@ -12,7 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -239,7 +239,7 @@ fun LibraryView(
                     imageVector = when (activeTab) {
                         0 -> Icons.Filled.Folder
                         1 -> Icons.Filled.Audiotrack
-                        else -> Icons.Filled.PlaylistAdd
+                        else -> Icons.AutoMirrored.Filled.PlaylistAdd
                     },
                     contentDescription = when (activeTab) {
                         0 -> Loc.getText("add_folder")

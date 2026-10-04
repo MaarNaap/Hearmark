@@ -264,7 +264,7 @@ fun FolderDetailsView(
                             modifier = Modifier.heightIn(max = 300.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            items(playlists) { playlist ->
+                            items(playlists, key = { it.id }) { playlist ->
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -510,7 +510,7 @@ fun FolderDetailsView(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    itemsIndexed(folderBreadcrumbs) { index, bFolder ->
+                    itemsIndexed(folderBreadcrumbs, key = { _, bFolder -> bFolder.id }) { index, bFolder ->
                         val isLast = index == folderBreadcrumbs.size - 1
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
@@ -654,7 +654,7 @@ fun FolderDetailsView(
             }
 
             // 3. TRACKS LIST
-            items(tracks) { track ->
+            items(tracks, key = { it.id }) { track ->
                 val isCurrentExecuting = AudioPlayerManager.currentTrack.collectAsStateWithLifecycle().value?.id == track.id
                 val isPlaying = AudioPlayerManager.isPlaying.collectAsStateWithLifecycle().value
 

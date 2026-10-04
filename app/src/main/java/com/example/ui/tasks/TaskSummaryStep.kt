@@ -30,8 +30,6 @@ fun TaskSummaryStep(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            val isAr = Loc.currentLanguage == "ar"
-            
             // Title
             val currentWizardTitle = formState.resolveFinalTitle(allFolders, allPlaylists, allTracks)
             Row {
@@ -53,13 +51,7 @@ fun TaskSummaryStep(
             val sourceDetailsName = when (formState.sourceType) {
                 "FOLDER" -> allFolders.find { it.id == formState.sourceId }?.folderName ?: ""
                 "PLAYLIST" -> allPlaylists.find { it.id == formState.sourceId }?.name ?: ""
-                "TRACKS" -> {
-                    if (isAr) {
-                        "${formState.selectedManualTrackIds.size} ملف(ات) صوتية محددة"
-                    } else {
-                        "${formState.selectedManualTrackIds.size} files selected manually"
-                    }
-                }
+                "TRACKS" -> String.format(Loc.getText("wizard_manual_files_selected"), formState.selectedManualTrackIds.size)
                 else -> ""
             }
             
@@ -76,9 +68,9 @@ fun TaskSummaryStep(
             }
             // Target
             val targetDesc = if (formState.targetType == "PLAY_COUNT") {
-                if (isAr) "الاستماع لكل ملف ${formState.targetValue} مرات كاملة" else "Listen to each file ${formState.targetValue} times fully"
+                String.format(Loc.getText("goal_type_plays_desc"), formState.targetValue)
             } else {
-                if (isAr) "الاستماع لكل ملف في ${formState.targetValue} أيام مختلفة" else "Listen to each file on ${formState.targetValue} different days"
+                String.format(Loc.getText("goal_type_days_desc"), formState.targetValue)
             }
             
             Row {
@@ -92,7 +84,7 @@ fun TaskSummaryStep(
             // Custom Completion Threshold info in summary
             Row {
                 Text(
-                    text = if (isAr) "عتبة الاكتمال: " else "Completion Threshold: ",
+                    text = Loc.getText("wizard_completion_threshold_label"),
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -100,57 +92,29 @@ fun TaskSummaryStep(
                     text = if (formState.useCustomThreshold) {
                         "${formState.taskThresholdValue.toInt()}%"
                     } else {
-                        if (isAr) "تلقائي (حسب الإعدادات)" else "Default Settings Threshold"
+                        Loc.getText("wizard_default_threshold")
                     },
                     fontWeight = FontWeight.Normal
                 )
             }
             // Scheduled days translated
-            val mappedDays = if (formState.scheduledDays.size >= 7) {
-                Loc.getText("all_days")
-            } else {
-                formState.scheduledDays.map { day ->
-                    if (isAr) {
-                        when (day) {
-                            "SUNDAY" -> "أحد"
-                            "MONDAY" -> "اثنين"
-                            "TUESDAY" -> "ثلاث"
-                            "WEDNESDAY" -> "أربع"
-                            "THURSDAY" -> "خميس"
-                            "FRIDAY" -> "جمعة"
-                            "SATURDAY" -> "سبت"
-                            else -> day
-                        }
-                    } else {
-                        when (day) {
-                            "SUNDAY" -> "Sun"
-                            "MONDAY" -> "Mon"
-                            "TUESDAY" -> "Tue"
-                            "WEDNESDAY" -> "Wed"
-                            "THURSDAY" -> "Thu"
-                            "FRIDAY" -> "Fri"
-                            "SATURDAY" -> "Sat"
-                            else -> day
-                        }
-                    }
-                }.joinToString(", ")
-            }
+            val mappedDays = formatScheduledDays(formState.scheduledDays.joinToString(","))
             
             Row {
                 Text(
-                    text = if (isAr) "جدولة التنبيهات: " else "Alert Schedule: ", 
+                    text = Loc.getText("wizard_alert_schedule_label"), 
                     fontWeight = FontWeight.Bold, 
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = if (isAr) "كل [$mappedDays] الساعة ${formState.reminderTime}" else "On [$mappedDays] at ${formState.reminderTime}",
+                    text = String.format(Loc.getText("wizard_alert_schedule_format"), mappedDays, formState.reminderTime),
                     fontWeight = FontWeight.Normal
                 )
             }
             // Daily Goal Summary
             Row {
                 Text(
-                    text = if (isAr) "الهدف اليومي: " else "Daily Goal: ",
+                    text = Loc.getText("wizard_daily_goal_label"),
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
