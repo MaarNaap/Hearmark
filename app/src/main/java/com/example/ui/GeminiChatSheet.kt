@@ -255,7 +255,8 @@ fun GeminiChatSheet(
             )
 
             // Current Context Banner (if available)
-            if (activeContext != null && (activeContext!!.trackTitle != null || activeContext!!.activeSubtitleLine != null || activeContext!!.activeTaskTitle != null)) {
+            val currentContext = activeContext
+            if (currentContext != null && (currentContext.trackTitle != null || currentContext.activeSubtitleLine != null || currentContext.activeTaskTitle != null)) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -300,9 +301,9 @@ fun GeminiChatSheet(
 
                         if (isContextCardExpanded) {
                             Spacer(modifier = Modifier.height(4.dp))
-                            if (!activeContext!!.trackTitle.isNullOrBlank()) {
+                            if (!currentContext.trackTitle.isNullOrBlank()) {
                                 Text(
-                                    text = "🎵 ${activeContext!!.trackTitle}${if (activeContext!!.formattedPosition != null) " (${activeContext!!.formattedPosition})" else ""}",
+                                    text = "🎵 ${currentContext.trackTitle}${if (currentContext.formattedPosition != null) " (${currentContext.formattedPosition})" else ""}",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface,
@@ -310,8 +311,8 @@ fun GeminiChatSheet(
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
-                            if (activeContext!!.isFullSubtitlesContext || !activeContext!!.fullSubtitlesText.isNullOrBlank()) {
-                                val charCount = activeContext!!.fullSubtitlesText?.length ?: 0
+                            if (currentContext.isFullSubtitlesContext || !currentContext.fullSubtitlesText.isNullOrBlank()) {
+                                val charCount = currentContext.fullSubtitlesText?.length ?: 0
                                 Text(
                                     text = "📜 " + String.format(Loc.getText("ai_full_transcript_ready"), charCount),
                                     fontSize = 11.sp,
@@ -321,9 +322,9 @@ fun GeminiChatSheet(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.padding(top = 2.dp)
                                 )
-                            } else if (!activeContext!!.activeSubtitleLine.isNullOrBlank()) {
+                            } else if (!currentContext.activeSubtitleLine.isNullOrBlank()) {
                                 Text(
-                                    text = "💬 \"${activeContext!!.activeSubtitleLine}\"",
+                                    text = "💬 \"${currentContext.activeSubtitleLine}\"",
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 2,
@@ -331,9 +332,9 @@ fun GeminiChatSheet(
                                     modifier = Modifier.padding(top = 2.dp)
                                 )
                             }
-                            if (!activeContext!!.activeTaskTitle.isNullOrBlank()) {
+                            if (!currentContext.activeTaskTitle.isNullOrBlank()) {
                                 Text(
-                                    text = "🎯 ${activeContext!!.activeTaskTitle}",
+                                    text = "🎯 ${currentContext.activeTaskTitle}",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.secondary,
                                     modifier = Modifier.padding(top = 2.dp)
@@ -475,11 +476,11 @@ fun GeminiChatSheet(
                     )
                 }
 
-                if (activeContext?.activeSubtitleLine?.isNotBlank() == true) {
+                val activeSubtitleLine = activeContext?.activeSubtitleLine
+                if (!activeSubtitleLine.isNullOrBlank()) {
                     AssistChip(
                         onClick = {
-                            val subText = activeContext!!.activeSubtitleLine ?: ""
-                            val promptText = String.format(Loc.getText("ai_prompt_msg_explain_sentence"), subText)
+                            val promptText = String.format(Loc.getText("ai_prompt_msg_explain_sentence"), activeSubtitleLine)
                             viewModel.sendChatMessage(
                                 prompt = promptText,
                                 contextSummary = activeContext
@@ -493,8 +494,7 @@ fun GeminiChatSheet(
 
                     AssistChip(
                         onClick = {
-                            val subText = activeContext!!.activeSubtitleLine ?: ""
-                            val promptText = String.format(Loc.getText("ai_prompt_msg_translate_examples"), subText)
+                            val promptText = String.format(Loc.getText("ai_prompt_msg_translate_examples"), activeSubtitleLine)
                             viewModel.sendChatMessage(
                                 prompt = promptText,
                                 contextSummary = activeContext
@@ -507,11 +507,11 @@ fun GeminiChatSheet(
                     )
                 }
 
-                if (activeContext?.trackTitle?.isNotBlank() == true) {
+                val activeTrackTitle = activeContext?.trackTitle
+                if (!activeTrackTitle.isNullOrBlank()) {
                     AssistChip(
                         onClick = {
-                            val title = activeContext!!.trackTitle ?: ""
-                            val promptText = String.format(Loc.getText("ai_prompt_msg_summarize_audio"), title)
+                            val promptText = String.format(Loc.getText("ai_prompt_msg_summarize_audio"), activeTrackTitle)
                             viewModel.sendChatMessage(
                                 prompt = promptText,
                                 contextSummary = activeContext
@@ -538,11 +538,11 @@ fun GeminiChatSheet(
                     )
                 }
 
-                if (activeContext?.activeTaskTitle?.isNotBlank() == true) {
+                val activeTaskTitle = activeContext?.activeTaskTitle
+                if (!activeTaskTitle.isNullOrBlank()) {
                     AssistChip(
                         onClick = {
-                            val taskTitle = activeContext!!.activeTaskTitle ?: ""
-                            val promptText = String.format(Loc.getText("ai_prompt_msg_goal_tips"), taskTitle)
+                            val promptText = String.format(Loc.getText("ai_prompt_msg_goal_tips"), activeTaskTitle)
                             viewModel.sendChatMessage(
                                 prompt = promptText,
                                 contextSummary = activeContext

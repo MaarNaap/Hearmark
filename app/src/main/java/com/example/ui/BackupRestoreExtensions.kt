@@ -13,45 +13,99 @@ import kotlinx.coroutines.withContext
 // @LOCKED: Full Backup & Restore Serialization Engine - STRICT FREEZE
 // DO NOT MODIFY OR REFACTOR THIS BLOCK WITHOUT EXPLICIT PERMISSION IN PROMPT
 // =========================================================================
-fun AppViewModel.exportBackupToJson(outputStream: java.io.OutputStream): Boolean {
-    return try {
-        val root = kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-            com.example.util.AutoBackupManager.buildBackupJsonFromRepository(
+suspend fun AppViewModel.exportBackupToJson(outputStream: java.io.OutputStream): Boolean =
+    withContext(Dispatchers.IO) {
+        try {
+            val root = com.example.util.AutoBackupManager.buildBackupJsonFromRepository(
                 repository = repository,
                 requireNonEmpty = false
-            )
-        } ?: return false
+            ) ?: return@withContext false
 
-        outputStream.write(root.toString(2).toByteArray(Charsets.UTF_8))
-        outputStream.flush()
-        true
-    } catch (e: Exception) {
-        e.printStackTrace()
-        false
+            outputStream.write(root.toString(2).toByteArray(Charsets.UTF_8))
+            outputStream.flush()
+            true
+        } catch (e: Exception) {
+            Log.e("BackupRestore", "Failed to export backup to JSON stream", e)
+            false
+        }
+    }
+
+fun AppViewModel.exportBackupToUri(
+    uri: android.net.Uri,
+    onResult: ((Boolean) -> Unit)? = null
+) {
+    viewModelScope.launch(Dispatchers.IO) {
+        val context = getApplication<Application>()
+        val success = try {
+            context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                exportBackupToJson(outputStream)
+            } ?: false
+        } catch (e: Exception) {
+            Log.e("BackupRestore", "Failed to open output stream for backup export", e)
+            false
+        }
+        withContext(Dispatchers.Main) {
+            if (onResult != null) {
+                onResult(success)
+            } else if (success) {
+                Toast.makeText(context, Loc.getText("backup_success"), Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(context, Loc.getText("backup_failed"), Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+}
+
+fun AppViewModel.restoreBackupFromUri(uri: android.net.Uri) {
+    viewModelScope.launch(Dispatchers.IO) {
+        val context = getApplication<Application>()
+        val jsonBytes = try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                stream.readBytes()
+            }
+        } catch (e: Exception) {
+            Log.e("BackupRestore", "Failed to read backup input stream from URI", e)
+            null
+        }
+        if (jsonBytes == null || jsonBytes.isEmpty()) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, Loc.getText("restore_failed"), Toast.LENGTH_SHORT).show()
+            }
+            return@launch
+        }
+        val offset = if (jsonBytes.size >= 3 &&
+            jsonBytes[0] == 0xEF.toByte() &&
+            jsonBytes[1] == 0xBB.toByte() &&
+            jsonBytes[2] == 0xBF.toByte()
+        ) 3 else 0
+        val jsonString = String(jsonBytes, offset, jsonBytes.size - offset, Charsets.UTF_8)
+        restoreBackupFromJsonString(jsonString, isAutoRecovery = false)
     }
 }
 
 fun AppViewModel.restoreBackupFromJson(inputStream: java.io.InputStream) {
-    val jsonBytes = try {
-        inputStream.use { it.readBytes() }
-    } catch (e: Exception) {
-        e.printStackTrace()
-        null
-    }
-    if (jsonBytes == null || jsonBytes.isEmpty()) {
-        viewModelScope.launch(Dispatchers.Main) {
-            val context = getApplication<Application>()
-            Toast.makeText(context, Loc.getText("restore_failed"), Toast.LENGTH_LONG).show()
+    viewModelScope.launch(Dispatchers.IO) {
+        val jsonBytes = try {
+            inputStream.use { it.readBytes() }
+        } catch (e: Exception) {
+            Log.e("BackupRestore", "Failed to read backup input stream", e)
+            null
         }
-        return
+        if (jsonBytes == null || jsonBytes.isEmpty()) {
+            withContext(Dispatchers.Main) {
+                val context = getApplication<Application>()
+                Toast.makeText(context, Loc.getText("restore_failed"), Toast.LENGTH_LONG).show()
+            }
+            return@launch
+        }
+        val offset = if (jsonBytes.size >= 3 &&
+            jsonBytes[0] == 0xEF.toByte() &&
+            jsonBytes[1] == 0xBB.toByte() &&
+            jsonBytes[2] == 0xBF.toByte()
+        ) 3 else 0
+        val jsonString = String(jsonBytes, offset, jsonBytes.size - offset, Charsets.UTF_8)
+        restoreBackupFromJsonString(jsonString, isAutoRecovery = false)
     }
-    val offset = if (jsonBytes.size >= 3 &&
-        jsonBytes[0] == 0xEF.toByte() &&
-        jsonBytes[1] == 0xBB.toByte() &&
-        jsonBytes[2] == 0xBF.toByte()
-    ) 3 else 0
-    val jsonString = String(jsonBytes, offset, jsonBytes.size - offset, Charsets.UTF_8)
-    restoreBackupFromJsonString(jsonString, isAutoRecovery = false)
 }
 
 fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery: Boolean = false) {
@@ -553,12 +607,17 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                 }
             }
 
-            // If tasks were restored, sync labels
+            // If tasks were restored, sync labels and reschedule active alarms
             if (tasksCount > 0) {
                 try {
                     repository.syncAndCleanTaskLabels()
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Log.w("BackupRestore", "Failed to sync task labels after restore", e)
+                }
+                try {
+                    com.example.receiver.AlarmReceiver.rescheduleAllActiveTasks(getApplication())
+                } catch (e: Exception) {
+                    Log.w("BackupRestore", "Failed to reschedule active task alarms after restore", e)
                 }
             }
 

@@ -22,7 +22,7 @@ import androidx.room.RoomDatabase
         VocabularyItem::class
     ],
     version = 18,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun appDao(): AppDao
@@ -42,7 +42,6 @@ abstract class AppDatabase : RoomDatabase() {
                     "smart_audio_tasks_db"
                 )
                     .addMigrations(*DatabaseMigrations.ALL_MIGRATIONS)
-                    .fallbackToDestructiveMigrationOnDowngrade(true)
                     .build()
                 INSTANCE = instance
                 instance

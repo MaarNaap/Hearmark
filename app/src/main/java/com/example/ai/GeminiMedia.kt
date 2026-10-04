@@ -22,6 +22,9 @@ object GeminiMedia {
             val time = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
             time?.toLongOrNull() ?: 0L
         } catch (e: Exception) {
+            try {
+                Log.w(TAG, "Failed to retrieve media duration for ${file.name}: ${e.message}")
+            } catch (_: Throwable) {}
             0L
         } finally {
             try { retriever?.release() } catch (ignored: Exception) {}

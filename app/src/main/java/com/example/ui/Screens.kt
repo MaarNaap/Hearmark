@@ -224,7 +224,8 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                 if (!isFullPlayerExpanded) {
                     Column {
                         // PERSISTENT MINI-PLAYER BAR (Spotify style)
-                        if (currentTrackState != null) {
+                        val miniPlayerTrack = currentTrackState
+                        if (miniPlayerTrack != null) {
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -241,14 +242,14 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                                     .fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                val percent = currentTrackState!!.let { track ->
+                                val percent = miniPlayerTrack.let { track ->
                                     val durationS = track.duration / 1000
                                     val numSegments = minOf(durationS.toInt(), 100).coerceAtLeast(10)
                                     track.getProgressPercent(numSegments)
                                 }
 
                                 Icon(
-                                    imageVector = getTrackFileIcon(currentTrackState),
+                                    imageVector = getTrackFileIcon(miniPlayerTrack),
                                     contentDescription = "Playing",
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(28.dp)
@@ -256,7 +257,7 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = if (isPlayingState) currentTrackState!!.getDisplayTitle() else middleEllipse(currentTrackState!!.getDisplayTitle(), 38), modifier = if (isPlayingState) Modifier.basicMarquee() else Modifier,
+                                        text = if (isPlayingState) miniPlayerTrack.getDisplayTitle() else middleEllipse(miniPlayerTrack.getDisplayTitle(), 38), modifier = if (isPlayingState) Modifier.basicMarquee() else Modifier,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 1,
@@ -460,6 +461,9 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                     },
                     label = "main_screens"
                 ) { (screen, details) ->
+                    val currentTaskForDetails = activeTaskForDetails
+                    val currentFolderIdForDetails = activeFolderIdForDetails
+                    val currentPlaylistIdForDetails = activePlaylistIdForDetails
                     when {
                         isCreatingTask -> {
                             CreateTaskScreen(
@@ -480,9 +484,9 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                                 onDismiss = { editingTaskTarget = null }
                             )
                         }
-                        activeTaskForDetails != null -> {
+                        currentTaskForDetails != null -> {
                             TaskDetailsView(
-                                task = activeTaskForDetails!!,
+                                task = currentTaskForDetails,
                                 viewModel = viewModel,
                                 onBack = { activeTaskForDetails = null },
                                 onEdit = { task -> editingTaskTarget = task },
@@ -491,9 +495,9 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                                 }
                             )
                         }
-                        activeFolderIdForDetails != null -> {
+                        currentFolderIdForDetails != null -> {
                             FolderDetailsView(
-                                folderId = activeFolderIdForDetails!!,
+                                folderId = currentFolderIdForDetails,
                                 viewModel = viewModel,
                                 backPressed = { activeFolderIdForDetails = null },
                                 onCreateTaskForFolder = { type, id ->
@@ -505,9 +509,9 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                                 }
                             )
                         }
-                        activePlaylistIdForDetails != null -> {
+                        currentPlaylistIdForDetails != null -> {
                             PlaylistDetailsView(
-                                playlistId = activePlaylistIdForDetails!!,
+                                playlistId = currentPlaylistIdForDetails,
                                 viewModel = viewModel,
                                 backPressed = { activePlaylistIdForDetails = null },
                                 onCreateTaskForPlaylist = { type, id ->
@@ -606,9 +610,10 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                 }
 
                 // AUDIO PLAYER OVERLAY (Expanded view)
-                if (isFullPlayerExpanded && currentTrackState != null) {
+                val overlayTrack = currentTrackState
+                if (isFullPlayerExpanded && overlayTrack != null) {
                     AudioPlayerOverlay(
-                        track = currentTrackState!!,
+                        track = overlayTrack,
                         viewModel = viewModel,
                         dismiss = { isFullPlayerExpanded = false },
                         onQuickAddTaskPrompt = { trackId ->
@@ -646,9 +651,10 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                 }
 
                 // VIEW CUE NOTES BOTTOM SHEET (Playback / Subtitles context)
-                if (viewingCueNotesTarget != null) {
+                val currentCueNotes = viewingCueNotesTarget
+                if (currentCueNotes != null) {
                     PlaybackCueNotesBottomSheet(
-                        notes = viewingCueNotesTarget!!,
+                        notes = currentCueNotes,
                         noteQuestionCounts = noteQuestionCounts,
                         onDismiss = { viewingCueNotesTarget = null },
                         onEditNote = { note ->
@@ -700,8 +706,8 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                 }
 
                 // ASSOCIATED ACTIVE TASKS DIALOG
-                if (showAssociatedTasksFor != null) {
-                    val associated = showAssociatedTasksFor!!
+                val associated = showAssociatedTasksFor
+                if (associated != null) {
                     AssociatedTasksDialog(
                         itemType = associated.first,
                         itemId = associated.second,

@@ -388,6 +388,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     restoreBackupFromJsonString(latestSnapshot, isAutoRecovery = true)
                 }
             } else {
+                com.example.receiver.AlarmReceiver.rescheduleAllActiveTasks(application, dbTasks)
                 com.example.util.AutoBackupManager.saveAutoBackupFromRepository(application, repository)
             }
         }

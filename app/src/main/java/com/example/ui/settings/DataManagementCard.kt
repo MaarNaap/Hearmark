@@ -37,19 +37,7 @@ fun DataManagementCard(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
         uri?.let {
-            try {
-                context.contentResolver.openOutputStream(it)?.use { outputStream ->
-                    val success = viewModel.exportBackupToJson(outputStream)
-                    if (success) {
-                        Toast.makeText(context, Loc.getText("backup_success"), Toast.LENGTH_LONG).show()
-                    } else {
-                        Toast.makeText(context, Loc.getText("backup_failed"), Toast.LENGTH_SHORT).show()
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                Toast.makeText(context, Loc.getText("backup_failed"), Toast.LENGTH_SHORT).show()
-            }
+            viewModel.exportBackupToUri(it)
         }
     }
 
@@ -57,25 +45,7 @@ fun DataManagementCard(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let { fileUri ->
-            try {
-                val jsonBytes = context.contentResolver.openInputStream(fileUri)?.use { stream ->
-                    stream.readBytes()
-                }
-                if (jsonBytes != null && jsonBytes.isNotEmpty()) {
-                    val offset = if (jsonBytes.size >= 3 &&
-                        jsonBytes[0] == 0xEF.toByte() &&
-                        jsonBytes[1] == 0xBB.toByte() &&
-                        jsonBytes[2] == 0xBF.toByte()
-                    ) 3 else 0
-                    val jsonString = String(jsonBytes, offset, jsonBytes.size - offset, Charsets.UTF_8)
-                    viewModel.restoreBackupFromJsonString(jsonString)
-                } else {
-                    Toast.makeText(context, Loc.getText("restore_failed"), Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                Toast.makeText(context, Loc.getText("restore_failed"), Toast.LENGTH_SHORT).show()
-            }
+            viewModel.restoreBackupFromUri(fileUri)
         }
     }
 

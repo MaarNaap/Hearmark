@@ -110,7 +110,7 @@ fun TaskScheduleStep(
                 { _, h, m ->
                     val ampm = if (h >= 12) "PM" else "AM"
                     val displayH = if (h % 12 == 0) 12 else h % 12
-                    formState.reminderTime = String.format(Locale.getDefault(), "%02d:%02d %s", displayH, m, ampm)
+                    formState.reminderTime = String.format(Locale.US, "%02d:%02d %s", displayH, m, ampm)
                 },
                 cal.get(Calendar.HOUR_OF_DAY),
                 cal.get(Calendar.MINUTE),

@@ -68,9 +68,17 @@ object GeminiSceneDetection {
                         endMs = end
                     )
                 )
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                logParseFallback("regex_item", e)
+            }
         }
         return result
+    }
+
+    private fun logParseFallback(stage: String, e: Exception) {
+        try {
+            Log.w(TAG, "Scene parse fallback ($stage): ${e.message}")
+        } catch (_: Throwable) {}
     }
 
     fun parseScenesResiliently(rawText: String, totalDurationMs: Long): List<DetectedScene> {
@@ -84,7 +92,9 @@ object GeminiSceneDetection {
             if (scenesArray != null && scenesArray.length() > 0) {
                 rawScenes = parseScenesFromJSONArray(scenesArray)
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            logParseFallback("json_object_scenes", e)
+        }
 
         // 2. Direct JSONArray
         if (rawScenes.isEmpty()) {
@@ -93,7 +103,9 @@ object GeminiSceneDetection {
                 if (jsonArray.length() > 0) {
                     rawScenes = parseScenesFromJSONArray(jsonArray)
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                logParseFallback("direct_json_array", e)
+            }
         }
 
         // 3. Substring between outermost { and }
@@ -109,7 +121,9 @@ object GeminiSceneDetection {
                         rawScenes = parseScenesFromJSONArray(scenesArray)
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                logParseFallback("outer_braces_object", e)
+            }
         }
 
         // 4. Substring between outermost [ and ]
@@ -124,7 +138,9 @@ object GeminiSceneDetection {
                         rawScenes = parseScenesFromJSONArray(jsonArray)
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                logParseFallback("outer_brackets_array", e)
+            }
         }
 
         // 5. Progressive Regex fallback for truncated or loosely-formatted outputs

@@ -143,4 +143,61 @@ class BackupRestoreParsingTest {
         }
         assertTrue(completed)
     }
+
+    @Test
+    fun testNormalizeReminderTimeHandlesArabicDigitsAndMarkers() {
+        val sdf = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.US)
+
+        val cases = listOf(
+            "09:00 AM" to "09:00 AM",
+            "٠٩:٠٠ AM" to "09:00 AM",
+            "۰۹:۳۰ PM" to "09:30 PM",
+            "٠٨:١٥ ص" to "08:15 AM",
+            "٠٧:٤٥ مساءً" to "07:45 PM"
+        )
+
+        for ((raw, expected) in cases) {
+            val normalized = com.example.receiver.AlarmReceiver.normalizeReminderTime(raw)
+            assertEquals(expected, normalized)
+            assertNotNull("Expected normalized time '$normalized' to parse cleanly", sdf.parse(normalized))
+        }
+    }
+
+    @Test
+    fun testRescheduleAllActiveTasksSchedulesOnlyActiveUncompletedTasks() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val tasks = listOf(
+            Task(
+                id = 101L,
+                title = "Active Task 1",
+                sourceType = "TRACKS",
+                sourceId = null,
+                targetType = "PLAY_COUNT",
+                targetValue = 2,
+                scheduledDays = "SUNDAY,MONDAY",
+                reminderTime = "٠٩:٠٠ AM",
+                startDate = 1000L,
+                endDate = null,
+                isCompleted = false,
+                status = "ACTIVE"
+            ),
+            Task(
+                id = 102L,
+                title = "Completed Task",
+                sourceType = "TRACKS",
+                sourceId = null,
+                targetType = "PLAY_COUNT",
+                targetValue = 2,
+                scheduledDays = "SUNDAY",
+                reminderTime = "10:00 AM",
+                startDate = 1000L,
+                endDate = null,
+                isCompleted = true,
+                status = "COMPLETED"
+            )
+        )
+
+        val count = com.example.receiver.AlarmReceiver.rescheduleAllActiveTasks(context, tasks)
+        assertEquals(1, count)
+    }
 }

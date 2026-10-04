@@ -268,12 +268,13 @@ class AlarmReceiver : BroadcastReceiver() {
         scheduledDays: String,
         reminderTime: String
     ) {
+        val normalizedTime = normalizeReminderTime(reminderTime)
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
         val nextIntent = Intent(context, AlarmReceiver::class.java).apply {
             putExtra("TASK_ID", taskId)
             putExtra("TASK_TITLE", taskTitle)
             putExtra("SCHEDULED_DAYS", scheduledDays)
-            putExtra("REMINDER_TIME", reminderTime)
+            putExtra("REMINDER_TIME", normalizedTime)
         }
         
         val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -291,7 +292,7 @@ class AlarmReceiver : BroadcastReceiver() {
         val cal = Calendar.getInstance()
         val sdf = java.text.SimpleDateFormat("hh:mm a", Locale.US)
         try {
-            val date = sdf.parse(reminderTime)
+            val date = sdf.parse(normalizedTime)
             if (date != null) {
                 val parsedCal = Calendar.getInstance().apply { time = date }
                 cal.set(Calendar.HOUR_OF_DAY, parsedCal.get(Calendar.HOUR_OF_DAY))
@@ -305,13 +306,63 @@ class AlarmReceiver : BroadcastReceiver() {
                 setExactAlarmSafely(alarmManager, cal.timeInMillis, pendingIntent)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            try {
+                Log.w("AlarmReceiver", "Failed to parse reminderTime '$reminderTime' (normalized: '$normalizedTime') in rescheduleNextDay", e)
+            } catch (_: Throwable) {}
         }
     }
     
     companion object {
         const val ACTION_PLAY_TASK_TRACK = "com.example.ACTION_PLAY_TASK_TRACK"
         const val ACTION_SNOOZE_TASK = "com.example.ACTION_SNOOZE_TASK"
+
+        /**
+         * Normalizes localized digits (Arabic-Indic ٠-٩ and Extended ۰-۹) and localized AM/PM markers
+         * into canonical Locale.US "hh:mm a" format so SimpleDateFormat(..., Locale.US) always succeeds.
+         */
+        fun normalizeReminderTime(raw: String): String {
+            val digitNormalized = buildString(raw.length) {
+                for (ch in raw) {
+                    when (ch) {
+                        in '\u0660'..'\u0669' -> append(('0'.code + (ch.code - '\u0660'.code)).toChar())
+                        in '\u06F0'..'\u06F9' -> append(('0'.code + (ch.code - '\u06F0'.code)).toChar())
+                        else -> append(ch)
+                    }
+                }
+            }
+            return digitNormalized
+                .replace("صباحاً", "AM")
+                .replace("صباحا", "AM")
+                .replace("مساءً", "PM")
+                .replace("مساء", "PM")
+                .replace(Regex("""(?<=\s|\d)ص(?=\s|$)"""), "AM")
+                .replace(Regex("""(?<=\s|\d)م(?=\s|$)"""), "PM")
+                .trim()
+                .replace(Regex("""\s+"""), " ")
+                .uppercase(Locale.US)
+        }
+
+        suspend fun rescheduleAllActiveTasks(
+            context: Context,
+            tasks: List<com.example.data.Task>? = null
+        ): Int {
+            val appContext = context.applicationContext
+            val allTasks = tasks ?: AppDatabase.getDatabase(appContext).appDao().getAllTasksDirect()
+            var scheduledCount = 0
+            for (task in allTasks) {
+                if (!task.isCompleted && task.status == "ACTIVE" && task.reminderTime.isNotBlank()) {
+                    scheduleAlarm(
+                        context = appContext,
+                        taskId = task.id,
+                        taskTitle = task.getDisplayTitle(),
+                        scheduledDays = task.scheduledDays,
+                        reminderTime = task.reminderTime
+                    )
+                    scheduledCount++
+                }
+            }
+            return scheduledCount
+        }
 
         private fun setExactAlarmSafely(
             alarmManager: android.app.AlarmManager,
@@ -355,12 +406,13 @@ class AlarmReceiver : BroadcastReceiver() {
             reminderTime: String,
             minutes: Int = 60
         ) {
+            val normalizedTime = normalizeReminderTime(reminderTime)
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
             val intent = Intent(context, AlarmReceiver::class.java).apply {
                 putExtra("TASK_ID", taskId)
                 putExtra("TASK_TITLE", taskTitle)
                 putExtra("SCHEDULED_DAYS", scheduledDays)
-                putExtra("REMINDER_TIME", reminderTime)
+                putExtra("REMINDER_TIME", normalizedTime)
             }
             val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -375,7 +427,9 @@ class AlarmReceiver : BroadcastReceiver() {
             )
             val triggerTime = System.currentTimeMillis() + (minutes * 60 * 1000L)
             setExactAlarmSafely(alarmManager, triggerTime, pendingIntent)
-            Log.d("AlarmReceiver", "Snoozed alarm for Task ID $taskId by $minutes minutes")
+            try {
+                Log.d("AlarmReceiver", "Snoozed alarm for Task ID $taskId by $minutes minutes")
+            } catch (_: Throwable) {}
         }
 
         fun cancelAlarm(context: Context, taskId: Long) {
@@ -407,12 +461,13 @@ class AlarmReceiver : BroadcastReceiver() {
         ) {
             cancelAlarm(context, taskId)
             
+            val normalizedTime = normalizeReminderTime(reminderTime)
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
             val intent = Intent(context, AlarmReceiver::class.java).apply {
                 putExtra("TASK_ID", taskId)
                 putExtra("TASK_TITLE", taskTitle)
                 putExtra("SCHEDULED_DAYS", scheduledDays)
-                putExtra("REMINDER_TIME", reminderTime)
+                putExtra("REMINDER_TIME", normalizedTime)
             }
             
             val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -430,7 +485,7 @@ class AlarmReceiver : BroadcastReceiver() {
             val cal = Calendar.getInstance()
             val sdf = java.text.SimpleDateFormat("hh:mm a", Locale.US)
             try {
-                val date = sdf.parse(reminderTime)
+                val date = sdf.parse(normalizedTime)
                 if (date != null) {
                     val parsedCal = Calendar.getInstance().apply { time = date }
                     cal.set(Calendar.HOUR_OF_DAY, parsedCal.get(Calendar.HOUR_OF_DAY))
@@ -443,10 +498,14 @@ class AlarmReceiver : BroadcastReceiver() {
                     }
                     
                     setExactAlarmSafely(alarmManager, cal.timeInMillis, pendingIntent)
-                    Log.d("AlarmReceiver", "Scheduled alarm for Task ID $taskId at ${cal.time}")
+                    try {
+                        Log.d("AlarmReceiver", "Scheduled alarm for Task ID $taskId at ${cal.time}")
+                    } catch (_: Throwable) {}
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                try {
+                    Log.w("AlarmReceiver", "Failed to parse reminderTime '$reminderTime' (normalized: '$normalizedTime') for Task ID $taskId", e)
+                } catch (_: Throwable) {}
             }
         }
 
