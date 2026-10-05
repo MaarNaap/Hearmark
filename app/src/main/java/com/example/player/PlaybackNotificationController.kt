@@ -336,6 +336,24 @@ internal object PlaybackNotificationController {
         }
     }
 
+    fun buildFallbackNotification(context: Context): android.app.Notification {
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Hearmark Playback Control",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            notificationManager?.createNotificationChannel(channel)
+        }
+        return NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(com.example.R.drawable.ic_logo)
+            .setContentTitle("Hearmark")
+            .setContentText(Loc.getText("paused"))
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+    }
+
     fun showNotification() {
         with(AudioPlayerManager) {
             val context = appContext ?: return

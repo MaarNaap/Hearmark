@@ -31,17 +31,21 @@ class HearmarkPlaybackService : Service() {
             }
         }
         try {
+            val isActiveSession = AudioPlayerManager.isPlaying.value || AudioPlayerManager.currentTrackValue != null
             val notification = AudioPlayerManager.buildNotification(this)
-            if (notification != null && (AudioPlayerManager.isPlaying.value || AudioPlayerManager.currentTrackValue != null)) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    startForeground(
-                        AudioPlayerManager.NOTIFICATION_ID,
-                        notification,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                    )
-                } else {
-                    startForeground(AudioPlayerManager.NOTIFICATION_ID, notification)
-                }
+                ?: PlaybackNotificationController.buildFallbackNotification(this)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    AudioPlayerManager.NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                )
+            } else {
+                startForeground(AudioPlayerManager.NOTIFICATION_ID, notification)
+            }
+            if (!isActiveSession) {
+                stopSelf()
+                return START_NOT_STICKY
             }
         } catch (e: Exception) {
             Log.w("HearmarkPlaybackService", "startForeground failed: ${e.message}")

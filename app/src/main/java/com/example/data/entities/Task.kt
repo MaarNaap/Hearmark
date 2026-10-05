@@ -1,6 +1,7 @@
 package com.example.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "tasks")
@@ -78,7 +79,8 @@ data class Task(
 
 @Entity(
     tableName = "task_track_progress",
-    primaryKeys = ["taskId", "trackId"]
+    primaryKeys = ["taskId", "trackId"],
+    indices = [Index(value = ["trackId"])]
 )
 data class TaskTrackProgress(
     val taskId: Long,
@@ -102,7 +104,8 @@ data class TaskLabel(
 
 @Entity(
     tableName = "task_daily_progress",
-    primaryKeys = ["taskId", "date"]
+    primaryKeys = ["taskId", "date"],
+    indices = [Index(value = ["date"])]
 )
 data class TaskDailyProgress(
     val taskId: Long,

@@ -241,6 +241,22 @@ internal object DatabaseMigrations {
         }
     }
 
+    val MIGRATION_18_19 = object : Migration(18, 19) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_folders_parentFolderId` ON `folders` (`parentFolderId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_audio_tracks_parentFolderId` ON `audio_tracks` (`parentFolderId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_audio_tracks_filePath` ON `audio_tracks` (`filePath`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_audio_tracks_parentTrackId` ON `audio_tracks` (`parentTrackId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_playlist_tracks_trackId` ON `playlist_tracks` (`trackId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_task_track_progress_trackId` ON `task_track_progress` (`trackId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_task_daily_progress_date` ON `task_daily_progress` (`date`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_playback_history_completedAt` ON `playback_history` (`completedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_playback_history_trackId` ON `playback_history` (`trackId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_notes_trackId` ON `notes` (`trackId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_notes_folderId` ON `notes` (`folderId`)")
+        }
+    }
+
     val ALL_MIGRATIONS = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -258,6 +274,7 @@ internal object DatabaseMigrations {
         MIGRATION_14_15,
         MIGRATION_15_16,
         MIGRATION_16_17,
-        MIGRATION_17_18
+        MIGRATION_17_18,
+        MIGRATION_18_19
     )
 }

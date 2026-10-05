@@ -44,9 +44,13 @@ object GeminiSubtitles {
                 val useStreaming = (attempt == 1)
 
                 if (useStreaming) {
-                    val requestUrl = "${GeminiModelHealth.BASE_URL}/$activeModel:streamGenerateContent?key=$activeApiKey&alt=sse"
+                    val requestUrl = "${GeminiModelHealth.BASE_URL}/$activeModel:streamGenerateContent?alt=sse"
                     val requestBody = currentRootJson.toString().toRequestBody(mediaType)
-                    val request = Request.Builder().url(requestUrl).post(requestBody).build()
+                    val request = Request.Builder()
+                        .url(requestUrl)
+                        .addHeader("x-goog-api-key", activeApiKey)
+                        .post(requestBody)
+                        .build()
 
                     val response = GeminiHttp.subtitleOkHttpClient.newCall(request).execute()
                     val responseCode = response.code
@@ -60,7 +64,11 @@ object GeminiSubtitles {
                                     put("maxOutputTokens", 8192)
                                 }
                             }
-                            val retryReq = Request.Builder().url(requestUrl).post(currentRootJson.toString().toRequestBody(mediaType)).build()
+                            val retryReq = Request.Builder()
+                                .url(requestUrl)
+                                .addHeader("x-goog-api-key", activeApiKey)
+                                .post(currentRootJson.toString().toRequestBody(mediaType))
+                                .build()
                             val retryResp = GeminiHttp.subtitleOkHttpClient.newCall(retryReq).execute()
                             if (!retryResp.isSuccessful) {
                                 val retryErr = retryResp.body?.string() ?: ""
@@ -94,9 +102,13 @@ object GeminiSubtitles {
                     else "Processing subtitles via Gemini API ($activeModel)..."
                     onProgressUpdate?.invoke(fallbackMsg)
 
-                    val requestUrl = "${GeminiModelHealth.BASE_URL}/$activeModel:generateContent?key=$activeApiKey"
+                    val requestUrl = "${GeminiModelHealth.BASE_URL}/$activeModel:generateContent"
                     val requestBody = currentRootJson.toString().toRequestBody(mediaType)
-                    val request = Request.Builder().url(requestUrl).post(requestBody).build()
+                    val request = Request.Builder()
+                        .url(requestUrl)
+                        .addHeader("x-goog-api-key", activeApiKey)
+                        .post(requestBody)
+                        .build()
 
                     var response = GeminiHttp.subtitleOkHttpClient.newCall(request).execute()
                     var responseCode = response.code
@@ -110,7 +122,11 @@ object GeminiSubtitles {
                                 put("maxOutputTokens", 8192)
                             }
                         }
-                        val retryReq = Request.Builder().url(requestUrl).post(currentRootJson.toString().toRequestBody(mediaType)).build()
+                        val retryReq = Request.Builder()
+                            .url(requestUrl)
+                            .addHeader("x-goog-api-key", activeApiKey)
+                            .post(currentRootJson.toString().toRequestBody(mediaType))
+                            .build()
                         response = GeminiHttp.subtitleOkHttpClient.newCall(retryReq).execute()
                         responseCode = response.code
                         responseBody = response.body?.string() ?: ""

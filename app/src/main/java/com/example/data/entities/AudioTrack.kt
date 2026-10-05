@@ -1,9 +1,13 @@
 package com.example.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "folders")
+@Entity(
+    tableName = "folders",
+    indices = [Index(value = ["parentFolderId"])]
+)
 data class Folder(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val folderPath: String, // Local folder absolute path
@@ -11,7 +15,14 @@ data class Folder(
     val parentFolderId: Long? = null
 )
 
-@Entity(tableName = "audio_tracks")
+@Entity(
+    tableName = "audio_tracks",
+    indices = [
+        Index(value = ["parentFolderId"]),
+        Index(value = ["filePath"]),
+        Index(value = ["parentTrackId"])
+    ]
+)
 data class AudioTrack(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val filePath: String,
@@ -185,7 +196,8 @@ data class Playlist(
 
 @Entity(
     tableName = "playlist_tracks",
-    primaryKeys = ["playlistId", "trackId"]
+    primaryKeys = ["playlistId", "trackId"],
+    indices = [Index(value = ["trackId"])]
 )
 data class PlaylistTrackCrossRef(
     val playlistId: Long,

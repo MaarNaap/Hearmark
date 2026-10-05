@@ -167,6 +167,8 @@ object AudioPlayerManager {
     // Audio Focus and Noisy broadcast
     internal var audioManager: AudioManager? = null
     internal var audioFocusRequest: AudioFocusRequest? = null
+    @Volatile
+    internal var resumeOnFocusGain: Boolean = false
     private var isManagerInitialized = false
 
     fun init(context: Context, repo: AppRepository) {
@@ -450,6 +452,21 @@ object AudioPlayerManager {
                     }
                 }
 
+                setOnErrorListener { _, what, extra ->
+                    Log.e(TAG, "MediaPlayer error (what=$what, extra=$extra) for track: ${track.filePath}")
+                    coroutineScope.launch(Dispatchers.Main) {
+                        stop()
+                        appContext?.let { ctx ->
+                            android.widget.Toast.makeText(
+                                ctx,
+                                com.example.ui.Loc.getText("playback_error_toast"),
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                    true
+                }
+
                 setOnCompletionListener {
                     flushContinuousSegmentsBeforeCompletion()
                     // Normal play next or cycle completion (which handles sleep at end of file elegantly)
@@ -512,6 +529,7 @@ object AudioPlayerManager {
     // =========================================================================
 
     fun resume() {
+        resumeOnFocusGain = false
         if (mediaPlayer == null) {
             currentTrackValue?.let { playTrack(it) }
             return
@@ -540,7 +558,10 @@ object AudioPlayerManager {
         }
     }
 
-    fun pause() {
+    fun pause(abandonFocus: Boolean = true) {
+        if (abandonFocus) {
+            resumeOnFocusGain = false
+        }
         accumulatePracticePauseTime()
         lastPracticePauseTimestamp = 0L
         practicePauseJob?.cancel()
@@ -563,7 +584,9 @@ object AudioPlayerManager {
         _isPlaying.value = false
         stopProgressTracking()
         releasePlaybackWakeLock()
-        abandonAudioFocus()
+        if (abandonFocus) {
+            abandonAudioFocus()
+        }
         updateMediaSessionPlaybackState()
         showNotification()
 
@@ -574,6 +597,7 @@ object AudioPlayerManager {
     }
 
     fun stop() {
+        resumeOnFocusGain = false
         accumulatePracticePauseTime()
         lastPracticePauseTimestamp = 0L
         practicePauseJob?.cancel()

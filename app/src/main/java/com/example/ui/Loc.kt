@@ -1027,6 +1027,7 @@ object Loc {
         "stats_duration_s" to mapOf("en" to "%ds", "ar" to "%d ث"),
         "wizard_alert_schedule_label" to mapOf("en" to "Alert Schedule: ", "ar" to "جدولة التنبيهات: "),
         "wizard_alert_schedule_format" to mapOf("en" to "On [%s] at %s", "ar" to "كل [%s] الساعة %s"),
-        "wizard_daily_goal_label" to mapOf("en" to "Daily Goal: ", "ar" to "الهدف اليومي: ")
+        "wizard_daily_goal_label" to mapOf("en" to "Daily Goal: ", "ar" to "الهدف اليومي: "),
+        "playback_error_toast" to mapOf("en" to "Playback error: unable to play media file", "ar" to "خطأ في التشغيل: تعذر تشغيل ملف الوسائط")
     )
 }

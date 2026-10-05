@@ -10,6 +10,7 @@
         <include domain="file" path="db_safety_backups" />
         <!-- Include SharedPreferences (Theme, settings, audio progress) -->
         <include domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="gemini_secure_prefs.xml" />
     </cloud-backup>
     <device-transfer>
         <!-- Include Room Database files -->
@@ -21,5 +22,6 @@
         <include domain="file" path="db_safety_backups" />
         <!-- Include SharedPreferences (Theme, settings, audio progress) -->
         <include domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="gemini_secure_prefs.xml" />
     </device-transfer>
 </data-extraction-rules>

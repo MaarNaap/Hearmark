@@ -134,7 +134,11 @@ object GeminiHttp {
                     activePayload
                 }
                 val body = currentPayloadForModel.toString().toRequestBody(mediaType)
-                val request = Request.Builder().url(url).post(body).build()
+                val requestBuilder = Request.Builder().url(url).post(body)
+                if (currentKey.isNotBlank()) {
+                    requestBuilder.addHeader("x-goog-api-key", currentKey)
+                }
+                val request = requestBuilder.build()
 
                 val response = client.newCall(request).execute()
                 lastCode = response.code
@@ -309,7 +313,7 @@ object GeminiHttp {
         for (uploadAttempt in 1..3) {
             try {
                 onProgressUpdate?.invoke("Uploading audio to Gemini server...")
-                val initUrl = "https://generativelanguage.googleapis.com/upload/v1beta/files?key=$apiKey"
+                val initUrl = "https://generativelanguage.googleapis.com/upload/v1beta/files"
                 val metadataJson = JSONObject().apply {
                     put("file", JSONObject().apply {
                         put("display_name", file.name)
@@ -318,6 +322,7 @@ object GeminiHttp {
                 val mediaTypeJson = "application/json; charset=utf-8".toMediaType()
                 val initRequest = Request.Builder()
                     .url(initUrl)
+                    .addHeader("x-goog-api-key", apiKey)
                     .addHeader("X-Goog-Upload-Protocol", "resumable")
                     .addHeader("X-Goog-Upload-Command", "start")
                     .addHeader("X-Goog-Upload-Header-Content-Length", file.length().toString())
@@ -369,7 +374,8 @@ object GeminiHttp {
             attempts++
             onProgressUpdate?.invoke("Processing audio on server... (${attempts * 2}s)")
             val checkRequest = Request.Builder()
-                .url("https://generativelanguage.googleapis.com/v1beta/$fileName?key=$apiKey")
+                .url("https://generativelanguage.googleapis.com/v1beta/$fileName")
+                .addHeader("x-goog-api-key", apiKey)
                 .get()
                 .build()
             val checkResp = subtitleOkHttpClient.newCall(checkRequest).execute()

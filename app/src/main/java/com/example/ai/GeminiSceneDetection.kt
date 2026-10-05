@@ -225,8 +225,7 @@ object GeminiSceneDetection {
         }
 
         val (code, responseBody) = GeminiHttp.executeGeminiPostWithRetry(
-            urlBuilder = { m -> "${GeminiModelHealth.BASE_URL}/$m:generateContent?key=$resolvedApiKey" },
-            urlWithKeyBuilder = { m, k -> "${GeminiModelHealth.BASE_URL}/$m:generateContent?key=$k" },
+            urlBuilder = { m -> "${GeminiModelHealth.BASE_URL}/$m:generateContent" },
             candidateApiKeys = candidateKeys,
             payload = rootJson,
             primaryModel = modelName,

@@ -1,9 +1,16 @@
 package com.example.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "notes")
+@Entity(
+    tableName = "notes",
+    indices = [
+        Index(value = ["trackId"]),
+        Index(value = ["folderId"])
+    ]
+)
 data class Note(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val text: String, // Selected text or note quote

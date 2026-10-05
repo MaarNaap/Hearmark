@@ -54,14 +54,24 @@ internal object PlaybackSystemController {
     val focusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         with(AudioPlayerManager) {
             when (focusChange) {
-                AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                    pause()
+                AudioManager.AUDIOFOCUS_LOSS -> {
+                    resumeOnFocusGain = false
+                    pause(abandonFocus = true)
+                }
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                    val wasPlaying = _isPlaying.value
+                    pause(abandonFocus = false)
+                    resumeOnFocusGain = wasPlaying
                 }
                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                     mediaPlayer?.setVolume(0.2f, 0.2f)
                 }
                 AudioManager.AUDIOFOCUS_GAIN -> {
                     mediaPlayer?.setVolume(1.0f, 1.0f)
+                    if (resumeOnFocusGain) {
+                        resumeOnFocusGain = false
+                        resume()
+                    }
                 }
             }
         }
@@ -247,12 +257,10 @@ internal object PlaybackSystemController {
                 Log.e(TAG, "Error creating MediaSession: ${e.message}")
             }
 
-            // Register Headphone Unplug Broadcast Receiver
+            // Register Headphone Unplug Broadcast Receiver across all supported API levels (API 24+)
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    val filter = IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
-                    context.applicationContext.registerReceiver(becomingNoisyReceiver, filter)
-                }
+                val filter = IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+                context.applicationContext.registerReceiver(becomingNoisyReceiver, filter)
             } catch (e: Exception) {
                 Log.e(TAG, "Error registering noisy receiver: ${e.message}")
             }

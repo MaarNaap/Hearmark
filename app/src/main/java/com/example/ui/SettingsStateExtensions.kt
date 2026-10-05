@@ -133,8 +133,7 @@ fun AppViewModel.updateCustomGeminiApiKey(key: String) {
             deleteSavedApiKey(activeApiKeyId)
         } else {
             customGeminiApiKey = ""
-            val sharedPref = getApplication<Application>().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-            sharedPref.edit().putString("custom_gemini_api_key", "").apply()
+            com.example.ai.GeminiKeyStore.clearCustomKey(getApplication())
         }
     } else {
         val existing = savedApiKeys.firstOrNull { it.id == activeApiKeyId }

@@ -1,11 +1,23 @@
 package com.example.data
 
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import java.io.File
 
-class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
+class AppRepository(
+    val dao: AppDao,
+    val vocabDao: VocabularyItemDao? = null,
+    private val database: AppDatabase? = null
+) {
+    private suspend fun <R> runInTransaction(block: suspend () -> R): R {
+        return if (database != null) {
+            database.withTransaction { block() }
+        } else {
+            block()
+        }
+    }
     val allFolders: Flow<List<Folder>> = dao.getAllFolders()
     suspend fun getAllFoldersDirect(): List<Folder> = dao.getAllFoldersDirect()
     val rootFolders: Flow<List<Folder>> = dao.getRootFoldersFlow()
@@ -43,11 +55,21 @@ class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
     suspend fun deleteFolder(id: Long) {
         val allFolders = dao.getAllFoldersDirect()
         val allFolderIdsToDelete = getAllSubfolderIds(id, allFolders)
-        val allTracks = dao.getAllTracksFlow().firstOrNull() ?: emptyList()
+        val allTracks = dao.getAllTracksDirect()
         val tracksToDelete = allTracks.filter { it.parentFolderId in allFolderIdsToDelete }
 
+        runInTransaction {
+            for (track in tracksToDelete) {
+                deleteTrackDbRecords(track)
+            }
+            for (folderId in allFolderIdsToDelete) {
+                dao.deleteFolder(folderId)
+            }
+        }
+
+        val remainingTracks = dao.getAllTracksDirect()
         for (track in tracksToDelete) {
-            deleteTrack(track)
+            deleteTrackFiles(track, remainingTracks)
         }
 
         for (folderId in allFolderIdsToDelete) {
@@ -58,7 +80,6 @@ class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
                     if (dir.exists()) dir.deleteRecursively()
                 } catch (_: Exception) {}
             }
-            dao.deleteFolder(folderId)
         }
     }
 
@@ -68,10 +89,14 @@ class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
     suspend fun insertTrack(track: AudioTrack) = dao.insertTrack(track)
     suspend fun updateTrack(track: AudioTrack) = dao.updateTrack(track)
     suspend fun updateTrackPracticeSegments(trackId: Long, segments: String?) = dao.updateTrackPracticeSegments(trackId, segments)
-    suspend fun deleteTrack(track: AudioTrack) {
-        // Delete any virtual scenes belonging to this track
+
+    private suspend fun deleteTrackDbRecords(track: AudioTrack) {
         val scenes = dao.getScenesForParentTrack(track.id)
         for (scene in scenes) {
+            dao.deleteNotesForTrack(scene.id)
+            dao.deleteQuizQuestionsForTrack(scene.id)
+            dao.deletePlaylistTracksByTrackId(scene.id)
+            dao.deleteTaskTrackProgressByTrackId(scene.id)
             dao.deleteTrack(scene)
         }
         dao.deleteNotesForTrack(track.id)
@@ -79,11 +104,12 @@ class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
         dao.deletePlaylistTracksByTrackId(track.id)
         dao.deleteTaskTrackProgressByTrackId(track.id)
         dao.deleteTrack(track)
+    }
 
+    private fun deleteTrackFiles(track: AudioTrack, remainingTracks: List<AudioTrack>) {
         if (!track.isVirtualScene) {
             try {
-                val allTracks = dao.getAllTracksFlow().firstOrNull() ?: emptyList()
-                val otherUsingPath = allTracks.any { it.id != track.id && it.filePath == track.filePath }
+                val otherUsingPath = remainingTracks.any { it.id != track.id && it.filePath == track.filePath }
                 if (!otherUsingPath) {
                     val f = File(track.filePath)
                     if (f.exists()) f.delete()
@@ -96,6 +122,16 @@ class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
                     if (sf.exists()) sf.delete()
                 }
             } catch (_: Exception) {}
+        }
+    }
+
+    suspend fun deleteTrack(track: AudioTrack) {
+        runInTransaction {
+            deleteTrackDbRecords(track)
+        }
+        if (!track.isVirtualScene) {
+            val remainingTracks = dao.getAllTracksDirect()
+            deleteTrackFiles(track, remainingTracks)
         }
     }
     suspend fun deleteTrackById(id: Long) = dao.deleteTrackById(id)
@@ -139,8 +175,10 @@ class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
         dao.updatePlaylist(playlist)
     }
     suspend fun deletePlaylist(id: Long) {
-        dao.deletePlaylist(id)
-        dao.clearPlaylistTracks(id)
+        runInTransaction {
+            dao.deletePlaylist(id)
+            dao.clearPlaylistTracks(id)
+        }
     }
 
     suspend fun addTrackToPlaylist(playlistId: Long, trackId: Long, order: Int = 0) {
@@ -218,10 +256,12 @@ class AppRepository(val dao: AppDao, val vocabDao: VocabularyItemDao? = null) {
     }
 
     suspend fun deleteTask(id: Long) {
-        dao.deleteTask(id)
-        dao.clearTaskProgress(id)
-        dao.deleteDailyProgressForTask(id)
-        syncAndCleanTaskLabels()
+        runInTransaction {
+            dao.deleteTask(id)
+            dao.clearTaskProgress(id)
+            dao.deleteDailyProgressForTask(id)
+            syncAndCleanTaskLabels()
+        }
     }
 
     suspend fun getTaskById(id: Long) = dao.getTaskById(id)

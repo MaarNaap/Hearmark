@@ -21,7 +21,7 @@ import androidx.room.RoomDatabase
         QuizQuestion::class,
         VocabularyItem::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -29,13 +29,18 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun vocabularyItemDao(): VocabularyItemDao
 
     companion object {
+        const val DATABASE_VERSION = 19
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                // Safeguard existing SQLite database before Room applies any migrations
-                com.example.util.AutoBackupManager.safetyBackupDatabaseFile(context.applicationContext)
+                // Safeguard existing SQLite database asynchronously when upgrading schema versions
+                com.example.util.AutoBackupManager.scheduleSafetyBackupIfNeeded(
+                    context.applicationContext,
+                    DATABASE_VERSION
+                )
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,

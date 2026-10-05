@@ -31,7 +31,7 @@ import org.json.JSONObject
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getDatabase(application)
-    val repository = AppRepository(database.appDao(), database.vocabularyItemDao())
+    val repository = AppRepository(database.appDao(), database.vocabularyItemDao(), database)
 
     val allVocabularyItems: StateFlow<List<VocabularyItem>> = repository.allVocabularyItems
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -248,7 +248,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     internal fun persistApiKeys(keys: List<SavedApiKey>, activeId: String) {
-        val sharedPref = getApplication<Application>().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
         val array = JSONArray()
         for (k in keys) {
             val obj = JSONObject()
@@ -258,11 +257,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             array.put(obj)
         }
         val activeKeyString = keys.firstOrNull { it.id == activeId }?.key ?: ""
-        sharedPref.edit()
-            .putString("saved_gemini_api_keys", array.toString())
-            .putString("active_gemini_api_key_id", activeId)
-            .putString("custom_gemini_api_key", activeKeyString)
-            .apply()
+        com.example.ai.GeminiKeyStore.saveKeys(
+            context = getApplication(),
+            savedKeysJson = array.toString(),
+            activeKeyId = activeId,
+            activeKeyString = activeKeyString
+        )
 
         savedApiKeys = keys
         activeApiKeyId = activeId
@@ -313,10 +313,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         headsetControlsEnabled = sharedPref.getBoolean("headset_controls_enabled", true)
         headsetMultiClickAction = sharedPref.getString("headset_multiclick_action", "NEXT_PREV") ?: "NEXT_PREV"
         
-        // Load saved API keys and active selection
-        val savedKeysJson = sharedPref.getString("saved_gemini_api_keys", "") ?: ""
-        val legacyKey = sharedPref.getString("custom_gemini_api_key", "") ?: ""
-        val activeKeyIdFromPref = sharedPref.getString("active_gemini_api_key_id", "") ?: ""
+        // Load saved API keys and active selection from encrypted, backup-excluded store
+        val storedKeyData = com.example.ai.GeminiKeyStore.loadStoredKeys(application)
+        val savedKeysJson = storedKeyData.savedKeysJson
+        val legacyKey = storedKeyData.legacyCustomKey
+        val activeKeyIdFromPref = storedKeyData.activeKeyId
 
         val parsedKeys = mutableListOf<SavedApiKey>()
         if (savedKeysJson.isNotBlank()) {

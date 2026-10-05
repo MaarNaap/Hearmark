@@ -9,4 +9,5 @@
     <include domain="file" path="db_safety_backups" />
     <!-- Include SharedPreferences (Theme, settings, audio progress) -->
     <include domain="sharedpref" path="." />
+    <exclude domain="sharedpref" path="gemini_secure_prefs.xml" />
 </full-backup-content>

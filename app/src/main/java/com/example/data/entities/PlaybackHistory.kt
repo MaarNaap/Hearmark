@@ -1,9 +1,16 @@
 package com.example.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "playback_history")
+@Entity(
+    tableName = "playback_history",
+    indices = [
+        Index(value = ["completedAt"]),
+        Index(value = ["trackId"])
+    ]
+)
 data class PlaybackHistory(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val trackId: Long,
