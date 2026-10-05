@@ -135,6 +135,31 @@ fun GeminiChatSheet(
 
     var inputText by remember { mutableStateOf("") }
     var isContextCardExpanded by remember { mutableStateOf(true) }
+    var showClearChatConfirm by remember { mutableStateOf(false) }
+
+    if (showClearChatConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearChatConfirm = false },
+            title = { Text(Loc.getText("clear_chat_confirm_title")) },
+            text = { Text(Loc.getText("clear_chat_confirm_desc")) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showClearChatConfirm = false
+                        viewModel.clearChatHistory()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(Loc.getText("delete"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearChatConfirm = false }) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
 
@@ -225,7 +250,7 @@ fun GeminiChatSheet(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (messages.isNotEmpty()) {
                         IconButton(
-                            onClick = { viewModel.clearChatHistory() },
+                            onClick = { showClearChatConfirm = true },
                             modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
@@ -242,7 +267,7 @@ fun GeminiChatSheet(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Close,
-                            contentDescription = "Close",
+                            contentDescription = Loc.getText("close"),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(20.dp)
                         )

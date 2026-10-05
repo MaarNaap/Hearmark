@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.net.Uri
+import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -109,7 +110,7 @@ object NoteAudioPlayer {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w("NoteAudioPlayer", "Error playing note snippet", e)
             stop()
         }
     }
@@ -124,7 +125,7 @@ object NoteAudioPlayer {
             }
             _currentPosition.value = positionMs
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w("NoteAudioPlayer", "Error seeking note snippet", e)
         }
     }
 
@@ -147,7 +148,7 @@ object NoteAudioPlayer {
                 release()
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w("NoteAudioPlayer", "Error releasing MediaPlayer", e)
         }
         mediaPlayer = null
     }

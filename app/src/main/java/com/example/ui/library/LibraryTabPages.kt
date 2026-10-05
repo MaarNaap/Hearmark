@@ -197,6 +197,42 @@ fun LibraryPlaylistsPage(
     onCreateTaskForSource: (String, Long?) -> Unit,
     onShowAssociatedTasks: (String, Long, String) -> Unit
 ) {
+    var playlistToDelete by remember { mutableStateOf<Playlist?>(null) }
+
+    if (playlistToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { playlistToDelete = null },
+            title = { Text(Loc.getText("delete")) },
+            text = { Text(Loc.getText("delete_playlist_confirm")) },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            playlistToDelete?.let { viewModel.deletePlaylist(it.id, false) }
+                            playlistToDelete = null
+                        }
+                    ) {
+                        Text(Loc.getText("keep_tracks"))
+                    }
+                    Button(
+                        onClick = {
+                            playlistToDelete?.let { viewModel.deletePlaylist(it.id, true) }
+                            playlistToDelete = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text(Loc.getText("delete_completely"))
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { playlistToDelete = null }) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         if (filteredPlaylists.isEmpty()) {
             Box(modifier = Modifier.weight(1f)) {
@@ -331,10 +367,10 @@ fun LibraryPlaylistsPage(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text(Loc.getText("delete_history"), color = MaterialTheme.colorScheme.error) },
+                                            text = { Text(Loc.getText("delete"), color = MaterialTheme.colorScheme.error) },
                                             onClick = {
                                                 showMenu = false
-                                                viewModel.deletePlaylist(playlist.id, false)
+                                                playlistToDelete = playlist
                                             }
                                         )
                                     }

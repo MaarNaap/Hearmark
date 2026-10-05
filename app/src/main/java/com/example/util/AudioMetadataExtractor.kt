@@ -1,6 +1,7 @@
 package com.example.util
 
 import android.media.MediaMetadataRetriever
+import android.util.Log
 import java.io.File
 import java.util.Locale
 
@@ -54,12 +55,16 @@ object AudioMetadataExtractor {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            try {
+                Log.w("AudioMetadataExtractor", "Failed to extract audio metadata for $filePath", e)
+            } catch (_: Throwable) {}
         } finally {
             try {
                 retriever.release()
             } catch (e: Exception) {
-                e.printStackTrace()
+                try {
+                    Log.w("AudioMetadataExtractor", "Failed to release MediaMetadataRetriever", e)
+                } catch (_: Throwable) {}
             }
         }
 

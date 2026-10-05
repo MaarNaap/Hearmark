@@ -25,10 +25,6 @@ import com.example.ui.theme.MyApplicationTheme
 class MainActivity : ComponentActivity() {
   private lateinit var viewModel: AppViewModel
 
-  private val notificationPermissionLauncher = registerForActivityResult(
-    ActivityResultContracts.RequestPermission()
-  ) { /* Permission result handled */ }
-
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -39,18 +35,6 @@ class MainActivity : ComponentActivity() {
     
     enableEdgeToEdge()
     setContent {
-      LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-          if (ContextCompat.checkSelfPermission(
-              this@MainActivity,
-              Manifest.permission.POST_NOTIFICATIONS
-            ) != PackageManager.PERMISSION_GRANTED
-          ) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-          }
-        }
-      }
-
       val isDarkTheme = when (viewModel.selectedTheme) {
         "light" -> false
         "dark" -> true

@@ -139,6 +139,10 @@ object GeminiSubtitles {
                     }
 
                     val respJson = JSONObject(responseBody)
+                    val candidateCheck = GeminiHttp.checkCandidateBlockOrFinishReason(respJson, language)
+                    if (candidateCheck.blockedErrorMessage != null) {
+                        throw Exception(candidateCheck.blockedErrorMessage)
+                    }
                     val candidates = respJson.optJSONArray("candidates")
                     val candidate = candidates?.optJSONObject(0)
                     val parts = candidate?.optJSONObject("content")?.optJSONArray("parts")

@@ -1,5 +1,10 @@
 package com.example.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -9,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.Task
 import kotlinx.coroutines.launch
@@ -29,6 +35,28 @@ fun CreateTaskScreen(
     val coroutineScope = rememberCoroutineScope()
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
     val currentStep = pagerState.currentPage + 1
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { /* Permission result handled contextually */ }
+
+    fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
+    LaunchedEffect(currentStep) {
+        if (currentStep == 3) {
+            requestNotificationPermissionIfNeeded()
+        }
+    }
 
     val allFolders by viewModel.folders.collectAsStateWithLifecycle()
     val allPlaylists by viewModel.playlists.collectAsStateWithLifecycle()
@@ -136,6 +164,9 @@ fun CreateTaskScreen(
     }
 
     fun handleSave() {
+        if (formState.reminderTime.isNotBlank()) {
+            requestNotificationPermissionIfNeeded()
+        }
         val finalTitle = formState.resolveFinalTitle(allFolders, allPlaylists, allTracks)
         if (editingTask != null) {
             viewModel.editTask(

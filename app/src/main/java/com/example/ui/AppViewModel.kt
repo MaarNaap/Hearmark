@@ -425,7 +425,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             updatedCache[track.id] = meta
                             hasChanged = true
                         } catch (e: Exception) {
-                            e.printStackTrace()
+                            android.util.Log.w("AppViewModel", "Failed to extract metadata for track ${track.id}", e)
                         }
                     }
                 }

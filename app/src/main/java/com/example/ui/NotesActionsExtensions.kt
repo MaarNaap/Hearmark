@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.app.Application
+import android.util.Log
 import android.widget.Toast
 import androidx.lifecycle.viewModelScope
 import com.example.data.*
@@ -101,7 +102,7 @@ fun AppViewModel.saveNote(
                 onSuccess?.invoke()
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("NotesActions", "Failed to save note", e)
         }
     }
 }
@@ -130,7 +131,7 @@ fun AppViewModel.toggleNoteFavorite(note: Note) {
             )
             repository.updateNote(updatedNote)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("NotesActions", "Failed to toggle note favorite", e)
         }
     }
 }
@@ -147,7 +148,7 @@ fun AppViewModel.deleteNote(note: Note) {
                 Toast.makeText(context, Loc.getText("note_deleted_success"), Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("NotesActions", "Failed to delete note", e)
         }
     }
 }

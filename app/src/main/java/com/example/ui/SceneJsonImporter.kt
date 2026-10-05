@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -367,7 +368,7 @@ fun AppViewModel.importScenesFromJson(
                 onSuccess(folderId, scenes.size)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("SceneJsonImporter", "Error importing scenes from JSON", e)
             withContext(Dispatchers.Main) {
                 val rawErr = e.message ?: "Unknown error"
                 val errMsg = try {

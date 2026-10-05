@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.util.Log
 import android.widget.Toast
 import androidx.lifecycle.viewModelScope
 import com.example.data.AudioTrack
@@ -63,7 +64,7 @@ fun AppViewModel.importFolder(folderName: String, uris: List<Uri>) {
                     }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.w("ImportManager", "Failed to copy subtitle file during folder import", e)
             }
         }
 
@@ -130,7 +131,7 @@ fun AppViewModel.importFolder(folderName: String, uris: List<Uri>) {
                     newlyIndexedFiles.add(fileNameWithoutExt)
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.w("ImportManager", "Failed to import audio track into folder", e)
             }
         }
         
@@ -174,7 +175,7 @@ fun AppViewModel.importFolderFromTreeUri(folderName: String, treeUri: Uri) {
                     android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.w("ImportManager", "Could not take persistable URI permission", e)
             }
 
             val rootDocId = if (DocumentsContract.isDocumentUri(context, treeUri)) {
@@ -264,7 +265,7 @@ fun AppViewModel.importFolderFromTreeUri(folderName: String, treeUri: Uri) {
                         }
                     }
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Log.w("ImportManager", "Failed to query child documents for tree URI", e)
                 }
                 
                 // Copy subtitle files first
@@ -281,7 +282,7 @@ fun AppViewModel.importFolderFromTreeUri(folderName: String, treeUri: Uri) {
                             }
                         }
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        Log.w("ImportManager", "Failed to copy subtitle file from tree URI", e)
                     }
                 }
                 
@@ -340,7 +341,7 @@ fun AppViewModel.importFolderFromTreeUri(folderName: String, treeUri: Uri) {
                             newlyIndexedFiles.add(fileNameWithoutExt)
                         }
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        Log.w("ImportManager", "Failed to import audio file from tree URI", e)
                     }
                 }
                 
@@ -350,7 +351,7 @@ fun AppViewModel.importFolderFromTreeUri(folderName: String, treeUri: Uri) {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("ImportManager", "Error scanning folder tree URI", e)
         }
         
         withContext(Dispatchers.Main) {
@@ -399,7 +400,7 @@ fun AppViewModel.importIndependentTracks(uris: List<Uri>) {
                     }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.w("ImportManager", "Failed to copy independent subtitle file", e)
             }
         }
 
@@ -434,7 +435,7 @@ fun AppViewModel.importIndependentTracks(uris: List<Uri>) {
                     successCount++
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.w("ImportManager", "Failed to import independent audio track", e)
             }
         }
         
@@ -465,7 +466,7 @@ fun AppViewModel.getDirNameFromTreeUri(context: Context, treeUri: Uri): String {
             }
         }
     } catch (e: Exception) {
-        e.printStackTrace()
+        Log.w("ImportManager", "Failed to resolve directory name from tree URI", e)
         treeUri.lastPathSegment?.let { segment ->
             val clean = segment.substringAfterLast(":").substringAfterLast("/")
             if (clean.isNotBlank()) {

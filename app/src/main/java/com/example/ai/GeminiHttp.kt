@@ -89,6 +89,50 @@ object GeminiHttp {
         return copy
     }
 
+    data class CandidateCheckResult(
+        val blockedErrorMessage: String? = null,
+        val finishReason: String = "",
+        val isTruncatedByMaxTokens: Boolean = false
+    )
+
+    fun checkCandidateBlockOrFinishReason(
+        respJson: JSONObject,
+        language: String = "en"
+    ): CandidateCheckResult {
+        val promptFeedback = respJson.optJSONObject("promptFeedback")
+        val blockReason = promptFeedback?.optString("blockReason", "")?.uppercase() ?: ""
+        if (blockReason.isNotBlank() && blockReason != "BLOCK_REASON_UNSPECIFIED") {
+            val msg = if (language == "ar") {
+                "تم حظر الطلب بواسطة فلاتر الأمان الخاصة بالذكاء الاصطناعي ($blockReason)."
+            } else {
+                "Request was blocked by AI safety filters ($blockReason)."
+            }
+            return CandidateCheckResult(blockedErrorMessage = msg, finishReason = blockReason)
+        }
+
+        val candidates = respJson.optJSONArray("candidates")
+        if (candidates == null || candidates.length() == 0) {
+            return CandidateCheckResult()
+        }
+        val firstCandidate = candidates.optJSONObject(0) ?: return CandidateCheckResult()
+        val finishReason = firstCandidate.optString("finishReason", "").uppercase()
+
+        if (finishReason in setOf("SAFETY", "RECITATION", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII")) {
+            val msg = if (language == "ar") {
+                "توقف توليد الرد بسبب سياسات الأمان أو حقوق النشر ($finishReason)."
+            } else {
+                "AI response was stopped due to safety or recitation policy ($finishReason)."
+            }
+            return CandidateCheckResult(blockedErrorMessage = msg, finishReason = finishReason)
+        }
+
+        return CandidateCheckResult(
+            blockedErrorMessage = null,
+            finishReason = finishReason,
+            isTruncatedByMaxTokens = finishReason == "MAX_TOKENS"
+        )
+    }
+
     suspend fun executeGeminiPostWithRetry(
         urlBuilder: (model: String) -> String,
         payload: JSONObject,
@@ -105,6 +149,10 @@ object GeminiHttp {
         var activePayload = payload
         val keysPool = candidateApiKeys.filter { it.isNotBlank() }
         val modelsFailedWith404 = mutableSetOf<String>()
+
+        if (keysPool.isNotEmpty() && (client === okHttpClient || client === subtitleOkHttpClient)) {
+            GeminiModelHealth.refreshAvailableModelsIfNeeded(keysPool.first(), client)
+        }
 
         var lastCode = -1
         var lastBody = ""

@@ -40,7 +40,32 @@ internal fun QuizBankBrowserView(
     onNavigateToTab: ((QuizTabMode) -> Unit)? = null
 ) {
     var viewAllVocab by remember { mutableStateOf(targetTrack == null) }
+    var questionIdToDelete by remember { mutableStateOf<Long?>(null) }
     val displayList = if (viewAllVocab) allVocabQuestions else trackQuestions
+
+    if (questionIdToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { questionIdToDelete = null },
+            title = { Text(Loc.getText("delete_question_confirm_title")) },
+            text = { Text(Loc.getText("delete_question_confirm_desc")) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        questionIdToDelete?.let { onDeleteQuestion(it) }
+                        questionIdToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(Loc.getText("delete"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { questionIdToDelete = null }) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -192,7 +217,7 @@ internal fun QuizBankBrowserView(
                                     }
                                 }
                                 IconButton(
-                                    onClick = { onDeleteQuestion(q.id) },
+                                    onClick = { questionIdToDelete = q.id },
                                     modifier = Modifier.size(28.dp)
                                 ) {
                                     Icon(Icons.Filled.Delete, contentDescription = Loc.getText("delete"), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))

@@ -128,6 +128,32 @@ fun TaskDetailsView(
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     var showAddToPlaylistDialogForTrack by remember { mutableStateOf<AudioTrack?>(null) }
     var showTaskStatsDialog by remember { mutableStateOf(false) }
+    var showDeleteTaskConfirm by remember { mutableStateOf(false) }
+
+    if (showDeleteTaskConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteTaskConfirm = false },
+            title = { Text(Loc.getText("delete_task_confirm_title")) },
+            text = { Text(Loc.getText("delete_task_confirm_desc")) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteTaskConfirm = false
+                        viewModel.deleteTask(currentTask.id)
+                        onBack()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(Loc.getText("delete"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteTaskConfirm = false }) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
     val taskTracks = remember(progressList, allTracks) {
         val trackMap = allTracks.associateBy { it.id }
         progressList.mapNotNull { trackMap[it.trackId] }
@@ -265,11 +291,10 @@ fun TaskDetailsView(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text(Loc.getText("delete_history"), color = MaterialTheme.colorScheme.error) },
+                        text = { Text(Loc.getText("delete"), color = MaterialTheme.colorScheme.error) },
                         onClick = {
                             expandedMenu = false
-                            viewModel.deleteTask(currentTask.id)
-                            onBack()
+                            showDeleteTaskConfirm = true
                         }
                     )
                 }

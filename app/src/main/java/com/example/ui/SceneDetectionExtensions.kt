@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.app.Application
+import android.util.Log
 import android.widget.Toast
 import androidx.lifecycle.viewModelScope
 import com.example.ai.GeminiService
@@ -176,7 +177,7 @@ fun AppViewModel.startAiSceneDetection(track: AudioTrack, onSuccess: ((folderId:
                 sceneDetectionStatus.value = null
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("SceneDetection", "Scene detection failed", e)
             withContext(Dispatchers.Main) {
                 isDetectingScenes.value = false
                 detectingTrackName.value = null

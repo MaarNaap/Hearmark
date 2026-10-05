@@ -108,9 +108,15 @@ object GeminiChat {
             }
 
             val respJson = JSONObject(responseBody)
+            val candidateCheck = GeminiHttp.checkCandidateBlockOrFinishReason(respJson, language)
+            if (candidateCheck.blockedErrorMessage != null) {
+                return@withContext Result.failure(Exception(candidateCheck.blockedErrorMessage))
+            }
+
             val candidates = respJson.optJSONArray("candidates")
             if (candidates == null || candidates.length() == 0) {
-                return@withContext Result.failure(Exception("No response candidate returned by Gemini."))
+                val noCandMsg = if (language == "ar") "لم يُرجع الذكاء الاصطناعي أي إجابة." else "No response candidate returned by Gemini."
+                return@withContext Result.failure(Exception(noCandMsg))
             }
 
             val firstCandidate = candidates.getJSONObject(0)
@@ -119,10 +125,22 @@ object GeminiChat {
             val textResult = GeminiHttp.extractNonThoughtTextFromParts(parts)
 
             if (textResult.isBlank()) {
-                return@withContext Result.failure(Exception("Empty text in Gemini response."))
+                val emptyMsg = if (language == "ar") "استجابة نصية فارغة من الذكاء الاصطناعي." else "Empty text in Gemini response."
+                return@withContext Result.failure(Exception(emptyMsg))
             }
 
-            Result.success(textResult)
+            val finalOutput = if (candidateCheck.isTruncatedByMaxTokens) {
+                val truncationNotice = if (language == "ar") {
+                    "\n\n⚠️ [تم اقتطاع الرد بسبب الوصول للحد الأقصى للطول]"
+                } else {
+                    "\n\n⚠️ [Response truncated due to token limit]"
+                }
+                textResult + truncationNotice
+            } else {
+                textResult
+            }
+
+            Result.success(finalOutput)
         } catch (e: Exception) {
             Log.e(TAG, "Error in Gemini sendMessage", e)
             Result.failure(e)

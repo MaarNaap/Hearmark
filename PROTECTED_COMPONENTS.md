@@ -80,8 +80,8 @@
   - Virtual scenes must translate between physical `MediaPlayer` timestamps (`startOffsetMs..endOffsetMs`) and virtual UI timestamps (`0..virtualDuration`).
 
 ### 9. Room Database Migrations, Backup/Restore & Relinking Engine
-- **Files**: `data/Database.kt`, `data/Migrations.kt`, `ui/BackupRestoreExtensions.kt`, `ui/RelinkingExtensions.kt`
-- **Description**: Database migration steps, safety backup routines, full JSON backup/restore foreign-key remapping, and broken-path relinking.
+- **Files**: `data/AppDatabase.kt`, `data/Migrations.kt`, `util/AutoBackupManager.kt`, `ui/BackupRestoreExtensions.kt`, `ui/RelinkingExtensions.kt`
+- **Description**: Database migration steps (up to schema v19 with indexed foreign keys), version-gated safety backup routines, full JSON backup/restore foreign-key remapping, and broken-path relinking.
 - **Rule**: Never remove existing migrations, change version numbers, alter table schemas, or break foreign-key ID remapping during backup/restore and relinking without explicit user consent.
 
 ---

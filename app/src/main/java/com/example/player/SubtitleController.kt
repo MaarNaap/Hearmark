@@ -105,7 +105,7 @@ internal object SubtitleController {
                     return SubtitleParser.formatForEditor(file.readText())
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.w("SubtitleController", "Failed to read subtitle file", e)
             }
         }
         val cues = _subtitlesCues.value

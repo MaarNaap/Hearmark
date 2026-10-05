@@ -1028,6 +1028,14 @@ object Loc {
         "wizard_alert_schedule_label" to mapOf("en" to "Alert Schedule: ", "ar" to "جدولة التنبيهات: "),
         "wizard_alert_schedule_format" to mapOf("en" to "On [%s] at %s", "ar" to "كل [%s] الساعة %s"),
         "wizard_daily_goal_label" to mapOf("en" to "Daily Goal: ", "ar" to "الهدف اليومي: "),
-        "playback_error_toast" to mapOf("en" to "Playback error: unable to play media file", "ar" to "خطأ في التشغيل: تعذر تشغيل ملف الوسائط")
+        "playback_error_toast" to mapOf("en" to "Playback error: unable to play media file", "ar" to "خطأ في التشغيل: تعذر تشغيل ملف الوسائط"),
+        "delete_task_confirm_title" to mapOf("en" to "Delete Task", "ar" to "حذف المهمة"),
+        "delete_task_confirm_desc" to mapOf("en" to "Are you sure you want to delete this task and its progress history?", "ar" to "هل أنت متأكد من رغبتك في حذف هذه المهمة وسجل تقدمها؟"),
+        "delete_tasks_bulk_confirm_desc" to mapOf("en" to "Are you sure you want to delete %d selected tasks?", "ar" to "هل أنت متأكد من رغبتك في حذف %d مهام محددة؟"),
+        "delete_question_confirm_title" to mapOf("en" to "Delete Question", "ar" to "حذف السؤال"),
+        "delete_question_confirm_desc" to mapOf("en" to "Are you sure you want to remove this question from the quiz bank?", "ar" to "هل أنت متأكد من رغبتك في حذف هذا السؤال من بنك الأسئلة؟"),
+        "clear_chat_confirm_title" to mapOf("en" to "Clear Chat History", "ar" to "مسح المحادثة"),
+        "clear_chat_confirm_desc" to mapOf("en" to "Are you sure you want to clear all messages in this chat session?", "ar" to "هل أنت متأكد من رغبتك في مسح جميع رسائل هذه المحادثة؟"),
+        "no_matching_tasks_found" to mapOf("en" to "No matching tasks found", "ar" to "لم يُعثر على مهام تطابق البحث")
     )
 }

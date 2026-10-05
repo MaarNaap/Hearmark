@@ -243,9 +243,15 @@ object GeminiSceneDetection {
         }
 
         val respJson = JSONObject(responseBody)
+        val candidateCheck = GeminiHttp.checkCandidateBlockOrFinishReason(respJson, language)
+        if (candidateCheck.blockedErrorMessage != null) {
+            return Result.failure(Exception(candidateCheck.blockedErrorMessage))
+        }
+
         val candidates = respJson.optJSONArray("candidates")
         if (candidates == null || candidates.length() == 0) {
-            return Result.failure(Exception("No candidate returned by Gemini."))
+            val noCandMsg = if (language == "ar") "لم يُرجع الذكاء الاصطناعي أي إجابة." else "No candidate returned by Gemini."
+            return Result.failure(Exception(noCandMsg))
         }
 
         val firstCandidate = candidates.getJSONObject(0)
@@ -254,12 +260,14 @@ object GeminiSceneDetection {
         val rawText = GeminiHttp.extractNonThoughtTextFromParts(parts)
 
         if (rawText.isBlank()) {
-            return Result.failure(Exception("Empty text response for scene detection."))
+            val emptyMsg = if (language == "ar") "استجابة نصية فارغة لتقسيم المشاهد." else "Empty text response for scene detection."
+            return Result.failure(Exception(emptyMsg))
         }
 
         val validatedList = parseScenesResiliently(rawText, totalDurationMs)
         if (validatedList.isEmpty()) {
-            return Result.failure(Exception("AI did not return any valid scene items."))
+            val noScenesMsg = if (language == "ar") "لم يُرجع الذكاء الاصطناعي أي مشاهد صالحة." else "AI did not return any valid scene items."
+            return Result.failure(Exception(noScenesMsg))
         }
         return Result.success(validatedList)
     }

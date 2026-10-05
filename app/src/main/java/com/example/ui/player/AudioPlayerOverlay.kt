@@ -1,5 +1,6 @@
 package com.example.ui
 
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -156,7 +157,7 @@ fun AudioPlayerOverlay(
                     Toast.makeText(context, Loc.getText("subtitles"), Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.w("AudioPlayerOverlay", "Failed to read selected subtitle file", e)
             }
         }
     }

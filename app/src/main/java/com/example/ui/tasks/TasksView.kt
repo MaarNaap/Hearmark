@@ -141,6 +141,60 @@ fun TasksView(
     var showSortMenu by remember { mutableStateOf(false) }
     var showTagFilterMenu by remember { mutableStateOf(false) }
     var isSearchExpanded by remember { mutableStateOf(false) }
+    var taskToDelete by remember { mutableStateOf<Task?>(null) }
+    var showBulkDeleteTasksConfirm by remember { mutableStateOf(false) }
+
+    if (taskToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { taskToDelete = null },
+            title = { Text(Loc.getText("delete_task_confirm_title")) },
+            text = { Text(Loc.getText("delete_task_confirm_desc")) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        taskToDelete?.let { viewModel.deleteTask(it.id) }
+                        taskToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(Loc.getText("delete"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { taskToDelete = null }) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
+
+    if (showBulkDeleteTasksConfirm) {
+        AlertDialog(
+            onDismissRequest = { showBulkDeleteTasksConfirm = false },
+            title = { Text(Loc.getText("bulk_delete")) },
+            text = { Text(String.format(Loc.getText("delete_tasks_bulk_confirm_desc"), selectedTaskIds.size)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        selectedTaskIds.forEach { taskId ->
+                            viewModel.deleteTask(taskId)
+                        }
+                        showBulkDeleteTasksConfirm = false
+                        isTaskBulkSelectMode = false
+                        selectedTaskIds = emptySet()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(Loc.getText("delete"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBulkDeleteTasksConfirm = false }) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
 
     val allUniqueTaskLabels = remember(activeTasks, completedTasks, taskLabelsList) {
         val fromTasks = (activeTasks + completedTasks).flatMap { it.getLabelsList() }
@@ -188,11 +242,9 @@ fun TasksView(
                             }
                         }
                         IconButton(onClick = {
-                            selectedTaskIds.forEach { taskId ->
-                                viewModel.deleteTask(taskId)
+                            if (selectedTaskIds.isNotEmpty()) {
+                                showBulkDeleteTasksConfirm = true
                             }
-                            isTaskBulkSelectMode = false
-                            selectedTaskIds = emptySet()
                         }) {
                             Icon(Icons.Filled.Delete, "Delete tasks", tint = MaterialTheme.colorScheme.error)
                         }
@@ -576,7 +628,7 @@ fun TasksView(
                         val placeholderText = if (pageTasks.isEmpty()) {
                             Loc.getText("no_items")
                         } else {
-                            if (Loc.currentLanguage == "ar") "لم يُعثر على مهام تطابق البحث" else "No matching tasks found"
+                            Loc.getText("no_matching_tasks_found")
                         }
                         Text(placeholderText, color = Color.Gray, fontSize = 14.sp)
                     }
@@ -769,10 +821,10 @@ fun TasksView(
                                                         )
                                                     }
                                                     DropdownMenuItem(
-                                                        text = { Text(Loc.getText("delete_history"), color = MaterialTheme.colorScheme.error) },
+                                                        text = { Text(Loc.getText("delete"), color = MaterialTheme.colorScheme.error) },
                                                         onClick = {
                                                             showTaskMenu = false
-                                                            viewModel.deleteTask(task.id)
+                                                            taskToDelete = task
                                                         }
                                                     )
                                                 }

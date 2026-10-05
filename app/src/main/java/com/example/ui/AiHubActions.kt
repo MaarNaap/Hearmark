@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.content.Context
+import android.util.Log
 import android.widget.Toast
 import com.example.ai.AudioContextSummary
 import com.example.data.AudioTrack
@@ -177,7 +178,7 @@ fun getFullSubtitlesForTrack(track: AudioTrack?): String? {
                 if (formatted.isNotBlank()) return formatted
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w("AiHubActions", "Failed to read track subtitle file", e)
         }
     }
     val autoFile = SubtitleParser.findMatchingSubtitleFile(track.filePath)
@@ -186,7 +187,7 @@ fun getFullSubtitlesForTrack(track: AudioTrack?): String? {
             val formatted = SubtitleParser.formatForEditor(autoFile.readText())
             if (formatted.isNotBlank()) return formatted
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w("AiHubActions", "Failed to read matching subtitle file", e)
         }
     }
     val cues = AudioPlayerManager.getOrParseCuesForTrack(track)
