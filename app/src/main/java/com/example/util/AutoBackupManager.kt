@@ -193,13 +193,15 @@ object AutoBackupManager {
         val tagsList = repository.dao.getAllTagsDirect()
         val labelsList = repository.dao.getAllTaskLabelsDirect()
         val vocabList = repository.vocabDao?.getAllVocabularyItemsDirect() ?: emptyList()
+        val quizQuestionsList = repository.dao.getAllQuizQuestionsDirect()
 
         if (requireNonEmpty &&
             tasksList.isEmpty() &&
             progressList.isEmpty() &&
             historyList.isEmpty() &&
             notesList.isEmpty() &&
-            vocabList.isEmpty()
+            vocabList.isEmpty() &&
+            quizQuestionsList.isEmpty()
         ) {
             return null
         }

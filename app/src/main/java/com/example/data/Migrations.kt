@@ -257,6 +257,42 @@ internal object DatabaseMigrations {
         }
     }
 
+    val MIGRATION_19_20 = object : Migration(19, 20) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 1. Add spaced repetition columns to quiz_questions
+            try {
+                db.execSQL("ALTER TABLE `quiz_questions` ADD COLUMN `srRepetitions` INTEGER NOT NULL DEFAULT 0")
+            } catch (_: Exception) {}
+            try {
+                db.execSQL("ALTER TABLE `quiz_questions` ADD COLUMN `srIntervalDays` INTEGER NOT NULL DEFAULT 0")
+            } catch (_: Exception) {}
+            try {
+                db.execSQL("ALTER TABLE `quiz_questions` ADD COLUMN `srEase` REAL NOT NULL DEFAULT 2.5")
+            } catch (_: Exception) {}
+            try {
+                db.execSQL("ALTER TABLE `quiz_questions` ADD COLUMN `srLapses` INTEGER NOT NULL DEFAULT 0")
+            } catch (_: Exception) {}
+            try {
+                db.execSQL("ALTER TABLE `quiz_questions` ADD COLUMN `srNextReviewAt` INTEGER DEFAULT NULL")
+            } catch (_: Exception) {}
+
+            // 2. Create index on srNextReviewAt
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_questions_srNextReviewAt` ON `quiz_questions` (`srNextReviewAt`)")
+
+            // 3. Confirmed Decision 1: Seed existing items with strong accuracy (timesAnswered > 0 and accuracy >= 75%)
+            // with a 3-day interval so they do not flood "Due Today" on first launch
+            try {
+                db.execSQL("""
+                    UPDATE `quiz_questions` 
+                    SET `srRepetitions` = 2, 
+                        `srIntervalDays` = 3, 
+                        `srNextReviewAt` = COALESCE(`lastAnsweredAt`, CAST(strftime('%s', 'now') AS INTEGER) * 1000) + 259200000
+                    WHERE `timesAnswered` > 0 AND (`timesCorrect` * 1.0 / `timesAnswered`) >= 0.75
+                """.trimIndent())
+            } catch (_: Exception) {}
+        }
+    }
+
     val ALL_MIGRATIONS = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -275,6 +311,7 @@ internal object DatabaseMigrations {
         MIGRATION_15_16,
         MIGRATION_16_17,
         MIGRATION_17_18,
-        MIGRATION_18_19
+        MIGRATION_18_19,
+        MIGRATION_19_20
     )
 }

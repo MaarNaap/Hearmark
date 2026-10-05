@@ -41,6 +41,12 @@ class QuizViewModel(
     val allVocabularyQuestions: StateFlow<List<QuizQuestion>> = repository.getAllVocabularyQuestionsFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val dueVocabularyQuestions: StateFlow<List<QuizQuestion>> = repository.getDueVocabularyQuestionsFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val dueVocabularyCount: StateFlow<Int> = repository.getDueVocabularyCountFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     // --- NOTEBOOK VOCABULARY QUIZ STATE ---
     val isNotebookQuizSheetOpen = MutableStateFlow(false)
     val isGeneratingNotebookQuiz = MutableStateFlow(false)

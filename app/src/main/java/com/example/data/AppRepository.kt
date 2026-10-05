@@ -625,7 +625,68 @@ class AppRepository(
         return id
     }
     suspend fun updateQuizQuestion(question: QuizQuestion) = dao.updateQuizQuestion(question)
-    suspend fun recordQuestionAnswer(id: Long, isCorrect: Boolean) = dao.recordQuestionAnswer(id, if (isCorrect) 1 else 0)
+    suspend fun getQuestionById(id: Long): QuizQuestion? = dao.getQuestionByIdDirect(id)
+
+    suspend fun recordQuestionAnswer(id: Long, isCorrect: Boolean) {
+        val q = dao.getQuestionByIdDirect(id)
+        if (q != null) {
+            val currentState = com.example.util.SpacedRepetition.CardState(
+                repetitions = q.srRepetitions,
+                intervalDays = q.srIntervalDays,
+                ease = q.srEase,
+                lapses = q.srLapses,
+                nextReviewAt = q.srNextReviewAt
+            )
+            val newState = com.example.util.SpacedRepetition.review(currentState, isCorrect)
+            recordQuestionAnswerWithSr(
+                id = id,
+                isCorrect = isCorrect,
+                now = System.currentTimeMillis(),
+                srRepetitions = newState.repetitions,
+                srIntervalDays = newState.intervalDays,
+                srEase = newState.ease,
+                srLapses = newState.lapses,
+                srNextReviewAt = newState.nextReviewAt
+            )
+        } else {
+            dao.recordQuestionAnswer(id, if (isCorrect) 1 else 0)
+        }
+    }
+
+    suspend fun recordQuestionAnswerWithSr(
+        id: Long,
+        isCorrect: Boolean,
+        now: Long,
+        srRepetitions: Int,
+        srIntervalDays: Int,
+        srEase: Float,
+        srLapses: Int,
+        srNextReviewAt: Long?
+    ) = dao.recordQuestionAnswerWithSr(
+        id = id,
+        correctIncrement = if (isCorrect) 1 else 0,
+        now = now,
+        srRepetitions = srRepetitions,
+        srIntervalDays = srIntervalDays,
+        srEase = srEase,
+        srLapses = srLapses,
+        srNextReviewAt = srNextReviewAt
+    )
+
+    fun getDueVocabularyQuestionsFlow(cutoffMs: Long = com.example.util.SpacedRepetition.endOfTodayMillis()): Flow<List<QuizQuestion>> =
+        dao.getDueVocabularyQuestionsFlow(cutoffMs)
+
+    suspend fun getDueVocabularyQuestionsDirect(
+        cutoffMs: Long = com.example.util.SpacedRepetition.endOfTodayMillis(),
+        limit: Int = com.example.util.SpacedRepetition.SESSION_CARD_CAP
+    ): List<QuizQuestion> = dao.getDueVocabularyQuestionsDirect(cutoffMs, limit)
+
+    fun getDueVocabularyCountFlow(cutoffMs: Long = com.example.util.SpacedRepetition.endOfTodayMillis()): Flow<Int> =
+        dao.getDueVocabularyCountFlow(cutoffMs)
+
+    suspend fun getDueVocabularyCountDirect(cutoffMs: Long = com.example.util.SpacedRepetition.endOfTodayMillis()): Int =
+        dao.getDueVocabularyCountDirect(cutoffMs)
+
     suspend fun deleteQuizQuestionById(id: Long) = dao.deleteQuizQuestionById(id)
     suspend fun deleteQuizQuestionsForTrack(trackId: Long) = dao.deleteQuizQuestionsForTrack(trackId)
     fun getQuestionsForNoteFlow(noteId: Long): Flow<List<QuizQuestion>> = dao.getQuestionsForNoteFlow(noteId)

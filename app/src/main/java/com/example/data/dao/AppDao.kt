@@ -347,6 +347,12 @@ interface AppDao {
     @Query("SELECT * FROM quiz_questions WHERE trackId = :trackId ORDER BY createdAt ASC")
     suspend fun getQuestionsForTrackDirect(trackId: Long): List<QuizQuestion>
 
+    @Query("SELECT * FROM quiz_questions WHERE id = :id LIMIT 1")
+    suspend fun getQuestionByIdDirect(id: Long): QuizQuestion?
+
+    @Query("SELECT * FROM quiz_questions ORDER BY createdAt ASC")
+    suspend fun getAllQuizQuestionsDirect(): List<QuizQuestion>
+
     @Query("SELECT COUNT(*) FROM quiz_questions WHERE trackId = :trackId")
     suspend fun getQuestionCountForTrack(trackId: Long): Int
 
@@ -361,6 +367,60 @@ interface AppDao {
 
     @Query("UPDATE quiz_questions SET timesAnswered = timesAnswered + 1, timesCorrect = timesCorrect + :correctIncrement, lastAnsweredAt = :now WHERE id = :id")
     suspend fun recordQuestionAnswer(id: Long, correctIncrement: Int, now: Long = System.currentTimeMillis())
+
+    @Query("""
+        UPDATE quiz_questions 
+        SET timesAnswered = timesAnswered + 1, 
+            timesCorrect = timesCorrect + :correctIncrement, 
+            lastAnsweredAt = :now,
+            srRepetitions = :srRepetitions,
+            srIntervalDays = :srIntervalDays,
+            srEase = :srEase,
+            srLapses = :srLapses,
+            srNextReviewAt = :srNextReviewAt
+        WHERE id = :id
+    """)
+    suspend fun recordQuestionAnswerWithSr(
+        id: Long,
+        correctIncrement: Int,
+        now: Long,
+        srRepetitions: Int,
+        srIntervalDays: Int,
+        srEase: Float,
+        srLapses: Int,
+        srNextReviewAt: Long?
+    )
+
+    @Query("""
+        SELECT * FROM quiz_questions 
+        WHERE (category = 'VOCABULARY' OR (category = 'COMPREHENSION' AND (question LIKE '%meaning%' OR question LIKE '%means%' OR question LIKE '%word%' OR question LIKE '%definition%' OR question LIKE '%phrase%' OR question LIKE '%idiom%' OR question LIKE '%معنى%' OR question LIKE '%مرادف%')))
+          AND (srNextReviewAt IS NULL OR srNextReviewAt <= :cutoffMs)
+        ORDER BY CASE WHEN srNextReviewAt IS NULL THEN 1 ELSE 0 END ASC, srNextReviewAt ASC, createdAt ASC
+    """)
+    fun getDueVocabularyQuestionsFlow(cutoffMs: Long): Flow<List<QuizQuestion>>
+
+    @Query("""
+        SELECT * FROM quiz_questions 
+        WHERE (category = 'VOCABULARY' OR (category = 'COMPREHENSION' AND (question LIKE '%meaning%' OR question LIKE '%means%' OR question LIKE '%word%' OR question LIKE '%definition%' OR question LIKE '%phrase%' OR question LIKE '%idiom%' OR question LIKE '%معنى%' OR question LIKE '%مرادف%')))
+          AND (srNextReviewAt IS NULL OR srNextReviewAt <= :cutoffMs)
+        ORDER BY CASE WHEN srNextReviewAt IS NULL THEN 1 ELSE 0 END ASC, srNextReviewAt ASC, createdAt ASC
+        LIMIT :limit
+    """)
+    suspend fun getDueVocabularyQuestionsDirect(cutoffMs: Long, limit: Int = 20): List<QuizQuestion>
+
+    @Query("""
+        SELECT COUNT(*) FROM quiz_questions 
+        WHERE (category = 'VOCABULARY' OR (category = 'COMPREHENSION' AND (question LIKE '%meaning%' OR question LIKE '%means%' OR question LIKE '%word%' OR question LIKE '%definition%' OR question LIKE '%phrase%' OR question LIKE '%idiom%' OR question LIKE '%معنى%' OR question LIKE '%مرادف%')))
+          AND (srNextReviewAt IS NULL OR srNextReviewAt <= :cutoffMs)
+    """)
+    fun getDueVocabularyCountFlow(cutoffMs: Long): Flow<Int>
+
+    @Query("""
+        SELECT COUNT(*) FROM quiz_questions 
+        WHERE (category = 'VOCABULARY' OR (category = 'COMPREHENSION' AND (question LIKE '%meaning%' OR question LIKE '%means%' OR question LIKE '%word%' OR question LIKE '%definition%' OR question LIKE '%phrase%' OR question LIKE '%idiom%' OR question LIKE '%معنى%' OR question LIKE '%مرادف%')))
+          AND (srNextReviewAt IS NULL OR srNextReviewAt <= :cutoffMs)
+    """)
+    suspend fun getDueVocabularyCountDirect(cutoffMs: Long): Int
 
     @Query("DELETE FROM quiz_questions WHERE id = :id")
     suspend fun deleteQuizQuestionById(id: Long)

@@ -92,6 +92,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     val pendingOpenTaskId = MutableStateFlow<Long?>(null)
 
+    val pendingOpenVocabReview = MutableStateFlow(false)
+
+    fun setPendingOpenVocabReview(open: Boolean) {
+        pendingOpenVocabReview.value = open
+    }
+
+    fun consumePendingOpenVocabReview() {
+        pendingOpenVocabReview.value = false
+    }
+
     fun setPendingOpenTaskId(taskId: Long) {
         if (taskId > 0) {
             pendingOpenTaskId.value = taskId
@@ -173,6 +183,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val activeQuizTargetTrack: MutableStateFlow<AudioTrack?> get() = quizViewModel.activeQuizTargetTrack
     val currentTrackQuizQuestions: MutableStateFlow<List<QuizQuestion>> get() = quizViewModel.currentTrackQuizQuestions
     val allVocabularyQuestions: StateFlow<List<QuizQuestion>> get() = quizViewModel.allVocabularyQuestions
+    val dueVocabularyQuestions: StateFlow<List<QuizQuestion>> get() = quizViewModel.dueVocabularyQuestions
+    val dueVocabularyCount: StateFlow<Int> get() = quizViewModel.dueVocabularyCount
 
     fun openQuizForTrack(track: AudioTrack, startPracticeSession: Boolean = true) = quizViewModel.openQuizForTrack(track, startPracticeSession)
     fun openQuizForCurrentTrack(startPracticeSession: Boolean = true) = quizViewModel.openQuizForCurrentTrack(startPracticeSession)

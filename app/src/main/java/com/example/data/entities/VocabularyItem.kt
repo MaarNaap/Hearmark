@@ -1,5 +1,6 @@
 package com.example.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -18,7 +19,8 @@ import androidx.room.PrimaryKey
     indices = [
         Index(value = ["trackId"]),
         Index(value = ["category"]),
-        Index(value = ["noteId"])
+        Index(value = ["noteId"]),
+        Index(value = ["srNextReviewAt"])
     ]
 )
 data class QuizQuestion(
@@ -38,7 +40,12 @@ data class QuizQuestion(
     val createdAt: Long = System.currentTimeMillis(),
     val targetWord: String? = null, // Isolated target word
     val meaning: String? = null, // Isolated meaning/definition
-    val contextSentence: String? = null // Isolated context sentence
+    val contextSentence: String? = null, // Isolated context sentence
+    @ColumnInfo(defaultValue = "0") val srRepetitions: Int = 0,
+    @ColumnInfo(defaultValue = "0") val srIntervalDays: Int = 0,
+    @ColumnInfo(defaultValue = "2.5") val srEase: Float = 2.5f,
+    @ColumnInfo(defaultValue = "0") val srLapses: Int = 0,
+    @ColumnInfo(defaultValue = "NULL") val srNextReviewAt: Long? = null
 ) {
     fun getOptions(): List<String> {
         return try {
