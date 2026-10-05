@@ -28,6 +28,97 @@ class AlarmReceiver : BroadcastReceiver() {
         val scheduledDays = intent.getStringExtra("SCHEDULED_DAYS") ?: ""
         val reminderTime = intent.getStringExtra("REMINDER_TIME") ?: "09:00 AM"
 
+        if (action == ACTION_DAILY_VOCAB_REMINDER) {
+            val pendingResult = goAsync()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val appContext = context.applicationContext
+                    val db = AppDatabase.getDatabase(appContext)
+                    val dueCount = db.appDao().getDueVocabularyCountDirect(com.example.util.SpacedRepetition.endOfTodayMillis())
+                    
+                    val sharedPref = appContext.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+                    val isEnabled = sharedPref.getBoolean("vocab_reminder_enabled", false)
+                    val storedTime = sharedPref.getString("vocab_reminder_time", "09:00 AM") ?: "09:00 AM"
+                    
+                    if (isEnabled) {
+                        scheduleDailyVocabReminder(appContext, storedTime)
+                    }
+
+                    if (dueCount > 0) {
+                        val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        val channelId = "vocab_reminder_channel"
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            val channel = NotificationChannel(
+                                channelId,
+                                Loc.getText("vocab_daily_reminder_title"),
+                                NotificationManager.IMPORTANCE_HIGH
+                            ).apply {
+                                description = Loc.getText("vocab_daily_reminder_desc")
+                                enableVibration(true)
+                            }
+                            notificationManager.createNotificationChannel(channel)
+                        }
+
+                        val openIntent = Intent(appContext, com.example.MainActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            putExtra("OPEN_VOCAB_REVIEW", true)
+                        }
+                        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        } else {
+                            PendingIntent.FLAG_UPDATE_CURRENT
+                        }
+                        val pendingIntent = PendingIntent.getActivity(
+                            appContext,
+                            DAILY_VOCAB_REQUEST_CODE,
+                            openIntent,
+                            flags
+                        )
+
+                        val title = Loc.getText("vocab_notification_due_title")
+                        val message = Loc.getFormattedText("vocab_notification_due_message", dueCount)
+
+                        val isDark = try {
+                            val themeSetting = sharedPref.getString("theme", "dark") ?: "dark"
+                            when (themeSetting) {
+                                "light" -> false
+                                "dark" -> true
+                                else -> {
+                                    val nightModeFlags = appContext.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
+                                    nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES
+                                }
+                            }
+                        } catch (_: Exception) { true }
+
+                        val largeIcon = getLargeIconBitmap(appContext, isDark)
+
+                        val notification = NotificationCompat.Builder(appContext, channelId)
+                            .setSmallIcon(com.example.R.drawable.ic_logo)
+                            .setContentTitle(title)
+                            .setContentText(message)
+                            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                            .setPriority(NotificationCompat.PRIORITY_HIGH)
+                            .setDefaults(NotificationCompat.DEFAULT_ALL)
+                            .setAutoCancel(true)
+                            .setContentIntent(pendingIntent)
+                            .apply {
+                                if (largeIcon != null) {
+                                    setLargeIcon(largeIcon)
+                                }
+                            }
+                            .build()
+
+                        notificationManager.notify(DAILY_VOCAB_NOTIFICATION_ID, notification)
+                    }
+                } catch (e: Exception) {
+                    Log.e("AlarmReceiver", "Error handling daily vocab reminder alarm", e)
+                } finally {
+                    pendingResult.finish()
+                }
+            }
+            return
+        }
+
         if (action == ACTION_PLAY_TASK_TRACK) {
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.cancel(taskId.toInt())
@@ -315,6 +406,9 @@ class AlarmReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_PLAY_TASK_TRACK = "com.example.ACTION_PLAY_TASK_TRACK"
         const val ACTION_SNOOZE_TASK = "com.example.ACTION_SNOOZE_TASK"
+        const val ACTION_DAILY_VOCAB_REMINDER = "com.example.ACTION_DAILY_VOCAB_REMINDER"
+        const val DAILY_VOCAB_NOTIFICATION_ID = 88888
+        const val DAILY_VOCAB_REQUEST_CODE = 9999
 
         /**
          * Normalizes localized digits (Arabic-Indic ٠-٩ and Extended ۰-۹) and localized AM/PM markers
@@ -505,6 +599,89 @@ class AlarmReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 try {
                     Log.w("AlarmReceiver", "Failed to parse reminderTime '$reminderTime' (normalized: '$normalizedTime') for Task ID $taskId", e)
+                } catch (_: Throwable) {}
+            }
+        }
+
+        fun scheduleDailyVocabReminder(context: Context, reminderTime: String) {
+            cancelDailyVocabReminder(context)
+            val normalizedTime = normalizeReminderTime(reminderTime)
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+            val intent = Intent(context, AlarmReceiver::class.java).apply {
+                action = ACTION_DAILY_VOCAB_REMINDER
+                putExtra("REMINDER_TIME", normalizedTime)
+            }
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                DAILY_VOCAB_REQUEST_CODE,
+                intent,
+                flags
+            )
+            val cal = Calendar.getInstance()
+            val sdf = java.text.SimpleDateFormat("hh:mm a", Locale.US)
+            try {
+                val date = sdf.parse(normalizedTime)
+                if (date != null) {
+                    val parsedCal = Calendar.getInstance().apply { time = date }
+                    cal.set(Calendar.HOUR_OF_DAY, parsedCal.get(Calendar.HOUR_OF_DAY))
+                    cal.set(Calendar.MINUTE, parsedCal.get(Calendar.MINUTE))
+                    cal.set(Calendar.SECOND, 0)
+                    cal.set(Calendar.MILLISECOND, 0)
+
+                    if (cal.timeInMillis <= System.currentTimeMillis()) {
+                        cal.add(Calendar.DAY_OF_YEAR, 1)
+                    }
+
+                    setExactAlarmSafely(alarmManager, cal.timeInMillis, pendingIntent)
+                    try {
+                        Log.d("AlarmReceiver", "Scheduled daily vocab reminder at ${cal.time}")
+                    } catch (_: Throwable) {}
+                }
+            } catch (e: Exception) {
+                try {
+                    Log.w("AlarmReceiver", "Failed to schedule daily vocab reminder with time '$reminderTime'", e)
+                } catch (_: Throwable) {}
+            }
+        }
+
+        fun cancelDailyVocabReminder(context: Context) {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+            val intent = Intent(context, AlarmReceiver::class.java).apply {
+                action = ACTION_DAILY_VOCAB_REMINDER
+            }
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_NO_CREATE
+            }
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                DAILY_VOCAB_REQUEST_CODE,
+                intent,
+                flags
+            )
+            if (pendingIntent != null) {
+                alarmManager.cancel(pendingIntent)
+                pendingIntent.cancel()
+            }
+        }
+
+        fun rescheduleDailyVocabReminderIfNeeded(context: Context) {
+            try {
+                val sharedPref = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+                val isEnabled = sharedPref.getBoolean("vocab_reminder_enabled", false)
+                val time = sharedPref.getString("vocab_reminder_time", "09:00 AM") ?: "09:00 AM"
+                if (isEnabled) {
+                    scheduleDailyVocabReminder(context, time)
+                }
+            } catch (e: Exception) {
+                try {
+                    Log.w("AlarmReceiver", "Failed to reschedule daily vocab reminder on boot", e)
                 } catch (_: Throwable) {}
             }
         }

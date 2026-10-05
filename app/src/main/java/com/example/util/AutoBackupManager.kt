@@ -333,6 +333,35 @@ object AutoBackupManager {
         }
         root.put("vocabularyItems", vocabArray)
 
+        val quizQuestionsArray = org.json.JSONArray()
+        quizQuestionsList.forEach { q ->
+            val obj = org.json.JSONObject()
+            obj.put("id", q.id)
+            if (q.trackId != null) obj.put("trackId", q.trackId)
+            if (q.noteId != null) obj.put("noteId", q.noteId)
+            obj.put("questionType", q.questionType)
+            obj.put("category", q.category)
+            obj.put("question", q.question)
+            obj.put("optionsJson", q.optionsJson)
+            obj.put("correctIndex", q.correctIndex)
+            obj.put("explanation", q.explanation)
+            if (q.timestampMs != null) obj.put("timestampMs", q.timestampMs)
+            obj.put("timesAnswered", q.timesAnswered)
+            obj.put("timesCorrect", q.timesCorrect)
+            if (q.lastAnsweredAt != null) obj.put("lastAnsweredAt", q.lastAnsweredAt)
+            obj.put("createdAt", q.createdAt)
+            if (q.targetWord != null) obj.put("targetWord", q.targetWord)
+            if (q.meaning != null) obj.put("meaning", q.meaning)
+            if (q.contextSentence != null) obj.put("contextSentence", q.contextSentence)
+            obj.put("srRepetitions", q.srRepetitions)
+            obj.put("srIntervalDays", q.srIntervalDays)
+            obj.put("srEase", q.srEase.toDouble())
+            obj.put("srLapses", q.srLapses)
+            if (q.srNextReviewAt != null) obj.put("srNextReviewAt", q.srNextReviewAt)
+            quizQuestionsArray.put(obj)
+        }
+        root.put("quizQuestions", quizQuestionsArray)
+
         return root
     }
 

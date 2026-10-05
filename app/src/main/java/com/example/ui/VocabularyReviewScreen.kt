@@ -34,6 +34,8 @@ fun VocabularyReviewScreen(
 ) {
     val context = LocalContext.current
     val allVocabQuestions by viewModel.allVocabularyQuestions.collectAsStateWithLifecycle()
+    val dueVocabQuestions by viewModel.dueVocabularyQuestions.collectAsStateWithLifecycle()
+    val dueVocabCount by viewModel.dueVocabularyCount.collectAsStateWithLifecycle()
     val allTracks by viewModel.tracks.collectAsStateWithLifecycle()
 
     // Map for quick track lookup
@@ -284,11 +286,17 @@ fun VocabularyReviewScreen(
                     0 -> {
                         // Overview Hub & Session Launchpad
                         VocabReviewHubView(
+                            dueQuestions = dueVocabQuestions,
+                            dueCount = dueVocabCount,
                             totalCount = totalCount,
                             masteredCount = masteredCount,
                             needsPracticeCount = needsPracticeCount,
                             untestedCount = untestedCount,
                             allQuestions = allVocabQuestions,
+                            onStartDueToday = {
+                                val dueBatch = dueVocabQuestions.take(com.example.util.SpacedRepetition.SESSION_CARD_CAP)
+                                startSession(dueBatch)
+                            },
                             onStartTestAll = { startSession(allVocabQuestions) },
                             onStartPracticeWeak = {
                                 val weakOrUntested = allVocabQuestions.filter { q ->

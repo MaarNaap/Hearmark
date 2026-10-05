@@ -38,6 +38,10 @@ fun VocabBankBrowserView(
     currentlyPlayingTs: Long?,
     isPlayingAudio: Boolean
 ) {
+    val dueCount = remember(allQuestions) {
+        allQuestions.count { com.example.util.SpacedRepetition.isDue(it.srNextReviewAt) }
+    }
+
     val filteredList = remember(allQuestions, searchQuery, filterMode) {
         allQuestions.filter { q ->
             val matchesQuery = searchQuery.isBlank() ||
@@ -48,6 +52,7 @@ fun VocabBankBrowserView(
                     q.explanation.contains(searchQuery, ignoreCase = true)
 
             val matchesFilter = when (filterMode) {
+                "DUE" -> com.example.util.SpacedRepetition.isDue(q.srNextReviewAt)
                 "MASTERED" -> q.timesAnswered > 0 && (q.timesCorrect.toFloat() / q.timesAnswered) >= 0.75f
                 "NEEDS_PRACTICE" -> q.timesAnswered > 0 && (q.timesCorrect.toFloat() / q.timesAnswered) < 0.75f
                 "UNTESTED" -> q.timesAnswered == 0
@@ -91,6 +96,7 @@ fun VocabBankBrowserView(
         // Filter chips row
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val filters = listOf(
+                "DUE" to Loc.getFormattedText("vocab_filter_due", dueCount),
                 "ALL" to Loc.getFormattedText("vocab_filter_all_count", allQuestions.size),
                 "MASTERED" to Loc.getText("vocab_review_mastered"),
                 "NEEDS_PRACTICE" to Loc.getText("vocab_review_needs_practice"),
@@ -130,6 +136,7 @@ fun VocabBankBrowserView(
                     val options = q.getOptions()
                     val track = trackMap[q.trackId]
                     val accuracy = if (q.timesAnswered > 0) (q.timesCorrect * 100) / q.timesAnswered else null
+                    val srBadge = com.example.util.SpacedRepetition.getStatusBadgeInfo(q.srNextReviewAt)
 
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -142,25 +149,53 @@ fun VocabBankBrowserView(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Surface(
-                                    color = when {
-                                        accuracy == null -> MaterialTheme.colorScheme.surfaceVariant
-                                        accuracy >= 75 -> Color(0xFF2E7D32).copy(alpha = 0.15f)
-                                        else -> Color(0xFFE65100).copy(alpha = 0.15f)
-                                    },
-                                    shape = RoundedCornerShape(6.dp)
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = if (accuracy != null) Loc.getFormattedText("vocab_accuracy_format", accuracy, q.timesCorrect, q.timesAnswered) else Loc.getText("quiz_never_answered"),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = when {
-                                            accuracy == null -> MaterialTheme.colorScheme.onSurfaceVariant
-                                            accuracy >= 75 -> Color(0xFF2E7D32)
-                                            else -> Color(0xFFE65100)
+                                    // Spaced Repetition Schedule Status Badge
+                                    Surface(
+                                        color = when (srBadge.badgeType) {
+                                            com.example.util.SpacedRepetition.BadgeType.DUE -> Color(0xFFE65100).copy(alpha = 0.15f)
+                                            com.example.util.SpacedRepetition.BadgeType.SCHEDULED -> Color(0xFF2E7D32).copy(alpha = 0.15f)
+                                            com.example.util.SpacedRepetition.BadgeType.NEW -> MaterialTheme.colorScheme.surfaceVariant
                                         },
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = srBadge.label,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = when (srBadge.badgeType) {
+                                                com.example.util.SpacedRepetition.BadgeType.DUE -> Color(0xFFE65100)
+                                                com.example.util.SpacedRepetition.BadgeType.SCHEDULED -> Color(0xFF2E7D32)
+                                                com.example.util.SpacedRepetition.BadgeType.NEW -> MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+
+                                    // Historical Accuracy Badge
+                                    Surface(
+                                        color = when {
+                                            accuracy == null -> MaterialTheme.colorScheme.surfaceVariant
+                                            accuracy >= 75 -> Color(0xFF2E7D32).copy(alpha = 0.15f)
+                                            else -> Color(0xFFE65100).copy(alpha = 0.15f)
+                                        },
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = if (accuracy != null) Loc.getFormattedText("vocab_accuracy_format", accuracy, q.timesCorrect, q.timesAnswered) else Loc.getText("quiz_never_answered"),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = when {
+                                                accuracy == null -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                accuracy >= 75 -> Color(0xFF2E7D32)
+                                                else -> Color(0xFFE65100)
+                                            },
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
                                 }
 
                                 Row {

@@ -158,6 +158,14 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
     val isSnippetPlaying by com.example.player.NoteAudioPlayer.isPlaying.collectAsStateWithLifecycle()
     val snippetPosition by com.example.player.NoteAudioPlayer.currentPosition.collectAsStateWithLifecycle()
     val pendingOpenTaskId by viewModel.pendingOpenTaskId.collectAsStateWithLifecycle()
+    val pendingOpenVocabReview by viewModel.pendingOpenVocabReview.collectAsStateWithLifecycle()
+
+    LaunchedEffect(pendingOpenVocabReview) {
+        if (pendingOpenVocabReview) {
+            currentScreen = "vocab_review"
+            viewModel.consumePendingOpenVocabReview()
+        }
+    }
 
     LaunchedEffect(pendingOpenTaskId, allTasksList) {
         val targetTaskId = pendingOpenTaskId

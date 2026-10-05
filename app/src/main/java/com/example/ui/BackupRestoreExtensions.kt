@@ -233,6 +233,40 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
             var labelsCount = 0
             var dailyProgressCount = 0
             var vocabCount = 0
+            var quizQuestionsCount = 0
+
+            suspend fun parseQuizQuestionItem(obj: org.json.JSONObject) {
+                val question = optStringSafe(obj, "question", defaultVal = "")
+                val optionsJson = optStringSafe(obj, "optionsJson", "options_json", defaultVal = "[]")
+                if (question.isNotBlank()) {
+                    val q = QuizQuestion(
+                        id = optLongSafe(obj, "id", defaultVal = 0L),
+                        trackId = optNullableLongSafe(obj, "trackId", "track_id"),
+                        noteId = optNullableLongSafe(obj, "noteId", "note_id"),
+                        questionType = optStringSafe(obj, "questionType", "question_type", defaultVal = "MCQ"),
+                        category = optStringSafe(obj, "category", defaultVal = "COMPREHENSION"),
+                        question = question,
+                        optionsJson = optionsJson,
+                        correctIndex = optIntSafe(obj, "correctIndex", "correct_index", defaultVal = 0),
+                        explanation = optStringSafe(obj, "explanation", defaultVal = ""),
+                        timestampMs = optNullableLongSafe(obj, "timestampMs", "timestamp_ms"),
+                        timesAnswered = optIntSafe(obj, "timesAnswered", "times_answered", defaultVal = 0),
+                        timesCorrect = optIntSafe(obj, "timesCorrect", "times_correct", defaultVal = 0),
+                        lastAnsweredAt = optNullableLongSafe(obj, "lastAnsweredAt", "last_answered_at"),
+                        createdAt = optLongSafe(obj, "createdAt", "created_at", defaultVal = System.currentTimeMillis()),
+                        targetWord = optNullableStringSafe(obj, "targetWord", "target_word"),
+                        meaning = optNullableStringSafe(obj, "meaning", "definition"),
+                        contextSentence = optNullableStringSafe(obj, "contextSentence", "context_sentence"),
+                        srRepetitions = optIntSafe(obj, "srRepetitions", "sr_repetitions", defaultVal = 0),
+                        srIntervalDays = optIntSafe(obj, "srIntervalDays", "sr_interval_days", defaultVal = 0),
+                        srEase = optDoubleSafe(obj, "srEase", "sr_ease", defaultVal = 2.5).toFloat(),
+                        srLapses = optIntSafe(obj, "srLapses", "sr_lapses", defaultVal = 0),
+                        srNextReviewAt = optNullableLongSafe(obj, "srNextReviewAt", "sr_next_review_at")
+                    )
+                    repository.dao.insertQuizQuestion(q)
+                    quizQuestionsCount++
+                }
+            }
 
             suspend fun parseHistoryItem(obj: org.json.JSONObject) {
                 val id = optLongSafe(obj, "id", defaultVal = 0L)
@@ -453,6 +487,8 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                             parseVocabItem(obj)
                         } else if (obj.has("taskId") && obj.has("date")) {
                             parseDailyProgressItem(obj)
+                        } else if (obj.has("question") && (obj.has("optionsJson") || obj.has("options_json") || obj.has("correctIndex") || obj.has("questionType"))) {
+                            parseQuizQuestionItem(obj)
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -605,6 +641,22 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                         }
                     }
                 }
+
+                // 9. Quiz Questions & Spaced Repetition Scheduling
+                val quizArr = effectiveRoot.optJSONArray("quizQuestions")
+                    ?: effectiveRoot.optJSONArray("quiz_questions")
+                    ?: effectiveRoot.optJSONArray("questions")
+                    ?: effectiveRoot.optJSONArray("quiz")
+                if (quizArr != null) {
+                    for (i in 0 until quizArr.length()) {
+                        try {
+                            val obj = quizArr.optJSONObject(i) ?: continue
+                            parseQuizQuestionItem(obj)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
             }
 
             // If tasks were restored, sync labels and reschedule active alarms
@@ -627,7 +679,7 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                 e.printStackTrace()
             }
 
-            val totalRestored = historyCount + tasksCount + progressCount + notesCount + tagsCount + labelsCount + dailyProgressCount + vocabCount
+            val totalRestored = historyCount + tasksCount + progressCount + notesCount + tagsCount + labelsCount + dailyProgressCount + vocabCount + quizQuestionsCount
             if (!isAutoRecovery) {
                 com.example.util.AutoBackupManager.saveAutoBackupFromRepository(getApplication(), repository)
                 withContext(Dispatchers.Main) {

@@ -87,6 +87,9 @@ class MainActivity : ComponentActivity() {
     if (openTaskId != -1L) {
       viewModel.setPendingOpenTaskId(openTaskId)
     }
+    if (intent?.getBooleanExtra("OPEN_VOCAB_REVIEW", false) == true) {
+      viewModel.setPendingOpenVocabReview(true)
+    }
   }
 
   override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {

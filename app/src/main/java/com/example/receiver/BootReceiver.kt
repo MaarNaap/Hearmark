@@ -21,8 +21,9 @@ class BootReceiver : BroadcastReceiver() {
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     val count = AlarmReceiver.rescheduleAllActiveTasks(appContext)
+                    AlarmReceiver.rescheduleDailyVocabReminderIfNeeded(appContext)
                     try {
-                        Log.i("BootReceiver", "Rescheduled $count active task reminders after $action")
+                        Log.i("BootReceiver", "Rescheduled $count active task reminders and checked daily vocab reminder after $action")
                     } catch (_: Throwable) {}
                 } catch (e: Exception) {
                     try {

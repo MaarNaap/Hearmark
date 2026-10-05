@@ -8,7 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -370,6 +370,85 @@ fun PracticeSettingsCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(Loc.getText("reanalyze_current_track"), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f))
+
+            // 5. Daily Vocabulary Review Reminder
+            val sharedPref = androidx.compose.runtime.remember { context.getSharedPreferences("app_settings", Context.MODE_PRIVATE) }
+            var reminderEnabled by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(sharedPref.getBoolean("vocab_reminder_enabled", false)) }
+            var reminderTime by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(sharedPref.getString("vocab_reminder_time", "09:00 AM") ?: "09:00 AM") }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = Loc.getText("vocab_daily_reminder_title"),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = Loc.getText("vocab_daily_reminder_desc"),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = reminderEnabled,
+                    onCheckedChange = { checked ->
+                        reminderEnabled = checked
+                        sharedPref.edit().putBoolean("vocab_reminder_enabled", checked).apply()
+                        if (checked) {
+                            com.example.receiver.AlarmReceiver.scheduleDailyVocabReminder(context, reminderTime)
+                        } else {
+                            com.example.receiver.AlarmReceiver.cancelDailyVocabReminder(context)
+                        }
+                    },
+                    modifier = Modifier.testTag("switch_practice_vocab_reminder")
+                )
+            }
+
+            if (reminderEnabled) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = Loc.getText("vocab_daily_reminder_time"),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    TextButton(
+                        onClick = {
+                            val cal = java.util.Calendar.getInstance()
+                            android.app.TimePickerDialog(
+                                context,
+                                { _, h, m ->
+                                    val ampm = if (h >= 12) "PM" else "AM"
+                                    val displayH = if (h % 12 == 0) 12 else h % 12
+                                    val newTime = String.format(java.util.Locale.US, "%02d:%02d %s", displayH, m, ampm)
+                                    reminderTime = newTime
+                                    sharedPref.edit().putString("vocab_reminder_time", newTime).apply()
+                                    com.example.receiver.AlarmReceiver.scheduleDailyVocabReminder(context, newTime)
+                                },
+                                cal.get(java.util.Calendar.HOUR_OF_DAY),
+                                cal.get(java.util.Calendar.MINUTE),
+                                false
+                            ).show()
+                        }
+                    ) {
+                        Text(
+                            text = reminderTime.toWesternDigits(),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
             }
         }
     }
