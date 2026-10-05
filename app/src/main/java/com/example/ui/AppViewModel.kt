@@ -67,10 +67,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun getTodayDateString(): String =
-        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
     val todayDailyProgress: StateFlow<List<TaskDailyProgress>> =
-        repository.getDailyProgressForDateFlow(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
+        repository.getDailyProgressForDateFlow(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()))
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val trackMetadataCache = MutableStateFlow<Map<Long, com.example.util.TrackMetadata>>(emptyMap())

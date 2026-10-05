@@ -323,7 +323,7 @@ fun LibraryPlaylistsPage(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = String.format(Loc.getText("files_count"), tracksInPl.size),
+                                    text = Loc.getFormattedText("files_count", tracksInPl.size),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
                                 )

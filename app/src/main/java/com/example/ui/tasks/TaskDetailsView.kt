@@ -331,7 +331,7 @@ fun TaskDetailsView(
                     fontSize = 14.sp
                 )
                 Text(
-                    text = String.format(Loc.getText("schedule_alert_desc"), currentTask.reminderTime, formatScheduledDays(currentTask.scheduledDays)),
+                    text = Loc.getFormattedText("schedule_alert_desc", currentTask.reminderTime.toWesternDigits(), formatScheduledDays(currentTask.scheduledDays)),
                     fontSize = 12.sp,
                     color = Color.Gray
                 )
@@ -511,7 +511,7 @@ fun TaskDetailsView(
             }
         }
 
-        val sdf = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
+        val sdf = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US) }
         val createdDateStr = remember(currentTask.startDate) {
             sdf.format(java.util.Date(currentTask.startDate))
         }

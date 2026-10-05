@@ -45,7 +45,7 @@ fun TrackListSortHeader(
     ) {
         if (showCount) {
             Text(
-                text = String.format(Loc.getText("files_count"), totalCount),
+                text = Loc.getFormattedText("files_count", totalCount),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

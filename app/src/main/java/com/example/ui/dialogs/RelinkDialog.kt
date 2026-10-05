@@ -94,7 +94,7 @@ fun RelinkFilesAndStatsDialog(
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = if (candidates.isNotEmpty()) {
-                                String.format(Locale.getDefault(), Loc.getText("relink_files_count"), candidates.size)
+                                Loc.getFormattedText("relink_files_count", candidates.size)
                             } else {
                                 Loc.getText("backup_restore_desc")
                             },
@@ -258,7 +258,7 @@ fun RelinkFilesAndStatsDialog(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = String.format(Locale.getDefault(), Loc.getText("relink_save_btn"), selectedCount),
+                            text = Loc.getFormattedText("relink_save_btn", selectedCount),
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -360,7 +360,7 @@ private fun RelinkCandidateCard(
                     // Play count pill
                     StatChip(
                         icon = Icons.Default.Headphones,
-                        text = String.format(Locale.getDefault(), Loc.getText("relink_plays_chip"), candidate.playCount),
+                        text = Loc.getFormattedText("relink_plays_chip", candidate.playCount),
                         containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                         contentColor = MaterialTheme.colorScheme.primary
                     )
@@ -369,7 +369,7 @@ private fun RelinkCandidateCard(
                     if (candidate.progressPercent > 0) {
                         StatChip(
                             icon = Icons.Default.CheckCircle,
-                            text = String.format(Locale.getDefault(), Loc.getText("relink_progress_chip"), candidate.progressPercent),
+                            text = Loc.getFormattedText("relink_progress_chip", candidate.progressPercent),
                             containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f),
                             contentColor = MaterialTheme.colorScheme.secondary
                         )
@@ -379,7 +379,7 @@ private fun RelinkCandidateCard(
                     if (candidate.taskProgressCount > 0) {
                         StatChip(
                             icon = Icons.Default.TrackChanges,
-                            text = String.format(Locale.getDefault(), Loc.getText("relink_tasks_chip"), candidate.taskProgressCount),
+                            text = Loc.getFormattedText("relink_tasks_chip", candidate.taskProgressCount),
                             containerColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
                             contentColor = MaterialTheme.colorScheme.tertiary
                         )
@@ -389,7 +389,7 @@ private fun RelinkCandidateCard(
                     if (candidate.notesCount > 0) {
                         StatChip(
                             icon = Icons.AutoMirrored.Filled.Notes,
-                            text = String.format(Locale.getDefault(), Loc.getText("relink_notes_chip"), candidate.notesCount),
+                            text = Loc.getFormattedText("relink_notes_chip", candidate.notesCount),
                             containerColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f),
                             contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                         )

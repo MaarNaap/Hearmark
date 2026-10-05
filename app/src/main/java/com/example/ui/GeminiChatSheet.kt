@@ -340,7 +340,7 @@ fun GeminiChatSheet(
                             if (currentContext.isFullSubtitlesContext || !currentContext.fullSubtitlesText.isNullOrBlank()) {
                                 val charCount = currentContext.fullSubtitlesText?.length ?: 0
                                 Text(
-                                    text = "📜 " + String.format(Loc.getText("ai_full_transcript_ready"), charCount),
+                                    text = "📜 " + Loc.getFormattedText("ai_full_transcript_ready", charCount),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.primary,
@@ -506,7 +506,7 @@ fun GeminiChatSheet(
                 if (!activeSubtitleLine.isNullOrBlank()) {
                     AssistChip(
                         onClick = {
-                            val promptText = String.format(Loc.getText("ai_prompt_msg_explain_sentence"), activeSubtitleLine)
+                            val promptText = Loc.getFormattedText("ai_prompt_msg_explain_sentence", activeSubtitleLine)
                             viewModel.sendChatMessage(
                                 prompt = promptText,
                                 contextSummary = activeContext
@@ -520,7 +520,7 @@ fun GeminiChatSheet(
 
                     AssistChip(
                         onClick = {
-                            val promptText = String.format(Loc.getText("ai_prompt_msg_translate_examples"), activeSubtitleLine)
+                            val promptText = Loc.getFormattedText("ai_prompt_msg_translate_examples", activeSubtitleLine)
                             viewModel.sendChatMessage(
                                 prompt = promptText,
                                 contextSummary = activeContext
@@ -537,7 +537,7 @@ fun GeminiChatSheet(
                 if (!activeTrackTitle.isNullOrBlank()) {
                     AssistChip(
                         onClick = {
-                            val promptText = String.format(Loc.getText("ai_prompt_msg_summarize_audio"), activeTrackTitle)
+                            val promptText = Loc.getFormattedText("ai_prompt_msg_summarize_audio", activeTrackTitle)
                             viewModel.sendChatMessage(
                                 prompt = promptText,
                                 contextSummary = activeContext
@@ -568,7 +568,7 @@ fun GeminiChatSheet(
                 if (!activeTaskTitle.isNullOrBlank()) {
                     AssistChip(
                         onClick = {
-                            val promptText = String.format(Loc.getText("ai_prompt_msg_goal_tips"), activeTaskTitle)
+                            val promptText = Loc.getFormattedText("ai_prompt_msg_goal_tips", activeTaskTitle)
                             viewModel.sendChatMessage(
                                 prompt = promptText,
                                 contextSummary = activeContext

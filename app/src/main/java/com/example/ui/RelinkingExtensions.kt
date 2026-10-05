@@ -393,7 +393,7 @@ fun AppViewModel.applyRelinkCandidates(
             val context = getApplication<Application>()
             Toast.makeText(
                 context,
-                String.format(Locale.getDefault(), Loc.getText("relink_success_toast"), linkedCount),
+                Loc.getFormattedText("relink_success_toast", linkedCount),
                 Toast.LENGTH_LONG
             ).show()
             onComplete?.invoke(linkedCount)

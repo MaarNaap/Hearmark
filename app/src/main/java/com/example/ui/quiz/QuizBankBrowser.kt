@@ -82,13 +82,13 @@ internal fun QuizBankBrowserView(
                     FilterChip(
                         selected = !viewAllVocab,
                         onClick = { viewAllVocab = false },
-                        label = { Text(String.format(Loc.getText("unified_quiz_current_track_bank"), trackQuestions.size), fontSize = 11.5.sp) },
+                        label = { Text(Loc.getFormattedText("unified_quiz_current_track_bank", trackQuestions.size), fontSize = 11.5.sp) },
                         modifier = Modifier.weight(1f)
                     )
                     FilterChip(
                         selected = viewAllVocab,
                         onClick = { viewAllVocab = true },
-                        label = { Text(String.format(Loc.getText("unified_quiz_all_vocab_bank"), allVocabQuestions.size), fontSize = 11.5.sp) },
+                        label = { Text(Loc.getFormattedText("unified_quiz_all_vocab_bank", allVocabQuestions.size), fontSize = 11.5.sp) },
                         modifier = Modifier.weight(1f)
                     )
                 }

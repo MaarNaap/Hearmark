@@ -152,7 +152,7 @@ fun PracticeModeSetupSheet(
                     icon = Icons.Filled.GraphicEq,
                     isSelected = selectedSource == "MANUAL",
                     badgeText = if (manualCuts.isNotEmpty()) {
-                        String.format(Locale.US, Loc.getText("badge_saved_cuts"), manualCuts.size)
+                        Loc.getFormattedText("badge_saved_cuts", manualCuts.size)
                     } else {
                         Loc.getText("badge_no_cuts")
                     },
@@ -173,7 +173,7 @@ fun PracticeModeSetupSheet(
                     icon = Icons.Filled.Subtitles,
                     isSelected = selectedSource == "SUBTITLES",
                     badgeText = if (hasSubtitles) {
-                        String.format(Locale.US, Loc.getText("badge_available_lines"), subtitleCues.size)
+                        Loc.getFormattedText("badge_available_lines", subtitleCues.size)
                     } else {
                         Loc.getText("badge_no_subtitles")
                     },

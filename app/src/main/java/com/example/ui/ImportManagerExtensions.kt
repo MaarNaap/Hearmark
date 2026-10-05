@@ -143,7 +143,7 @@ fun AppViewModel.importFolder(folderName: String, uris: List<Uri>) {
                 existingCount = existingCount,
                 newlyIndexedFiles = newlyIndexedFiles
             )
-            Toast.makeText(context, String.format(Loc.getText("imported_files_success"), newlyIndexedCount), Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, Loc.getFormattedText("imported_files_success", newlyIndexedCount), Toast.LENGTH_SHORT).show()
             checkFilesSanity()
         }
     }
@@ -362,7 +362,7 @@ fun AppViewModel.importFolderFromTreeUri(folderName: String, treeUri: Uri) {
                 existingCount = existingCount,
                 newlyIndexedFiles = newlyIndexedFiles
             )
-            Toast.makeText(context, String.format(Loc.getText("imported_files_success"), newlyIndexedCount), Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, Loc.getFormattedText("imported_files_success", newlyIndexedCount), Toast.LENGTH_SHORT).show()
             checkFilesSanity()
         }
     }
@@ -440,7 +440,7 @@ fun AppViewModel.importIndependentTracks(uris: List<Uri>) {
         }
         
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, String.format(Loc.getText("imported_files_success"), successCount), Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, Loc.getFormattedText("imported_files_success", successCount), Toast.LENGTH_SHORT).show()
             checkFilesSanity()
         }
     }

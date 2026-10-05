@@ -272,7 +272,7 @@ fun FolderDetailsView(
                                             viewModel.addTracksToPlaylist(playlist.id, selectedDetailTrackIds.toList())
                                             Toast.makeText(
                                                 context,
-                                                String.format(Loc.getText("tracks_added_to_playlist_success"), playlist.name),
+                                                Loc.getFormattedText("tracks_added_to_playlist_success", playlist.name),
                                                 Toast.LENGTH_SHORT
                                             ).show()
                                             selectedDetailTrackIds = emptySet()
@@ -709,7 +709,7 @@ fun FolderDetailsView(
                 onDismiss = { showAddToPlaylistDialogForTrack = null },
                 onPlaylistSelected = { playlist ->
                     viewModel.addTrackToPlaylist(playlist.id, showAddToPlaylistDialogForTrack!!.id)
-                    Toast.makeText(context, String.format(Loc.getText("added_to_playlist_success"), playlist.name), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, Loc.getFormattedText("added_to_playlist_success", playlist.name), Toast.LENGTH_SHORT).show()
                 },
                 onCreatePlaylistClicked = {
                     // Done on main screen or prompt Toast

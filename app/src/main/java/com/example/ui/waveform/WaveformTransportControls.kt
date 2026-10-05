@@ -120,7 +120,7 @@ internal fun WaveformTransportAndCutCard(
                 ) {
                     Column {
                         Text(
-                            text = String.format(Locale.US, Loc.getText("segment_num"), selIdx + 1) +
+                            text = Loc.getFormattedText("segment_num", selIdx + 1) +
                                     " (${formatWaveformTimestamp(cuts[selIdx])})",
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,

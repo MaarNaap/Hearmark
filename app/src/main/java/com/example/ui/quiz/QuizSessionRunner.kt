@@ -70,7 +70,7 @@ internal fun QuizSessionActiveRunner(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = String.format(Loc.getText("unified_quiz_question_counter"), currentIndex + 1, questions.size),
+                        text = Loc.getFormattedText("unified_quiz_question_counter", currentIndex + 1, questions.size),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary

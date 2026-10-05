@@ -69,7 +69,7 @@ internal fun NotebookQuizTabContent(
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Text(
-                                text = String.format(Loc.getText("notebook_quiz_saved_success"), generatedQuestions.size),
+                                text = Loc.getFormattedText("notebook_quiz_saved_success", generatedQuestions.size),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold
                             )

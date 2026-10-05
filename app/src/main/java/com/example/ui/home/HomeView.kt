@@ -240,7 +240,7 @@ fun HomeView(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "🗓️ " + SimpleDateFormat("EEEE, dd MMM", Locale(Loc.currentLanguage)).format(Date()),
+                            text = "🗓️ " + SimpleDateFormat("EEEE, dd MMM", Locale(Loc.currentLanguage)).format(Date()).toWesternDigits(),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
@@ -610,7 +610,7 @@ fun HomeView(
                                 )
                                 Spacer(modifier = Modifier.height(1.dp))
                                 Text(
-                                    text = task.reminderTime,
+                                    text = task.reminderTime.toWesternDigits(),
                                     fontSize = 10.5.sp,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
                                 )

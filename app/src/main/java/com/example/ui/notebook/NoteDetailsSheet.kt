@@ -659,7 +659,7 @@ fun ViewNoteDetailsModal(
             // Date / Timestamp
             if (note.createdAt > 0) {
                 Spacer(modifier = Modifier.height(10.dp))
-                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
                 Text(
                     text = "${Loc.getText("created_at")}: ${sdf.format(Date(note.createdAt))}",
                     fontSize = 11.5.sp,

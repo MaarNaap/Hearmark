@@ -216,7 +216,7 @@ fun EditVirtualSceneDialog(
                         Column {
                             val durationCalc = maxOf(0L, endMs - startMs)
                             Text(
-                                text = String.format(Loc.getText("scene_duration_label"), formatDuration(durationCalc)),
+                                text = Loc.getFormattedText("scene_duration_label", formatDuration(durationCalc)),
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
@@ -496,7 +496,7 @@ fun AddNewVirtualSceneDialog(
                         Column {
                             val durationCalc = maxOf(0L, endMs - startMs)
                             Text(
-                                text = String.format(Loc.getText("scene_duration_label"), formatDuration(durationCalc)),
+                                text = Loc.getFormattedText("scene_duration_label", formatDuration(durationCalc)),
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )

@@ -363,7 +363,7 @@ fun AppViewModel.importScenesFromJson(
             }
 
             withContext(Dispatchers.Main) {
-                val successMsg = String.format(Locale.getDefault(), Loc.getText("scenes_imported_success"), scenes.size, folderName)
+                val successMsg = Loc.getFormattedText("scenes_imported_success", scenes.size, folderName)
                 Toast.makeText(context, successMsg, Toast.LENGTH_LONG).show()
                 onSuccess(folderId, scenes.size)
             }
@@ -372,7 +372,7 @@ fun AppViewModel.importScenesFromJson(
             withContext(Dispatchers.Main) {
                 val rawErr = e.message ?: "Unknown error"
                 val errMsg = try {
-                    String.format(Locale.getDefault(), Loc.getText("invalid_json_scenes_file"), rawErr)
+                    Loc.getFormattedText("invalid_json_scenes_file", rawErr)
                 } catch (_: Exception) {
                     "Error importing scenes: $rawErr"
                 }
@@ -574,7 +574,7 @@ fun ImportScenesJsonDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = String.format(Locale.getDefault(), Loc.getText("scenes_parsed_count"), scenesList.size),
+                                text = Loc.getFormattedText("scenes_parsed_count", scenesList.size),
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.primary
                             )

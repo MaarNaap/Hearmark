@@ -298,7 +298,7 @@ class QuizViewModel(
                     repository.insertQuizQuestions(entities)
                     loadQuizQuestionsForTrack(track.id)
                     isGeneratingQuiz.value = false
-                    quizGenerationSuccessMessage.value = String.format(Loc.getText("quiz_generated_success"), entities.size)
+                    quizGenerationSuccessMessage.value = Loc.getFormattedText("quiz_generated_success", entities.size)
                     // Automatically launch into practice with the newly generated questions
                     startQuizSession(entities)
                 }.onFailure { err ->
@@ -458,8 +458,8 @@ class QuizViewModel(
 
                             withContext(Dispatchers.Main) {
                                 notebookQuizGeneratedQuestions.value = itemsWithIds
-                                notebookQuizSuccessMessage.value = String.format(
-                                    Loc.getText("notebook_quiz_saved_success"),
+                                notebookQuizSuccessMessage.value = Loc.getFormattedText(
+                                    "notebook_quiz_saved_success",
                                     entities.size
                                 )
                                 onSuccess?.invoke()
@@ -517,7 +517,7 @@ class QuizViewModel(
                 loadQuizQuestionsForTrack(tId)
             }
             activeQuizTargetTrack.value?.let { loadQuizQuestionsForTrack(it.id) }
-            notebookQuizSuccessMessage.value = String.format(Loc.getText("notebook_quiz_saved_success"), entities.size)
+            notebookQuizSuccessMessage.value = Loc.getFormattedText("notebook_quiz_saved_success", entities.size)
             onSuccess(entities.size)
         }
     }

@@ -196,7 +196,7 @@ fun WaveformSegmentEditorDialog(
             cuts.clear()
             cuts.addAll(silenceCuts)
             selectedCutIndex = if (cuts.isNotEmpty()) 0 else null
-            Toast.makeText(context, String.format(Loc.getText(locKey), silenceCuts.size), Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, Loc.getFormattedText(locKey, silenceCuts.size), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -205,7 +205,7 @@ fun WaveformSegmentEditorDialog(
         cuts.clear()
         cuts.addAll(subCuts)
         selectedCutIndex = if (cuts.isNotEmpty()) 0 else null
-        Toast.makeText(context, String.format(Loc.getText("cuts_imported_from_subtitles"), subCuts.size), Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, Loc.getFormattedText("cuts_imported_from_subtitles", subCuts.size), Toast.LENGTH_SHORT).show()
     }
 
     Dialog(

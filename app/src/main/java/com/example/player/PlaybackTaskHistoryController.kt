@@ -87,7 +87,7 @@ internal object PlaybackTaskHistoryController {
             val repo = repository ?: return
             coroutineScope.launch(Dispatchers.IO) {
                 val activeTasksList = repo.getAllTasksDirect()
-                val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
                 for (task in activeTasksList) {
                     if (task.isCompleted) continue
@@ -144,7 +144,7 @@ internal object PlaybackTaskHistoryController {
         with(AudioPlayerManager) {
             val repo = repository ?: return
             val track = currentTrackValue
-            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
             val activeTasksList = repo.getAllTasksDirect()
             var anyTaskUpdated = false

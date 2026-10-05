@@ -416,9 +416,9 @@ fun NotebookNotesPicker(
                     } else {
                         Text(
                             text = if (selectedNotes.isEmpty()) {
-                                String.format(Loc.getText("ai_hub_all_notes_badge"), allNotes.size)
+                                Loc.getFormattedText("ai_hub_all_notes_badge", allNotes.size)
                             } else {
-                                String.format(Loc.getText("ai_hub_notes_count_badge"), selectedNotes.size)
+                                Loc.getFormattedText("ai_hub_notes_count_badge", selectedNotes.size)
                             },
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,

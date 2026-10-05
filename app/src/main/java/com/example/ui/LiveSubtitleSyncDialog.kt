@@ -132,7 +132,7 @@ fun LiveSubtitleSyncDialog(
                                 )
                                 if (syncLines.isNotEmpty()) {
                                     Text(
-                                        text = String.format(Locale.getDefault(), Loc.getText("sync_progress"), timedCount, totalCount, progressPercent),
+                                        text = Loc.getFormattedText("sync_progress", timedCount, totalCount, progressPercent),
                                         fontSize = 11.sp,
                                         color = if (timedCount == totalCount) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )

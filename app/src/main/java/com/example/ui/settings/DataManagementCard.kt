@@ -85,7 +85,7 @@ fun DataManagementCard(
             ) {
                 Button(
                     onClick = {
-                        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
                         createDocumentLauncher.launch("hearmark_backup_$timeStamp.json")
                     },
                     modifier = Modifier.weight(1f).height(38.dp),
@@ -139,7 +139,7 @@ fun DataManagementCard(
 
             val lastAutoBackupTime = remember { viewModel.getAutoBackupLastModified() }
             if (lastAutoBackupTime != null) {
-                val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(lastAutoBackupTime))
+                val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(lastAutoBackupTime))
                 Spacer(modifier = Modifier.height(6.dp))
                 Text("ℹ️ " + Loc.getText("latest_auto_snapshot_label") + " $dateFormatted", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
             }

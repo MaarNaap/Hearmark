@@ -198,7 +198,7 @@ class AlarmReceiver : BroadcastReceiver() {
                     
                     // Notification title and description
                     val title = Loc.getText("reminder_desc")
-                    val progressText = String.format(Locale.getDefault(), Loc.getText("task_progress_format"), progressPercent)
+                    val progressText = Loc.getFormattedText("task_progress_format", progressPercent)
                     val bigTextContent = "$displayTaskTitle\n$progressText"
 
                     val isDark = try {

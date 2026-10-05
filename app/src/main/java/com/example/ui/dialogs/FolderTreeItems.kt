@@ -112,10 +112,10 @@ fun SubfolderDetailsItem(
                     )
                     val summaryParts = mutableListOf<String>()
                     if (subTracks.isNotEmpty()) {
-                        summaryParts.add(String.format(Loc.getText("files_count"), subTracks.size))
+                        summaryParts.add(Loc.getFormattedText("files_count", subTracks.size))
                     }
                     if (childSubfolders.isNotEmpty()) {
-                        summaryParts.add(String.format(Loc.getText("folders_count"), childSubfolders.size))
+                        summaryParts.add(Loc.getFormattedText("folders_count", childSubfolders.size))
                     }
                     val folderSummaryText = summaryParts.joinToString(" • ")
                     if (folderSummaryText.isNotEmpty()) {
@@ -314,10 +314,10 @@ fun FolderTreeNodeItem(
                     )
                     val summaryParts = mutableListOf<String>()
                     if (folderTracks.isNotEmpty()) {
-                        summaryParts.add(String.format(Loc.getText("files_count"), folderTracks.size))
+                        summaryParts.add(Loc.getFormattedText("files_count", folderTracks.size))
                     }
                     if (childSubfolders.isNotEmpty()) {
-                        summaryParts.add(String.format(Loc.getText("folders_count"), childSubfolders.size))
+                        summaryParts.add(Loc.getFormattedText("folders_count", childSubfolders.size))
                     }
                     val folderSummaryText = summaryParts.joinToString(" • ")
                     if (folderSummaryText.isNotEmpty()) {

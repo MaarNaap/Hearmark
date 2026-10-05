@@ -107,7 +107,7 @@ fun FolderFileTreeFilterDialog(
                             )
                             if (totalSelectedCount > 0) {
                                 Text(
-                                    text = String.format(Locale.US, Loc.getText("selected_folders_files_count"), totalSelectedCount),
+                                    text = Loc.getFormattedText("selected_folders_files_count", totalSelectedCount),
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Medium

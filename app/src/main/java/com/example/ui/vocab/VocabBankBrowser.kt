@@ -91,7 +91,7 @@ fun VocabBankBrowserView(
         // Filter chips row
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val filters = listOf(
-                "ALL" to String.format(Loc.getText("vocab_filter_all_count"), allQuestions.size),
+                "ALL" to Loc.getFormattedText("vocab_filter_all_count", allQuestions.size),
                 "MASTERED" to Loc.getText("vocab_review_mastered"),
                 "NEEDS_PRACTICE" to Loc.getText("vocab_review_needs_practice"),
                 "UNTESTED" to Loc.getText("vocab_review_untested")
@@ -151,7 +151,7 @@ fun VocabBankBrowserView(
                                     shape = RoundedCornerShape(6.dp)
                                 ) {
                                     Text(
-                                        text = if (accuracy != null) String.format(Loc.getText("vocab_accuracy_format"), accuracy, q.timesCorrect, q.timesAnswered) else Loc.getText("quiz_never_answered"),
+                                        text = if (accuracy != null) Loc.getFormattedText("vocab_accuracy_format", accuracy, q.timesCorrect, q.timesAnswered) else Loc.getText("quiz_never_answered"),
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = when {

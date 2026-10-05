@@ -107,7 +107,7 @@ fun TaskSummaryStep(
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = String.format(Loc.getText("wizard_alert_schedule_format"), mappedDays, formState.reminderTime),
+                    text = Loc.getFormattedText("wizard_alert_schedule_format", mappedDays, formState.reminderTime.toWesternDigits()),
                     fontWeight = FontWeight.Normal
                 )
             }

@@ -268,7 +268,7 @@ internal fun TrackQuizTabContent(
                     ) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(String.format(Loc.getText("unified_quiz_practice_track_badge"), trackBankCount), fontWeight = FontWeight.SemiBold)
+                        Text(Loc.getFormattedText("unified_quiz_practice_track_badge", trackBankCount), fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

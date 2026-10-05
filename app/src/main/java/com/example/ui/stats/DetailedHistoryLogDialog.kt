@@ -214,7 +214,7 @@ fun DetailedHistoryLogDialog(
                     }
                 } else {
                     val trackMap = remember(allTracks) { allTracks.associateBy { it.id } }
-                    val sdf = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
+                    val sdf = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US) }
 
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),

@@ -88,7 +88,7 @@ object AutoBackupManager {
             latestFile.writeText(jsonString, Charsets.UTF_8)
 
             // Rolling daily snapshot (always refresh today's file so it reflects latest completed tasks/progress)
-            val dateTag = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+            val dateTag = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
             val dailyFile = File(internalDir, "hearmark_autosnapshot_$dateTag.json")
             dailyFile.writeText(jsonString, Charsets.UTF_8)
 

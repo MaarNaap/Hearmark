@@ -102,7 +102,7 @@ fun StatsTaskFilterDialog(
                             )
                             if (tempSelectedTaskIds.isNotEmpty()) {
                                 Text(
-                                    text = String.format(Locale.US, Loc.getText("selected_tasks_count"), tempSelectedTaskIds.size),
+                                    text = Loc.getFormattedText("selected_tasks_count", tempSelectedTaskIds.size),
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Medium

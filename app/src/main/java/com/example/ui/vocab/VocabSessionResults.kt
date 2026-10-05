@@ -73,7 +73,7 @@ fun VocabReviewSessionResults(
                         textAlign = TextAlign.Center
                     )
                     Text(
-                        text = String.format(Loc.getText("quiz_score_summary"), correctCount, total, percent),
+                        text = Loc.getFormattedText("quiz_score_summary", correctCount, total, percent),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary
@@ -97,7 +97,7 @@ fun VocabReviewSessionResults(
                                 onClick = onPracticeMistakes,
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text(String.format(Loc.getText("vocab_review_mistakes_btn"), mistakeCount))
+                                Text(Loc.getFormattedText("vocab_review_mistakes_btn", mistakeCount))
                             }
                         }
                     }

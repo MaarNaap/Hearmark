@@ -36,7 +36,7 @@ internal fun ColumnScope.WaveformSegmentsSection(
     onRemoveCut: (Int) -> Unit
 ) {
     Text(
-        text = String.format(Loc.getText("manual_segments_count"), cuts.size),
+        text = Loc.getFormattedText("manual_segments_count", cuts.size),
         fontSize = 12.sp,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurface

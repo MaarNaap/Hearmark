@@ -36,12 +36,13 @@ fun formatStatsDuration(ms: Long): String {
     val hours = totalSeconds / 3600
     val minutes = (totalSeconds % 3600) / 60
     val seconds = totalSeconds % 60
-    return when {
-        hours > 0 && minutes > 0 -> String.format(Locale.US, Loc.getText("stats_duration_hm"), hours, minutes)
-        hours > 0 -> String.format(Locale.US, Loc.getText("stats_duration_h"), hours)
-        minutes > 0 -> String.format(Locale.US, Loc.getText("stats_duration_m"), minutes)
-        else -> String.format(Locale.US, Loc.getText("stats_duration_s"), seconds)
+    val formatted = when {
+        hours > 0 && minutes > 0 -> Loc.getFormattedText("stats_duration_hm", hours, minutes)
+        hours > 0 -> Loc.getFormattedText("stats_duration_h", hours)
+        minutes > 0 -> Loc.getFormattedText("stats_duration_m", minutes)
+        else -> Loc.getFormattedText("stats_duration_s", seconds)
     }
+    return formatted.toWesternDigits()
 }
 
 data class ActivityChartDataPoint(
@@ -332,7 +333,7 @@ fun computeDayGroups(
     return rangeFiltered.groupBy { sdfKey.format(Date(it.completedAt)) }
         .map { (dayKey, records) ->
             val dayTimestamp = records.first().completedAt
-            val dayDisplay = sdfDisplay.format(Date(dayTimestamp))
+            val dayDisplay = sdfDisplay.format(Date(dayTimestamp)).toWesternDigits()
             var dayContent = 0L
             var dayActual = 0L
 
@@ -474,9 +475,9 @@ fun computeChartDataPoints(
                 }
                 ActivityChartDataPoint(
                     timestamp = startMs,
-                    axisLabel = sdfAxis.format(Date(startMs)),
+                    axisLabel = sdfAxis.format(Date(startMs)).toWesternDigits(),
                     showAxisLabel = true,
-                    fullTitle = sdfFull.format(Date(startMs)),
+                    fullTitle = sdfFull.format(Date(startMs)).toWesternDigits(),
                     actualDurationMs = actualMs,
                     contentDurationMs = contentMs,
                     playCount = dayRecords.size
@@ -511,9 +512,9 @@ fun computeChartDataPoints(
                 val showLabel = dayIdx == 0 || dayIdx == 7 || dayIdx == 14 || dayIdx == 21 || dayIdx == 29
                 ActivityChartDataPoint(
                     timestamp = startMs,
-                    axisLabel = sdfAxis.format(Date(startMs)),
+                    axisLabel = sdfAxis.format(Date(startMs)).toWesternDigits(),
                     showAxisLabel = showLabel,
-                    fullTitle = sdfFull.format(Date(startMs)),
+                    fullTitle = sdfFull.format(Date(startMs)).toWesternDigits(),
                     actualDurationMs = actualMs,
                     contentDurationMs = contentMs,
                     playCount = dayRecords.size
@@ -548,9 +549,9 @@ fun computeChartDataPoints(
                 val showLabel = dayIdx == 0 || dayIdx % 18 == 0 || dayIdx == 89
                 ActivityChartDataPoint(
                     timestamp = startMs,
-                    axisLabel = sdfAxis.format(Date(startMs)),
+                    axisLabel = sdfAxis.format(Date(startMs)).toWesternDigits(),
                     showAxisLabel = showLabel,
-                    fullTitle = sdfFull.format(Date(startMs)),
+                    fullTitle = sdfFull.format(Date(startMs)).toWesternDigits(),
                     actualDurationMs = actualMs,
                     contentDurationMs = contentMs,
                     playCount = dayRecords.size
@@ -572,9 +573,9 @@ fun computeChartDataPoints(
                     val startMs = todayMs - (6 - dayIdx) * 86400_000L
                     ActivityChartDataPoint(
                         timestamp = startMs,
-                        axisLabel = sdfAxis.format(Date(startMs)),
+                        axisLabel = sdfAxis.format(Date(startMs)).toWesternDigits(),
                         showAxisLabel = true,
-                        fullTitle = sdfFull.format(Date(startMs)),
+                        fullTitle = sdfFull.format(Date(startMs)).toWesternDigits(),
                         actualDurationMs = 0L,
                         contentDurationMs = 0L,
                         playCount = 0
@@ -611,9 +612,9 @@ fun computeChartDataPoints(
                     val showLabel = dayIdx == 0 || dayIdx % stepInterval == 0 || dayIdx == totalDays - 1
                     ActivityChartDataPoint(
                         timestamp = startMs,
-                        axisLabel = sdfAxis.format(Date(startMs)),
+                        axisLabel = sdfAxis.format(Date(startMs)).toWesternDigits(),
                         showAxisLabel = showLabel,
-                        fullTitle = sdfFull.format(Date(startMs)),
+                        fullTitle = sdfFull.format(Date(startMs)).toWesternDigits(),
                         actualDurationMs = actualMs,
                         contentDurationMs = contentMs,
                         playCount = dayRecords.size

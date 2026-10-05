@@ -197,7 +197,7 @@ class MediaAiViewModel(
                     onFailure = { error ->
                         val errorMsg = when {
                             error.message == "MISSING_API_KEY" -> Loc.getText("missing_api_key_prompt")
-                            else -> String.format(Loc.getText("ai_subtitles_failed"), error.localizedMessage ?: "Unknown error")
+                            else -> Loc.getFormattedText("ai_subtitles_failed", error.localizedMessage ?: "Unknown error")
                         }
                         _chatMessages.value = _chatMessages.value + ChatMessage(
                             role = "model",

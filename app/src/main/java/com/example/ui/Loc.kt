@@ -5,6 +5,39 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.LayoutDirection
+import java.util.Locale
+
+/**
+ * Replaces any Eastern Arabic-Indic digits (٠-٩) and Persian digits (۰-۹) with Western digits (0-9).
+ * Ensures that user-facing text and numbers in the interface always display with standard Western numbers (0-9).
+ */
+fun String.toWesternDigits(): String {
+    if (isEmpty()) return this
+    var hasIndic = false
+    for (i in 0 until length) {
+        val c = this[i]
+        if (c in '\u0660'..'\u0669' || c in '\u06F0'..'\u06F9') {
+            hasIndic = true
+            break
+        }
+    }
+    if (!hasIndic) return this
+
+    val sb = java.lang.StringBuilder(length)
+    for (i in 0 until length) {
+        val c = this[i]
+        when (c) {
+            in '\u0660'..'\u0669' -> sb.append((c - '\u0660' + '0'.code).toChar())
+            in '\u06F0'..'\u06F9' -> sb.append((c - '\u06F0' + '0'.code).toChar())
+            else -> sb.append(c)
+        }
+    }
+    return sb.toString()
+}
+
+fun CharSequence.toWesternDigits(): CharSequence {
+    return if (this is String) (this as String).toWesternDigits() else this.toString().toWesternDigits()
+}
 
 object Loc {
     var currentLanguage by mutableStateOf("en") // Default "en" as requested, supports english toggle
@@ -13,16 +46,31 @@ object Loc {
         get() = if (currentLanguage == "ar") LayoutDirection.Rtl else LayoutDirection.Ltr
 
     fun getText(key: String): String {
-        val strings = translations[key] ?: return key
-        return strings[currentLanguage] ?: strings["en"] ?: key
+        val strings = translations[key] ?: return key.toWesternDigits()
+        val text = strings[currentLanguage] ?: strings["en"] ?: key
+        return text.toWesternDigits()
     }
 
     fun getFormattedText(key: String, vararg args: Any): String {
         val raw = getText(key)
         return try {
-            String.format(raw, *args)
+            val convertedArgs = args.map { arg ->
+                if (arg is String) arg.toWesternDigits() else arg
+            }.toTypedArray()
+            String.format(Locale.US, raw, *convertedArgs).toWesternDigits()
         } catch (e: Exception) {
-            raw
+            raw.toWesternDigits()
+        }
+    }
+
+    fun format(pattern: String, vararg args: Any): String {
+        return try {
+            val convertedArgs = args.map { arg ->
+                if (arg is String) arg.toWesternDigits() else arg
+            }.toTypedArray()
+            String.format(Locale.US, pattern, *convertedArgs).toWesternDigits()
+        } catch (e: Exception) {
+            pattern.toWesternDigits()
         }
     }
 

@@ -166,7 +166,7 @@ fun AppViewModel.startAiSceneDetection(track: AudioTrack, onSuccess: ((folderId:
                 isDetectingScenes.value = false
                 detectingTrackName.value = null
                 sceneDetectionStatus.value = null
-                val successMsg = String.format(Locale.getDefault(), Loc.getText("ai_scenes_created_success"), detectedScenes.size, folderName)
+                val successMsg = Loc.getFormattedText("ai_scenes_created_success", detectedScenes.size, folderName)
                 Toast.makeText(context, successMsg, Toast.LENGTH_LONG).show()
                 onSuccess?.invoke(folderId, detectedScenes.size)
             }
