@@ -22,6 +22,10 @@ object AudioPlayerManager {
     internal const val TAG = "AudioPlayerManager"
 
     internal var mediaPlayer: MediaPlayer? = null
+        set(value) {
+            field = value
+            VoiceBoostController.attach(value)
+        }
     internal var currentTrackValue: AudioTrack? = null
     private val _currentQueueFlow = MutableStateFlow<List<AudioTrack>>(emptyList())
     val currentQueueFlow: StateFlow<List<AudioTrack>> = _currentQueueFlow.asStateFlow()

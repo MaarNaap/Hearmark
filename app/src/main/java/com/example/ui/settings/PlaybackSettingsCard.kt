@@ -12,13 +12,17 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.player.VoiceBoostController
+import kotlin.math.roundToInt
 
 @Composable
 fun PlaybackSettingsCard(
     sliderValue: Float,
     onSliderValueChange: (Float) -> Unit,
     skipVal: Int,
-    onSkipValChange: (Int) -> Unit
+    onSkipValChange: (Int) -> Unit,
+    voiceBoostLevel: Int,
+    onVoiceBoostChange: (Int) -> Unit
 ) {
     // Threshold slider
     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -57,6 +61,26 @@ fun PlaybackSettingsCard(
                     }
                 }
             }
+        }
+    }
+    // voice boost
+    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            val boostText = if (voiceBoostLevel <= 0) {
+                Loc.getText("voice_boost_off")
+            } else {
+                "+${VoiceBoostController.levelToDb(voiceBoostLevel)} dB"
+            }
+            Text(Loc.getText("voice_boost_label") + ": " + boostText, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Spacer(modifier = Modifier.height(2.dp))
+            Slider(
+                value = voiceBoostLevel.toFloat(),
+                onValueChange = { onVoiceBoostChange(it.roundToInt()) },
+                valueRange = 0f..VoiceBoostController.MAX_LEVEL.toFloat(),
+                steps = VoiceBoostController.MAX_LEVEL - 1,
+                modifier = Modifier.testTag("voice_boost_slider")
+            )
+            Text(Loc.getText("voice_boost_note"), fontSize = 10.sp, color = Color.Gray)
         }
     }
 }

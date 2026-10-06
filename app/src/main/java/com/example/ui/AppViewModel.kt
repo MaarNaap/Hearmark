@@ -116,6 +116,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var selectedTheme by mutableStateOf("dark") // system, light, dark
     var thresholdSetting by mutableStateOf(90) // 80 - 100
     var skipSecondsSetting by mutableStateOf(10) // 5, 10, 15, 30
+    var voiceBoostLevel by mutableStateOf(0) // 0 = off, 1..5 = +3 dB per step
     var headsetControlsEnabled by mutableStateOf(true)
     var headsetMultiClickAction by mutableStateOf("NEXT_PREV") // "NEXT_PREV" or "SKIP_SECONDS"
     var segmentSourceSetting by mutableStateOf("SILENCE") // "SILENCE" or "SUBTITLES"
@@ -322,6 +323,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         selectedTheme = sharedPref.getString("theme", "dark") ?: "dark"
         thresholdSetting = sharedPref.getInt("threshold", 90)
         skipSecondsSetting = sharedPref.getInt("skip_seconds", 10)
+        voiceBoostLevel = sharedPref.getInt("voice_boost_level", 0).coerceIn(0, VoiceBoostController.MAX_LEVEL)
         headsetControlsEnabled = sharedPref.getBoolean("headset_controls_enabled", true)
         headsetMultiClickAction = sharedPref.getString("headset_multiclick_action", "NEXT_PREV") ?: "NEXT_PREV"
         
@@ -378,6 +380,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
         AudioPlayerManager.init(application, repository)
         AudioPlayerManager.setSettings(thresholdSetting, skipSecondsSetting)
+        VoiceBoostController.setLevel(voiceBoostLevel)
         AudioPlayerManager.setHeadsetSettings(headsetControlsEnabled, headsetMultiClickAction)
         AudioPlayerManager.setPracticeSettings(segmentSourceSetting, practicePauseMultiplierSetting)
         AudioPlayerManager.setSilenceSettings(silenceSensitivitySetting, silenceMinDurationSetting, silencePaddingSetting)
@@ -640,4 +643,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val detectingTrackName = MutableStateFlow<String?>(null)
     val sceneDetectionStatus = MutableStateFlow<String?>(null)
     internal var sceneDetectionJob: kotlinx.coroutines.Job? = null
+
+    fun updateVoiceBoost(level: Int) {
+        val clamped = level.coerceIn(0, VoiceBoostController.MAX_LEVEL)
+        voiceBoostLevel = clamped
+        getApplication<Application>()
+            .getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            .edit()
+            .putInt("voice_boost_level", clamped)
+            .apply()
+        VoiceBoostController.setLevel(clamped)
+    }
 }

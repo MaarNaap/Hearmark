@@ -84,7 +84,9 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
             sliderValue = sliderValue,
             onSliderValueChange = { sliderValue = it },
             skipVal = skipVal,
-            onSkipValChange = { skipVal = it }
+            onSkipValChange = { skipVal = it },
+            voiceBoostLevel = viewModel.voiceBoostLevel,
+            onVoiceBoostChange = { viewModel.updateVoiceBoost(it) }
         )
 
         // 2. Headset & Media Controls Card

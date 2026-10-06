@@ -477,6 +477,9 @@ object Loc {
         // Settings
         "completion_slider" to mapOf("en" to "Completion Threshold", "ar" to "عتبة اكتمال الملف الصوتي"),
         "skip_duration_label" to mapOf("en" to "Navigation skip duration", "ar" to "مدة أزرار التنقل السريع"),
+        "voice_boost_label" to mapOf("en" to "Voice boost", "ar" to "تعزيز الصوت"),
+        "voice_boost_off" to mapOf("en" to "Off", "ar" to "إيقاف"),
+        "voice_boost_note" to mapOf("en" to "Makes quiet recordings louder. High levels may distort loud parts, so lower the level if the sound crackles.", "ar" to "يرفع مستوى الأصوات الهادئة. المستويات العالية قد تُشوّه الأصوات المرتفعة، فخفّض المستوى إذا ظهر تقطّع في الصوت."),
         "theme" to mapOf("en" to "App Theme visual style", "ar" to "ثيم التطبيق المعتمد"),
         "light" to mapOf("en" to "Light theme", "ar" to "فاتح مريح للعين"),
         "dark" to mapOf("en" to "Dark elegant slate", "ar" to "داكن كحلي فخم"),
