@@ -469,45 +469,27 @@ fun TaskDetailsView(
             }
         }
 
-        val isAr = remember { Loc.currentLanguage == "ar" }
-
-        val totalTaskDurationStr = remember(totalTaskDurationMs, isAr) {
+        val totalTaskDurationStr = remember(totalTaskDurationMs, Loc.currentLanguage) {
             val totalSeconds = totalTaskDurationMs / 1000
             val hours = totalSeconds / 3600
             val minutes = (totalSeconds % 3600) / 60
             val seconds = totalSeconds % 60
-            if (isAr) {
-                when {
-                    hours > 0 -> "$hours ساعة و $minutes دقيقة و $seconds ثانية"
-                    minutes > 0 -> "$minutes دقيقة و $seconds ثانية"
-                    else -> "$seconds ثانية"
-                }
-            } else {
-                when {
-                    hours > 0 -> "${hours}h ${minutes}m ${seconds}s"
-                    minutes > 0 -> "${minutes}m ${seconds}s"
-                    else -> "${seconds}s"
-                }
+            when {
+                hours > 0 -> Loc.getFormattedText("task_dur_hms", hours, minutes, seconds)
+                minutes > 0 -> Loc.getFormattedText("task_dur_ms", minutes, seconds)
+                else -> Loc.getFormattedText("task_dur_s", seconds)
             }
         }
 
-        val totalTimeListenedStr = remember(totalTimeListenedMs, isAr) {
+        val totalTimeListenedStr = remember(totalTimeListenedMs, Loc.currentLanguage) {
             val totalSeconds = totalTimeListenedMs / 1000
             val hours = totalSeconds / 3600
             val minutes = (totalSeconds % 3600) / 60
             val seconds = totalSeconds % 60
-            if (isAr) {
-                when {
-                    hours > 0 -> "$hours ساعة و $minutes دقيقة و $seconds ثانية"
-                    minutes > 0 -> "$minutes دقيقة و $seconds ثانية"
-                    else -> "$seconds ثانية"
-                }
-            } else {
-                when {
-                    hours > 0 -> "${hours}h ${minutes}m ${seconds}s"
-                    minutes > 0 -> "${minutes}m ${seconds}s"
-                    else -> "${seconds}s"
-                }
+            when {
+                hours > 0 -> Loc.getFormattedText("task_dur_hms", hours, minutes, seconds)
+                minutes > 0 -> Loc.getFormattedText("task_dur_ms", minutes, seconds)
+                else -> Loc.getFormattedText("task_dur_s", seconds)
             }
         }
 
@@ -531,23 +513,14 @@ fun TaskDetailsView(
             val mins = diff / (1000 * 60)
             val hours = mins / 60
             val days = hours / 24
-            if (Loc.currentLanguage == "ar") {
-                when {
-                    days > 0 -> "منذ $days يوم"
-                    hours > 0 -> "منذ $hours ساعة"
-                    mins > 0 -> "منذ $mins دقيقة"
-                    else -> "الآن"
-                }
-            } else {
-                when {
-                    days > 1 -> "$days days ago"
-                    days == 1L -> "1 day ago"
-                    hours > 1 -> "$hours hours ago"
-                    hours == 1L -> "1 hour ago"
-                    mins > 1 -> "$mins minutes ago"
-                    mins == 1L -> "1 minute ago"
-                    else -> "Just now"
-                }
+            when {
+                days > 1 -> Loc.getFormattedText("time_ago_days", days)
+                days == 1L -> Loc.getText("time_ago_day_one")
+                hours > 1 -> Loc.getFormattedText("time_ago_hours", hours)
+                hours == 1L -> Loc.getText("time_ago_hour_one")
+                mins > 1 -> Loc.getFormattedText("time_ago_mins", mins)
+                mins == 1L -> Loc.getText("time_ago_min_one")
+                else -> Loc.getText("time_ago_just_now")
             }
         }
 

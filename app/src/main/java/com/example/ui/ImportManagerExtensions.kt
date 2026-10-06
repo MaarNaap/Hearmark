@@ -18,7 +18,7 @@ fun AppViewModel.importFolder(folderName: String, uris: List<Uri>) {
     viewModelScope.launch(Dispatchers.IO) {
         val context = getApplication<Application>()
         val resolvedFolderName = if (folderName.isBlank()) {
-            if (Loc.currentLanguage == "ar") "مجلد مستورد" else "Imported Folder"
+            Loc.getText("imported_folder_default")
         } else folderName
         val parentDir = File(context.filesDir, "imported")
         val folderDir = File(parentDir, resolvedFolderName.replace("/", "_").replace(" ", "_"))

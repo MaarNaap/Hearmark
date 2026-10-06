@@ -252,7 +252,7 @@ fun VocabReviewHubView(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "${allQuestions.size.toString().toWesternDigits()} questions available across lessons and notes",
+                            text = Loc.getFormattedText("vocab_questions_available_across", allQuestions.size),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -304,7 +304,7 @@ fun VocabReviewHubView(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "${(needsPracticeCount + untestedCount).toString().toWesternDigits()} questions to review or learn",
+                                text = Loc.getFormattedText("vocab_questions_to_review_or_learn", needsPracticeCount + untestedCount),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

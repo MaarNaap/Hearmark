@@ -39,13 +39,18 @@ android {
   buildTypes {
     release {
       isCrunchPngs = false
-      isMinifyEnabled = false
+      isMinifyEnabled = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
       signingConfig = signingConfigs.getByName("debugConfig")
     }
+  }
+  sourceSets {
+    getByName("test").assets.srcDirs("$projectDir/schemas")
+    getByName("test").resources.srcDirs("$projectDir/schemas")
+    getByName("androidTest").assets.srcDirs("$projectDir/schemas")
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11

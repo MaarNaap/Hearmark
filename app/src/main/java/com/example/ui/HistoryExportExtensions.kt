@@ -13,31 +13,18 @@ import java.util.*
 
 // --- EXPORT HISTORY SYSTEM EXTENSIONS ---
 fun AppViewModel.copyHistoryClipboard(context: Context, history: List<PlaybackHistory>) {
-    val isAr = Loc.currentLanguage == "ar"
     val sb = java.lang.StringBuilder()
 
     // First row headers (Tab-Separated for Google Sheets & Excel)
-    val headers = if (isAr) {
-        listOf(
-            "التاريخ والوقت",
-            "اسم الملف",
-            "المهام المرتبطة",
-            "وقت الاستماع الفعلي",
-            "مدة الملف",
-            "سرعة التشغيل",
-            "الوقت الموفر"
-        )
-    } else {
-        listOf(
-            "Date & Time",
-            "Track Name",
-            "Associated Tasks",
-            "Actual Listen Time",
-            "File Duration",
-            "Playback Speed",
-            "Time Saved"
-        )
-    }
+    val headers = listOf(
+        Loc.getText("export_header_date_time"),
+        Loc.getText("export_header_track_name"),
+        Loc.getText("export_header_associated_tasks"),
+        Loc.getText("export_header_actual_listen_time"),
+        Loc.getText("export_header_file_duration"),
+        Loc.getText("export_header_playback_speed"),
+        Loc.getText("export_header_time_saved")
+    )
     sb.append(headers.joinToString("\t")).append("\n")
 
     val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)

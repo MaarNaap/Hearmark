@@ -64,7 +64,7 @@ class TaskFormState(
                 }
                 else -> null
             }
-            autoTitle ?: (if (Loc.currentLanguage == "ar") "مهمة غير مسماة" else "Unnamed Task")
+            autoTitle ?: Loc.getText("unnamed_task")
         }
     }
 

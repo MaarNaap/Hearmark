@@ -15,9 +15,14 @@
 -keep @androidx.room.Dao class * { *; }
 -dontwarn androidx.room.paging.**
 
-# Keep Hearmark domain entities, backup/restore models, and AI data classes
+# Keep Hearmark domain entities, backup/restore models, receivers, player, and AI data classes
 -keep class com.example.data.** { *; }
 -keep class com.example.ai.** { *; }
+-keep class com.example.receiver.** { *; }
+-keep class com.example.player.** { *; }
+-keep class com.example.util.** { *; }
+-keep class * extends android.content.BroadcastReceiver { *; }
+-keep class * extends android.app.Service { *; }
 
 # OkHttp3 & Okio rules
 -dontwarn okhttp3.**

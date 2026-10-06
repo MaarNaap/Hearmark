@@ -61,6 +61,9 @@ class AlarmReceiver : BroadcastReceiver() {
                         val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                         val channelId = VOCAB_REMINDER_CHANNEL_ID
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            try {
+                                notificationManager.deleteNotificationChannel(LEGACY_VOCAB_REMINDER_CHANNEL_ID)
+                            } catch (_: Exception) {}
                             val channel = NotificationChannel(
                                 channelId,
                                 Loc.getText("vocab_daily_reminder_title"),
@@ -418,6 +421,7 @@ class AlarmReceiver : BroadcastReceiver() {
         const val ACTION_PLAY_TASK_TRACK = "com.example.ACTION_PLAY_TASK_TRACK"
         const val ACTION_SNOOZE_TASK = "com.example.ACTION_SNOOZE_TASK"
         const val ACTION_DAILY_VOCAB_REMINDER = "com.example.ACTION_DAILY_VOCAB_REMINDER"
+        const val LEGACY_VOCAB_REMINDER_CHANNEL_ID = "vocab_reminder_channel"
         const val VOCAB_REMINDER_CHANNEL_ID = "vocab_reminder_default_channel"
         const val DAILY_VOCAB_NOTIFICATION_ID = 88888
         const val DAILY_VOCAB_REQUEST_CODE = 9999

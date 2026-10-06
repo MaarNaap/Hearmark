@@ -200,4 +200,50 @@ class DatabaseMigrationAndIndexTest {
             roomDb.close()
         }
     }
+
+    @Test
+    fun deleteTracksByIds_removesBatchAndCascadeRecordsAtomically() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val roomDb = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val repo = AppRepository(roomDb.appDao(), roomDb.vocabularyItemDao(), roomDb)
+
+        try {
+            val t1 = repo.insertTrack(AudioTrack(filePath = "/tmp/t1.mp3", fileName = "t1", duration = 10_000L))
+            val t2 = repo.insertTrack(AudioTrack(filePath = "/tmp/t2.mp3", fileName = "t2", duration = 20_000L))
+            val t3 = repo.insertTrack(AudioTrack(filePath = "/tmp/t3.mp3", fileName = "t3", duration = 30_000L))
+
+            val playlistId = repo.addPlaylist("Study")
+            repo.addTrackToPlaylist(playlistId, t1)
+            repo.addTrackToPlaylist(playlistId, t2)
+            repo.addTrackToPlaylist(playlistId, t3)
+
+            repo.deleteTracksByIds(setOf(t1, t2))
+
+            assertNull(repo.getTrackById(t1))
+            assertNull(repo.getTrackById(t2))
+            assertNotNull(repo.getTrackById(t3))
+            val remainingInPlaylist = repo.getTracksForPlaylist(playlistId)
+            assertEquals(1, remainingInPlaylist.size)
+            assertEquals(t3, remainingInPlaylist.first().id)
+        } finally {
+            roomDb.close()
+        }
+    }
+
+    @Test
+    fun roomSchemaAssets_19And20AreExposedToUnitTests() {
+        val loader = checkNotNull(javaClass.classLoader)
+        val schema19Stream = loader.getResourceAsStream("com.example.data.AppDatabase/19.json")
+        val schema20Stream = loader.getResourceAsStream("com.example.data.AppDatabase/20.json")
+        assertNotNull("Expected 19.json schema resource on test classpath", schema19Stream)
+        assertNotNull("Expected 20.json schema resource on test classpath", schema20Stream)
+        val schema19 = schema19Stream!!.bufferedReader().use { it.readText() }
+        val schema20 = schema20Stream!!.bufferedReader().use { it.readText() }
+        assertTrue(schema19.contains("\"formatVersion\": 1"))
+        assertTrue(schema19.contains("\"version\": 19"))
+        assertTrue(schema20.contains("\"version\": 20"))
+        assertTrue(schema20.contains("srNextReviewAt"))
+    }
 }

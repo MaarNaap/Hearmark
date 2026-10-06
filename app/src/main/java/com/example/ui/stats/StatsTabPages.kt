@@ -315,14 +315,12 @@ fun StatsOverviewTab(
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
-                            val historyCountText = if (Loc.currentLanguage == "ar") {
-                                if (rangeFiltered.isEmpty()) "لا توجد جلسات مسجلة"
-                                else if (rangeFiltered.size == 1) "جلسة استماع واحدة"
-                                else if (rangeFiltered.size == 2) "جلستا استماع"
-                                else if (rangeFiltered.size in 3..10) "${rangeFiltered.size} جلسات مسجلة"
-                                else "${rangeFiltered.size} جلسة مسجلة"
-                            } else {
-                                if (rangeFiltered.size == 1) "1 completed session" else "${rangeFiltered.size} completed sessions"
+                            val historyCountText = when (val n = rangeFiltered.size) {
+                                0 -> Loc.getText("history_sessions_zero")
+                                1 -> Loc.getText("history_sessions_one")
+                                2 -> Loc.getText("history_sessions_two")
+                                in 3..10 -> Loc.getFormattedText("history_sessions_few", n)
+                                else -> Loc.getFormattedText("history_sessions_many", n)
                             }
                             Text(
                                 text = historyCountText,

@@ -134,6 +134,29 @@ class AppRepository(
             deleteTrackFiles(track, remainingTracks)
         }
     }
+
+    suspend fun deleteTracksByIds(ids: Set<Long>) {
+        if (ids.isEmpty()) return
+        val tracksToDelete = mutableListOf<AudioTrack>()
+        runInTransaction {
+            for (id in ids) {
+                val track = dao.getTrackById(id)
+                if (track != null) {
+                    tracksToDelete.add(track)
+                    deleteTrackDbRecords(track)
+                }
+            }
+        }
+        if (tracksToDelete.isNotEmpty()) {
+            val remainingTracks = dao.getAllTracksDirect()
+            for (track in tracksToDelete) {
+                if (!track.isVirtualScene) {
+                    deleteTrackFiles(track, remainingTracks)
+                }
+            }
+        }
+    }
+
     suspend fun deleteTrackById(id: Long) = dao.deleteTrackById(id)
     fun getScenesForParentTrackFlow(parentTrackId: Long) = dao.getScenesForParentTrackFlow(parentTrackId)
     suspend fun getScenesForParentTrack(parentTrackId: Long) = dao.getScenesForParentTrack(parentTrackId)

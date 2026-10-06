@@ -49,7 +49,6 @@ fun DetailedHistoryLogDialog(
     val filteredHistory = remember(rangeFiltered) {
         rangeFiltered.sortedByDescending { it.completedAt }
     }
-    val isAr = Loc.currentLanguage == "ar"
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -146,7 +145,7 @@ fun DetailedHistoryLogDialog(
                             )
 
                             if (selectedTaskIds.isNotEmpty()) {
-                                val taskFilterText = if (isAr) "${Loc.getText("filter_by_task")}: ${selectedTaskIds.size}" else "Tasks: ${selectedTaskIds.size}"
+                                val taskFilterText = Loc.getFormattedText("history_filter_tasks_chip", selectedTaskIds.size)
                                 SuggestionChip(
                                     onClick = {},
                                     label = { Text(taskFilterText, fontSize = 10.sp) },
@@ -161,7 +160,7 @@ fun DetailedHistoryLogDialog(
 
                             if (selectedFolderIds.isNotEmpty() || selectedFileTrackIds.isNotEmpty()) {
                                 val count = selectedFolderIds.size + selectedFileTrackIds.size
-                                val folderFilterText = if (isAr) "${Loc.getText("filter_by_folder_file")}: $count" else "Files: $count"
+                                val folderFilterText = Loc.getFormattedText("history_filter_files_chip", count)
                                 SuggestionChip(
                                     onClick = {},
                                     label = { Text(folderFilterText, fontSize = 10.sp) },
@@ -175,10 +174,10 @@ fun DetailedHistoryLogDialog(
                             }
                         }
 
-                        val countLabel = if (isAr) {
-                            "${filteredHistory.size} ${if (filteredHistory.size in 3..10) "جلسات" else "جلسة"}"
-                        } else {
-                            "${filteredHistory.size} ${if (filteredHistory.size == 1) "session" else "sessions"}"
+                        val countLabel = when (val n = filteredHistory.size) {
+                            1 -> Loc.getText("history_short_one")
+                            in 3..10 -> Loc.getFormattedText("history_short_few", n)
+                            else -> Loc.getFormattedText("history_short_many", n)
                         }
                         Text(
                             text = countLabel,
@@ -205,7 +204,7 @@ fun DetailedHistoryLogDialog(
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = if (history.isEmpty()) Loc.getText("no_history_yet") else if (isAr) "لا توجد جلسات استماع مطابقة للفلاتر المحددة" else "No listening history matches the selected filters",
+                                text = if (history.isEmpty()) Loc.getText("no_history_yet") else Loc.getText("no_history_matches_filters"),
                                 color = Color.Gray,
                                 fontSize = 14.sp,
                                 textAlign = TextAlign.Center
@@ -274,7 +273,7 @@ fun DetailedHistoryLogDialog(
                                         if (attachedTaskNames.isNotEmpty()) {
                                             Spacer(modifier = Modifier.height(2.dp))
                                             Text(
-                                                text = (if (isAr) "المهام: " else "Tasks: ") + attachedTaskNames.joinToString(", "),
+                                                text = Loc.getFormattedText("history_tasks_prefix", attachedTaskNames.joinToString(", ")),
                                                 fontSize = 10.sp,
                                                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
                                                 maxLines = 1,

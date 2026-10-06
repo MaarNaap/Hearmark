@@ -276,7 +276,7 @@ fun AddEditNoteModal(
         if (!isGeneratingAiExplanation) {
             val currentPrompt = commentText.trim()
             if (noteText.isBlank() && currentPrompt.isBlank()) {
-                val msg = if (Loc.currentLanguage == "ar") "يرجى كتابة كلمة أو تحديد مقطع صوتي أولاً" else "Please enter a word or select an audio quote first"
+                val msg = Loc.getText("note_ai_enter_word_or_quote_first")
                 Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
             } else {
                 isGeneratingAiExplanation = true

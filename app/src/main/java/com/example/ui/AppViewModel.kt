@@ -617,14 +617,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteSelectedTracks() {
-        val targets = selectedTrackIds.value
+        val targets = selectedTrackIds.value.toSet()
+        if (targets.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
-            for (id in targets) {
-                val t = repository.getTrackById(id)
-                if (t != null) {
-                    repository.deleteTrack(t)
-                }
-            }
+            repository.deleteTracksByIds(targets)
             withContext(Dispatchers.Main) {
                 clearTrackSelections()
             }
@@ -635,12 +631,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (ids.isEmpty()) return
         val targets = ids.toSet()
         viewModelScope.launch(Dispatchers.IO) {
-            for (id in targets) {
-                val t = repository.getTrackById(id)
-                if (t != null) {
-                    repository.deleteTrack(t)
-                }
-            }
+            repository.deleteTracksByIds(targets)
         }
     }
 
