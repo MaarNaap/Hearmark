@@ -631,6 +631,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun deleteTracksByIds(ids: Set<Long>) {
+        if (ids.isEmpty()) return
+        val targets = ids.toSet()
+        viewModelScope.launch(Dispatchers.IO) {
+            for (id in targets) {
+                val t = repository.getTrackById(id)
+                if (t != null) {
+                    repository.deleteTrack(t)
+                }
+            }
+        }
+    }
+
     // AI Scene Detection State
     val isDetectingScenes = MutableStateFlow(false)
     val detectingTrackName = MutableStateFlow<String?>(null)

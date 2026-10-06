@@ -63,7 +63,7 @@ fun LibraryImportFolderDialog(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = String.format(Loc.getText("folder_number"), index + 1),
+                                        text = Loc.getFormattedText("folder_number", index + 1),
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.primary
@@ -124,7 +124,7 @@ fun LibraryImportFolderDialog(
                     onDismiss()
                     Toast.makeText(context, Loc.getText("importing_folders_bg"), Toast.LENGTH_SHORT).show()
                 }) {
-                    Text(String.format(Loc.getText("start_bulk_import"), queuedFoldersToImport.size))
+                    Text(Loc.getFormattedText("start_bulk_import", queuedFoldersToImport.size))
                 }
             }
         },
@@ -215,7 +215,7 @@ fun LibraryImportSummaryDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = String.format(Loc.getText("total_processed_files"), summary.totalProcessed),
+                                text = Loc.getFormattedText("total_processed_files", summary.totalProcessed),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontWeight = FontWeight.Medium
@@ -228,7 +228,7 @@ fun LibraryImportSummaryDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = String.format(Loc.getText("existing_files_preserved"), summary.existingCount),
+                                text = Loc.getFormattedText("existing_files_preserved", summary.existingCount),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontWeight = FontWeight.Medium
@@ -241,7 +241,7 @@ fun LibraryImportSummaryDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = String.format(Loc.getText("newly_indexed_files"), summary.newlyIndexedCount),
+                                text = Loc.getFormattedText("newly_indexed_files", summary.newlyIndexedCount),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold

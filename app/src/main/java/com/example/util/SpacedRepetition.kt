@@ -1,8 +1,7 @@
 package com.example.util
 
-import com.example.ui.Loc
-import com.example.ui.toWesternDigits
 import java.util.Calendar
+import java.util.TimeZone
 import kotlin.math.ceil
 
 /**
@@ -47,12 +46,16 @@ object SpacedRepetition {
     }
 
     data class StatusBadgeInfo(
-        val label: String,
         val badgeType: BadgeType,
         val daysRemaining: Int = 0
     )
 
-    fun review(state: CardState, isCorrect: Boolean, nowMs: Long = System.currentTimeMillis()): CardState {
+    fun review(
+        state: CardState,
+        isCorrect: Boolean,
+        nowMs: Long = System.currentTimeMillis(),
+        timeZone: TimeZone = TimeZone.getDefault()
+    ): CardState {
         val currentEase = state.ease.coerceIn(MIN_EASE, MAX_EASE)
 
         return if (isCorrect) {
@@ -71,7 +74,7 @@ object SpacedRepetition {
                 intervalDays = newInterval,
                 ease = newEase,
                 lapses = state.lapses,
-                nextReviewAt = addDaysAtMidnight(nowMs, newInterval)
+                nextReviewAt = addDaysAtMidnight(nowMs, newInterval, timeZone)
             )
         } else {
             val newEase = (currentEase - 0.2f).coerceIn(MIN_EASE, MAX_EASE)
@@ -80,18 +83,25 @@ object SpacedRepetition {
                 intervalDays = 1,
                 ease = newEase,
                 lapses = state.lapses + 1,
-                nextReviewAt = addDaysAtMidnight(nowMs, 1)
+                nextReviewAt = addDaysAtMidnight(nowMs, 1, timeZone)
             )
         }
     }
 
-    fun isDue(nextReviewAt: Long?, nowMs: Long = System.currentTimeMillis()): Boolean {
+    fun isDue(
+        nextReviewAt: Long?,
+        nowMs: Long = System.currentTimeMillis(),
+        timeZone: TimeZone = TimeZone.getDefault()
+    ): Boolean {
         if (nextReviewAt == null) return true
-        return nextReviewAt <= endOfTodayMillis(nowMs)
+        return nextReviewAt <= endOfTodayMillis(nowMs, timeZone)
     }
 
-    fun startOfDayMillis(timestampMs: Long = System.currentTimeMillis()): Long {
-        val cal = Calendar.getInstance().apply {
+    fun startOfDayMillis(
+        timestampMs: Long = System.currentTimeMillis(),
+        timeZone: TimeZone = TimeZone.getDefault()
+    ): Long {
+        val cal = Calendar.getInstance(timeZone).apply {
             timeInMillis = timestampMs
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
@@ -101,8 +111,11 @@ object SpacedRepetition {
         return cal.timeInMillis
     }
 
-    fun endOfTodayMillis(timestampMs: Long = System.currentTimeMillis()): Long {
-        val cal = Calendar.getInstance().apply {
+    fun endOfTodayMillis(
+        timestampMs: Long = System.currentTimeMillis(),
+        timeZone: TimeZone = TimeZone.getDefault()
+    ): Long {
+        val cal = Calendar.getInstance(timeZone).apply {
             timeInMillis = timestampMs
             set(Calendar.HOUR_OF_DAY, 23)
             set(Calendar.MINUTE, 59)
@@ -112,8 +125,12 @@ object SpacedRepetition {
         return cal.timeInMillis
     }
 
-    fun addDaysAtMidnight(nowMs: Long, days: Int): Long {
-        val cal = Calendar.getInstance().apply {
+    fun addDaysAtMidnight(
+        nowMs: Long,
+        days: Int,
+        timeZone: TimeZone = TimeZone.getDefault()
+    ): Long {
+        val cal = Calendar.getInstance(timeZone).apply {
             timeInMillis = nowMs
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
@@ -124,28 +141,30 @@ object SpacedRepetition {
         return cal.timeInMillis
     }
 
-    fun getStatusBadgeInfo(nextReviewAt: Long?, nowMs: Long = System.currentTimeMillis()): StatusBadgeInfo {
+    fun getStatusBadgeInfo(
+        nextReviewAt: Long?,
+        nowMs: Long = System.currentTimeMillis(),
+        timeZone: TimeZone = TimeZone.getDefault()
+    ): StatusBadgeInfo {
         if (nextReviewAt == null) {
             return StatusBadgeInfo(
-                label = Loc.getText("vocab_sr_status_new"),
-                badgeType = BadgeType.NEW
+                badgeType = BadgeType.NEW,
+                daysRemaining = 0
             )
         }
 
-        if (isDue(nextReviewAt, nowMs)) {
+        if (isDue(nextReviewAt, nowMs, timeZone)) {
             return StatusBadgeInfo(
-                label = Loc.getText("vocab_sr_status_due_today"),
-                badgeType = BadgeType.DUE
+                badgeType = BadgeType.DUE,
+                daysRemaining = 0
             )
         }
 
-        val startOfToday = startOfDayMillis(nowMs)
+        val startOfToday = startOfDayMillis(nowMs, timeZone)
         val diffMs = nextReviewAt - startOfToday
         val days = ceil(diffMs / 86400000.0).toInt().coerceAtLeast(1)
 
-        val formattedText = Loc.getFormattedText("vocab_sr_status_in_days", days).toWesternDigits()
         return StatusBadgeInfo(
-            label = formattedText,
             badgeType = BadgeType.SCHEDULED,
             daysRemaining = days
         )

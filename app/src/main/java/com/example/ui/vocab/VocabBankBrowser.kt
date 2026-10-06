@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.AudioTrack
 import com.example.data.QuizQuestion
 import com.example.ui.Loc
+import com.example.ui.toWesternDigits
 
 @Composable
 fun VocabBankBrowserView(
@@ -38,6 +40,11 @@ fun VocabBankBrowserView(
     currentlyPlayingTs: Long?,
     isPlayingAudio: Boolean
 ) {
+    val isDarkSurface = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val dueColor = if (isDarkSurface) Color(0xFFFFB74D) else Color(0xFFE65100)
+    val scheduledColor = if (isDarkSurface) Color(0xFF81C784) else Color(0xFF2E7D32)
+    val badgeBgAlpha = if (isDarkSurface) 0.18f else 0.15f
+
     val dueCount = remember(allQuestions) {
         allQuestions.count { com.example.util.SpacedRepetition.isDue(it.srNextReviewAt) }
     }
@@ -137,6 +144,12 @@ fun VocabBankBrowserView(
                     val track = trackMap[q.trackId]
                     val accuracy = if (q.timesAnswered > 0) (q.timesCorrect * 100) / q.timesAnswered else null
                     val srBadge = com.example.util.SpacedRepetition.getStatusBadgeInfo(q.srNextReviewAt)
+                    val srBadgeLabel = when (srBadge.badgeType) {
+                        com.example.util.SpacedRepetition.BadgeType.NEW -> Loc.getText("vocab_sr_status_new")
+                        com.example.util.SpacedRepetition.BadgeType.DUE -> Loc.getText("vocab_sr_status_due_today")
+                        com.example.util.SpacedRepetition.BadgeType.SCHEDULED ->
+                            Loc.getFormattedText("vocab_sr_status_in_days", srBadge.daysRemaining).toWesternDigits()
+                    }
 
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -156,19 +169,19 @@ fun VocabBankBrowserView(
                                     // Spaced Repetition Schedule Status Badge
                                     Surface(
                                         color = when (srBadge.badgeType) {
-                                            com.example.util.SpacedRepetition.BadgeType.DUE -> Color(0xFFE65100).copy(alpha = 0.15f)
-                                            com.example.util.SpacedRepetition.BadgeType.SCHEDULED -> Color(0xFF2E7D32).copy(alpha = 0.15f)
+                                            com.example.util.SpacedRepetition.BadgeType.DUE -> dueColor.copy(alpha = badgeBgAlpha)
+                                            com.example.util.SpacedRepetition.BadgeType.SCHEDULED -> scheduledColor.copy(alpha = badgeBgAlpha)
                                             com.example.util.SpacedRepetition.BadgeType.NEW -> MaterialTheme.colorScheme.surfaceVariant
                                         },
                                         shape = RoundedCornerShape(6.dp)
                                     ) {
                                         Text(
-                                            text = srBadge.label,
+                                            text = srBadgeLabel,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = when (srBadge.badgeType) {
-                                                com.example.util.SpacedRepetition.BadgeType.DUE -> Color(0xFFE65100)
-                                                com.example.util.SpacedRepetition.BadgeType.SCHEDULED -> Color(0xFF2E7D32)
+                                                com.example.util.SpacedRepetition.BadgeType.DUE -> dueColor
+                                                com.example.util.SpacedRepetition.BadgeType.SCHEDULED -> scheduledColor
                                                 com.example.util.SpacedRepetition.BadgeType.NEW -> MaterialTheme.colorScheme.onSurfaceVariant
                                             },
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -179,8 +192,8 @@ fun VocabBankBrowserView(
                                     Surface(
                                         color = when {
                                             accuracy == null -> MaterialTheme.colorScheme.surfaceVariant
-                                            accuracy >= 75 -> Color(0xFF2E7D32).copy(alpha = 0.15f)
-                                            else -> Color(0xFFE65100).copy(alpha = 0.15f)
+                                            accuracy >= 75 -> scheduledColor.copy(alpha = badgeBgAlpha)
+                                            else -> dueColor.copy(alpha = badgeBgAlpha)
                                         },
                                         shape = RoundedCornerShape(6.dp)
                                     ) {
@@ -190,8 +203,8 @@ fun VocabBankBrowserView(
                                             fontWeight = FontWeight.Bold,
                                             color = when {
                                                 accuracy == null -> MaterialTheme.colorScheme.onSurfaceVariant
-                                                accuracy >= 75 -> Color(0xFF2E7D32)
-                                                else -> Color(0xFFE65100)
+                                                accuracy >= 75 -> scheduledColor
+                                                else -> dueColor
                                             },
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                         )

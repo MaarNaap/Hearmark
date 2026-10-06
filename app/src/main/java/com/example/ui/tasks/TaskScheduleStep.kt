@@ -119,7 +119,7 @@ fun TaskScheduleStep(
         },
         modifier = Modifier.padding(vertical = 8.dp)
     ) {
-        Text("${Loc.getText("change_time")}: ${formState.reminderTime}")
+        Text("${Loc.getText("change_time")}: ${formState.reminderTime.toWesternDigits()}")
     }
     HorizontalDivider(
         modifier = Modifier.padding(vertical = 14.dp),

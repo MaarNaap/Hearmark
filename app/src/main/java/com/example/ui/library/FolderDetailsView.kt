@@ -171,6 +171,33 @@ fun FolderDetailsView(
     var isBulkSelectMode by remember { mutableStateOf(false) }
     var selectedDetailTrackIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var showPlaylistSelectDialogForBulk by remember { mutableStateOf(false) }
+    var showBulkDeleteConfirm by remember { mutableStateOf(false) }
+
+    if (showBulkDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showBulkDeleteConfirm = false },
+            title = { Text(Loc.getText("delete_tracks_bulk_confirm_title")) },
+            text = { Text(Loc.getFormattedText("delete_tracks_bulk_confirm_desc", selectedDetailTrackIds.size)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteTracksByIds(selectedDetailTrackIds)
+                        selectedDetailTrackIds = emptySet()
+                        isBulkSelectMode = false
+                        showBulkDeleteConfirm = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(Loc.getText("delete"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBulkDeleteConfirm = false }) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
 
     folderToRename?.let { targetFolder ->
         var tempName by remember(targetFolder) { mutableStateOf(targetFolder.folderName) }
@@ -354,15 +381,8 @@ fun FolderDetailsView(
                             )
                         }
                         IconButton(onClick = {
-                            coroutineScope.launch {
-                                for (id in selectedDetailTrackIds) {
-                                    val t = viewModel.repository.getTrackById(id)
-                                    if (t != null) {
-                                        viewModel.repository.deleteTrack(t)
-                                    }
-                                }
-                                selectedDetailTrackIds = emptySet()
-                                isBulkSelectMode = false
+                            if (selectedDetailTrackIds.isNotEmpty()) {
+                                showBulkDeleteConfirm = true
                             }
                         }) {
                             Icon(

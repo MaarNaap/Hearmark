@@ -22,6 +22,15 @@ import java.util.Locale
 
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        try {
+            val savedLang = context.applicationContext
+                .getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+                .getString("language", null)
+            if (!savedLang.isNullOrBlank()) {
+                Loc.currentLanguage = savedLang
+            }
+        } catch (_: Exception) {}
+
         val action = intent.action
         val taskId = intent.getLongExtra("TASK_ID", -1L)
         val taskTitle = intent.getStringExtra("TASK_TITLE") ?: "Goal Task"
@@ -37,6 +46,10 @@ class AlarmReceiver : BroadcastReceiver() {
                     val dueCount = db.appDao().getDueVocabularyCountDirect(com.example.util.SpacedRepetition.endOfTodayMillis())
                     
                     val sharedPref = appContext.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+                    val savedLang = sharedPref.getString("language", null)
+                    if (!savedLang.isNullOrBlank()) {
+                        Loc.currentLanguage = savedLang
+                    }
                     val isEnabled = sharedPref.getBoolean("vocab_reminder_enabled", false)
                     val storedTime = sharedPref.getString("vocab_reminder_time", "09:00 AM") ?: "09:00 AM"
                     
@@ -46,15 +59,14 @@ class AlarmReceiver : BroadcastReceiver() {
 
                     if (dueCount > 0) {
                         val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                        val channelId = "vocab_reminder_channel"
+                        val channelId = VOCAB_REMINDER_CHANNEL_ID
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             val channel = NotificationChannel(
                                 channelId,
                                 Loc.getText("vocab_daily_reminder_title"),
-                                NotificationManager.IMPORTANCE_HIGH
+                                NotificationManager.IMPORTANCE_DEFAULT
                             ).apply {
                                 description = Loc.getText("vocab_daily_reminder_desc")
-                                enableVibration(true)
                             }
                             notificationManager.createNotificationChannel(channel)
                         }
@@ -97,8 +109,7 @@ class AlarmReceiver : BroadcastReceiver() {
                             .setContentTitle(title)
                             .setContentText(message)
                             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-                            .setPriority(NotificationCompat.PRIORITY_HIGH)
-                            .setDefaults(NotificationCompat.DEFAULT_ALL)
+                            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                             .setAutoCancel(true)
                             .setContentIntent(pendingIntent)
                             .apply {
@@ -407,6 +418,7 @@ class AlarmReceiver : BroadcastReceiver() {
         const val ACTION_PLAY_TASK_TRACK = "com.example.ACTION_PLAY_TASK_TRACK"
         const val ACTION_SNOOZE_TASK = "com.example.ACTION_SNOOZE_TASK"
         const val ACTION_DAILY_VOCAB_REMINDER = "com.example.ACTION_DAILY_VOCAB_REMINDER"
+        const val VOCAB_REMINDER_CHANNEL_ID = "vocab_reminder_default_channel"
         const val DAILY_VOCAB_NOTIFICATION_ID = 88888
         const val DAILY_VOCAB_REQUEST_CODE = 9999
 

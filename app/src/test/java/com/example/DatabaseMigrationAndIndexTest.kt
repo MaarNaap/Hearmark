@@ -117,4 +117,87 @@ class DatabaseMigrationAndIndexTest {
             roomDb.close()
         }
     }
+
+    @Test
+    fun migration19To20_addsSpacedRepetitionColumnsIndexAndSeedsStrongItems() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val roomDb = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+
+        try {
+            val sqlDb = roomDb.openHelper.writableDatabase
+            val baseAnsweredAt = 1_700_000_000_000L
+
+            // Insert 3 questions simulating pre-migration state:
+            // 1) Strong item (4/4 = 100% >= 75%)
+            sqlDb.execSQL("""
+                INSERT INTO `quiz_questions` (
+                    `id`, `questionType`, `category`, `question`, `optionsJson`, `correctIndex`,
+                    `explanation`, `timesAnswered`, `timesCorrect`, `lastAnsweredAt`, `createdAt`,
+                    `srRepetitions`, `srIntervalDays`, `srEase`, `srLapses`, `srNextReviewAt`
+                ) VALUES (
+                    1, 'VOCABULARY', 'VOCABULARY', 'Strong Q', '["A","B","C","D"]', 0,
+                    'Exp', 4, 4, $baseAnsweredAt, $baseAnsweredAt, 0, 0, 2.5, 0, NULL
+                )
+            """.trimIndent())
+
+            // 2) Weak item (1/4 = 25% < 75%)
+            sqlDb.execSQL("""
+                INSERT INTO `quiz_questions` (
+                    `id`, `questionType`, `category`, `question`, `optionsJson`, `correctIndex`,
+                    `explanation`, `timesAnswered`, `timesCorrect`, `lastAnsweredAt`, `createdAt`,
+                    `srRepetitions`, `srIntervalDays`, `srEase`, `srLapses`, `srNextReviewAt`
+                ) VALUES (
+                    2, 'VOCABULARY', 'VOCABULARY', 'Weak Q', '["A","B","C","D"]', 0,
+                    'Exp', 4, 1, $baseAnsweredAt, $baseAnsweredAt, 0, 0, 2.5, 0, NULL
+                )
+            """.trimIndent())
+
+            // 3) Untested item (0/0)
+            sqlDb.execSQL("""
+                INSERT INTO `quiz_questions` (
+                    `id`, `questionType`, `category`, `question`, `optionsJson`, `correctIndex`,
+                    `explanation`, `timesAnswered`, `timesCorrect`, `lastAnsweredAt`, `createdAt`,
+                    `srRepetitions`, `srIntervalDays`, `srEase`, `srLapses`, `srNextReviewAt`
+                ) VALUES (
+                    3, 'VOCABULARY', 'VOCABULARY', 'Untested Q', '["A","B","C","D"]', 0,
+                    'Exp', 0, 0, NULL, $baseAnsweredAt, 0, 0, 2.5, 0, NULL
+                )
+            """.trimIndent())
+
+            // Execute MIGRATION_19_20
+            DatabaseMigrations.MIGRATION_19_20.migrate(sqlDb)
+
+            // Verify index_quiz_questions_srNextReviewAt exists
+            assertTrue(getIndexNames(sqlDb, "quiz_questions").contains("index_quiz_questions_srNextReviewAt"))
+
+            // Verify strong item was seeded with 3-day interval (259_200_000 ms) and repetitions = 2
+            val dao = roomDb.appDao()
+            runBlocking {
+                val strongQ = dao.getQuestionByIdDirect(1L)
+                assertNotNull(strongQ)
+                assertEquals(2, strongQ!!.srRepetitions)
+                assertEquals(3, strongQ.srIntervalDays)
+                assertEquals(2.5f, strongQ.srEase, 0.001f)
+                assertEquals(0, strongQ.srLapses)
+                assertEquals(baseAnsweredAt + 259_200_000L, strongQ.srNextReviewAt)
+
+                // Weak and untested items remain unscheduled (NULL nextReviewAt -> due immediately)
+                val weakQ = dao.getQuestionByIdDirect(2L)
+                assertNotNull(weakQ)
+                assertEquals(0, weakQ!!.srRepetitions)
+                assertEquals(0, weakQ.srIntervalDays)
+                assertNull(weakQ.srNextReviewAt)
+
+                val untestedQ = dao.getQuestionByIdDirect(3L)
+                assertNotNull(untestedQ)
+                assertEquals(0, untestedQ!!.srRepetitions)
+                assertEquals(0, untestedQ.srIntervalDays)
+                assertNull(untestedQ.srNextReviewAt)
+            }
+        } finally {
+            roomDb.close()
+        }
+    }
 }

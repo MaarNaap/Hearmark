@@ -282,7 +282,7 @@ fun LibraryView(
             onDismiss = { showAddToPlaylistDialogForTrack = null },
             onPlaylistSelected = { playlist ->
                 viewModel.addTrackToPlaylist(playlist.id, showAddToPlaylistDialogForTrack!!.id)
-                Toast.makeText(context, String.format(Loc.getText("added_to_playlist_success"), playlist.name), Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, Loc.getFormattedText("added_to_playlist_success", playlist.name), Toast.LENGTH_SHORT).show()
             },
             onCreatePlaylistClicked = {
                 showCreatePlaylistDialog = true

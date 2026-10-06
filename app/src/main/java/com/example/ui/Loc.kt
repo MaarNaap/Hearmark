@@ -45,6 +45,8 @@ object Loc {
     val layoutDirection: LayoutDirection
         get() = if (currentLanguage == "ar") LayoutDirection.Rtl else LayoutDirection.Ltr
 
+    fun toWesternDigits(text: String): String = text.toWesternDigits()
+
     fun getText(key: String): String {
         val strings = translations[key] ?: return key.toWesternDigits()
         val text = strings[currentLanguage] ?: strings["en"] ?: key
@@ -1098,6 +1100,9 @@ object Loc {
         "delete_question_confirm_desc" to mapOf("en" to "Are you sure you want to remove this question from the quiz bank?", "ar" to "هل أنت متأكد من رغبتك في حذف هذا السؤال من بنك الأسئلة؟"),
         "clear_chat_confirm_title" to mapOf("en" to "Clear Chat History", "ar" to "مسح المحادثة"),
         "clear_chat_confirm_desc" to mapOf("en" to "Are you sure you want to clear all messages in this chat session?", "ar" to "هل أنت متأكد من رغبتك في مسح جميع رسائل هذه المحادثة؟"),
-        "no_matching_tasks_found" to mapOf("en" to "No matching tasks found", "ar" to "لم يُعثر على مهام تطابق البحث")
+        "no_matching_tasks_found" to mapOf("en" to "No matching tasks found", "ar" to "لم يُعثر على مهام تطابق البحث"),
+        "delete_tracks_bulk_confirm_title" to mapOf("en" to "Delete Selected Tracks", "ar" to "حذف المقاطع المحددة"),
+        "delete_tracks_bulk_confirm_desc" to mapOf("en" to "Are you sure you want to remove %d selected tracks from the app?", "ar" to "هل أنت متأكد من رغبتك في إزالة %d مقاطع محددة من التطبيق؟"),
+        "no_tags_available" to mapOf("en" to "No tags available", "ar" to "لا توجد وسوم")
     )
 }

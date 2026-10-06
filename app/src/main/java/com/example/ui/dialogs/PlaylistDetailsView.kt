@@ -53,7 +53,44 @@ fun PlaylistDetailsView(
 
     var showAddTracksDialog by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     var showAddToPlaylistDialogForTrack by remember { mutableStateOf<AudioTrack?>(null) }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text(Loc.getText("delete")) },
+            text = { Text(Loc.getText("delete_playlist_confirm")) },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            showDeleteConfirm = false
+                            viewModel.deletePlaylist(playlistId, false)
+                            backPressed()
+                        }
+                    ) {
+                        Text(Loc.getText("keep_tracks"))
+                    }
+                    Button(
+                        onClick = {
+                            showDeleteConfirm = false
+                            viewModel.deletePlaylist(playlistId, true)
+                            backPressed()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text(Loc.getText("delete_completely"))
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Top Action Bar
@@ -110,11 +147,10 @@ fun PlaylistDetailsView(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text(Loc.getText("delete_history"), color = MaterialTheme.colorScheme.error) },
+                        text = { Text(Loc.getText("delete"), color = MaterialTheme.colorScheme.error) },
                         onClick = {
                             showMenu = false
-                            viewModel.deletePlaylist(playlistId, false)
-                            backPressed()
+                            showDeleteConfirm = true
                         }
                     )
                 }

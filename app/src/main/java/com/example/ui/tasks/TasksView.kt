@@ -172,7 +172,7 @@ fun TasksView(
         AlertDialog(
             onDismissRequest = { showBulkDeleteTasksConfirm = false },
             title = { Text(Loc.getText("bulk_delete")) },
-            text = { Text(String.format(Loc.getText("delete_tasks_bulk_confirm_desc"), selectedTaskIds.size)) },
+            text = { Text(Loc.getFormattedText("delete_tasks_bulk_confirm_desc", selectedTaskIds.size)) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -476,7 +476,7 @@ fun TasksView(
                                 DropdownMenuItem(
                                     text = {
                                         Text(
-                                            text = if (Loc.currentLanguage == "ar") "لا توجد وسوم" else "No tags available",
+                                            text = Loc.getText("no_tags_available"),
                                             color = Color.Gray,
                                             fontSize = 13.sp
                                         )

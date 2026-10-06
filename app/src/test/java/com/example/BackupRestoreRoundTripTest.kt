@@ -85,6 +85,32 @@ class BackupRestoreRoundTripTest {
             )
             repo.incrementDailyPlayCount(taskId, "2026-10-05")
 
+            val scheduledReviewAt = 1_800_000_000_000L
+            repo.insertQuizQuestion(
+                QuizQuestion(
+                    trackId = trackId,
+                    noteId = noteId,
+                    questionType = "VOCABULARY",
+                    category = "VOCABULARY",
+                    question = "What does مرحبا mean?",
+                    optionsJson = "[\"Hello\",\"Goodbye\",\"Thanks\",\"Please\"]",
+                    correctIndex = 0,
+                    explanation = "Greeting in Arabic",
+                    timestampMs = 5000L,
+                    timesAnswered = 3,
+                    timesCorrect = 3,
+                    lastAnsweredAt = 1_790_000_000_000L,
+                    targetWord = "مرحبا",
+                    meaning = "Hello",
+                    contextSentence = "مرحبا بكم",
+                    srRepetitions = 3,
+                    srIntervalDays = 8,
+                    srEase = 2.4f,
+                    srLapses = 1,
+                    srNextReviewAt = scheduledReviewAt
+                )
+            )
+
             val backupJson = AutoBackupManager.buildBackupJsonFromRepository(repo, requireNonEmpty = true)
             assertNotNull(backupJson)
 
@@ -95,6 +121,7 @@ class BackupRestoreRoundTripTest {
             val dailyArr = backupJson.getJSONArray("taskDailyProgress")
             val vocabArr = backupJson.getJSONArray("vocabularyItems")
             val labelsArr = backupJson.getJSONArray("taskLabels")
+            val quizQuestionsArr = backupJson.getJSONArray("quizQuestions")
 
             assertEquals(1, historyArr.length())
             assertEquals("ep1", historyArr.getJSONObject(0).getString("trackName"))
@@ -116,6 +143,15 @@ class BackupRestoreRoundTripTest {
             assertEquals(1, vocabArr.length())
             assertEquals("مرحبا", vocabArr.getJSONObject(0).getString("targetWord"))
             assertEquals(1, labelsArr.length())
+
+            assertEquals(1, quizQuestionsArr.length())
+            val exportedQ = quizQuestionsArr.getJSONObject(0)
+            assertEquals("What does مرحبا mean?", exportedQ.getString("question"))
+            assertEquals(3, exportedQ.getInt("srRepetitions"))
+            assertEquals(8, exportedQ.getInt("srIntervalDays"))
+            assertEquals(2.4, exportedQ.getDouble("srEase"), 0.001)
+            assertEquals(1, exportedQ.getInt("srLapses"))
+            assertEquals(scheduledReviewAt, exportedQ.getLong("srNextReviewAt"))
         } finally {
             db.close()
         }

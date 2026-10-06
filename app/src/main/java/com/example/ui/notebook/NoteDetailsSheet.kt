@@ -17,7 +17,10 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,6 +47,31 @@ fun PlaybackCueNotesBottomSheet(
     onCopyNote: (Note) -> Unit
 ) {
     val favTag = Loc.getText("favorite_tag_name")
+    var noteToDelete by remember { mutableStateOf<Note?>(null) }
+
+    if (noteToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { noteToDelete = null },
+            title = { Text(Loc.getText("delete_note")) },
+            text = { Text(Loc.getText("confirm_delete_note")) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        noteToDelete?.let { onDeleteNote(it) }
+                        noteToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(Loc.getText("delete"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { noteToDelete = null }) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -225,7 +253,7 @@ fun PlaybackCueNotesBottomSheet(
 
                                     // Delete Note
                                     IconButton(
-                                        onClick = { onDeleteNote(note) },
+                                        onClick = { noteToDelete = note },
                                         modifier = Modifier.size(32.dp)
                                     ) {
                                         Icon(
