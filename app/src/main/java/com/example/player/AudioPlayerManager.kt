@@ -85,6 +85,7 @@ object AudioPlayerManager {
     internal var practicePauseJob: Job? = null
     internal var practiceLastSegmentStartMs = 0L
     internal var practiceNextBoundaryIndex = 0
+    internal var pendingEndOfTrackAfterPracticePause = false
 
     // Subtitles & Lyrics State
     internal val _subtitlesCues = MutableStateFlow<List<SubtitleCue>>(emptyList())
@@ -473,6 +474,9 @@ object AudioPlayerManager {
 
                 setOnCompletionListener {
                     flushContinuousSegmentsBeforeCompletion()
+                    if (handleEndOfTrackPracticePauseIfNeeded()) {
+                        return@setOnCompletionListener
+                    }
                     // Normal play next or cycle completion (which handles sleep at end of file elegantly)
                     handlePhysicalEndOfTrack()
                 }
@@ -482,6 +486,7 @@ object AudioPlayerManager {
             _isPlaying.value = true
             loadSubtitlesForTrack(track)
             practicePauseJob?.cancel()
+            pendingEndOfTrackAfterPracticePause = false
             _isPracticePausing.value = false
             _practicePauseRemainingSeconds.value = 0f
             val practiceSegs = track.getPracticeSegmentsList()
@@ -534,6 +539,11 @@ object AudioPlayerManager {
 
     fun resume() {
         resumeOnFocusGain = false
+        if (pendingEndOfTrackAfterPracticePause) {
+            pendingEndOfTrackAfterPracticePause = false
+            handlePhysicalEndOfTrack()
+            return
+        }
         if (mediaPlayer == null) {
             currentTrackValue?.let { playTrack(it) }
             return
@@ -605,6 +615,7 @@ object AudioPlayerManager {
         accumulatePracticePauseTime()
         lastPracticePauseTimestamp = 0L
         practicePauseJob?.cancel()
+        pendingEndOfTrackAfterPracticePause = false
         _isPracticePausing.value = false
         _practicePauseRemainingSeconds.value = 0f
         accumulateActiveListeningTime()

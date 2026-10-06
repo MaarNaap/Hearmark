@@ -116,7 +116,7 @@ internal suspend fun AudioPlayerManager.extractSubtitleBoundaries(
     }
 
     val boundaries = mutableListOf<Long>()
-    val maxLimit = if (effectiveDuration > 0L) (effectiveDuration - 350L) else Long.MAX_VALUE
+    val maxLimit = if (effectiveDuration > 0L) effectiveDuration else Long.MAX_VALUE
     val sorted = rawBoundaries
         .filter { it > 300L && it <= maxLimit }
         .distinct()
@@ -401,6 +401,7 @@ fun AudioPlayerManager.saveManualPracticeSegments(context: Context, track: Audio
 
 fun AudioPlayerManager.clearPracticeSegmentsForCurrentTrack() {
     practicePauseJob?.cancel()
+    pendingEndOfTrackAfterPracticePause = false
     _isPracticePausing.value = false
     _practicePauseRemainingSeconds.value = 0f
     _currentPracticeSegments.value = emptyList()
@@ -424,9 +425,13 @@ fun AudioPlayerManager.stopPracticeMode() {
         _isPracticeMode.value = false
         practicePauseJob?.cancel()
         val wasPausing = _isPracticePausing.value
+        val wasPendingEnd = pendingEndOfTrackAfterPracticePause
+        pendingEndOfTrackAfterPracticePause = false
         _isPracticePausing.value = false
         _practicePauseRemainingSeconds.value = 0f
-        if (wasPausing) {
+        if (wasPendingEnd) {
+            handlePhysicalEndOfTrack()
+        } else if (wasPausing) {
             resume()
         }
     }
@@ -483,12 +488,67 @@ fun AudioPlayerManager.onSeekInPracticeMode(targetMs: Long) {
     lastPracticePauseTimestamp = 0L
     val wasPausing = _isPracticePausing.value
     practicePauseJob?.cancel()
+    pendingEndOfTrackAfterPracticePause = false
     _isPracticePausing.value = false
     _practicePauseRemainingSeconds.value = 0f
     resetPracticeSegmentTracking(targetMs)
     if (wasPausing) {
         resume()
     }
+}
+
+internal fun AudioPlayerManager.handleEndOfTrackPracticePauseIfNeeded(): Boolean {
+    if (!_isPracticeMode.value) return false
+    if (_isPracticePausing.value) {
+        pendingEndOfTrackAfterPracticePause = true
+        stopProgressTracking()
+        return true
+    }
+
+    val track = currentTrackValue ?: return false
+    val effectiveDuration = if (track.isVirtualScene) {
+        track.duration
+    } else {
+        val mpDur = try { mediaPlayer?.duration?.toLong() ?: 0L } catch (e: Exception) { 0L }
+        if (mpDur > 0) mpDur else (track.duration.takeIf { it > 0 } ?: _duration.value)
+    }
+    if (effectiveDuration <= 0L) return false
+
+    val segments = _currentPracticeSegments.value
+    val hasUnpausedBoundary = segments.isNotEmpty() && practiceNextBoundaryIndex < segments.size
+    val remainingTailMs = effectiveDuration - practiceLastSegmentStartMs
+    if (!hasUnpausedBoundary && remainingTailMs < 800L) {
+        return false
+    }
+
+    val boundary = if (hasUnpausedBoundary) segments.last() else effectiveDuration
+    val endMs = maxOf(boundary, effectiveDuration)
+    val segmentLengthMs = if (segmentSource == "SUBTITLES") {
+        val cues = _subtitlesCues.value
+        val matchingCue = cues.find { cue ->
+            val cueEnd = if (track.isVirtualScene) {
+                cue.endMs - track.startOffsetMs
+            } else {
+                cue.endMs
+            }
+            Math.abs(cueEnd - boundary) <= 600L || Math.abs(cueEnd - effectiveDuration) <= 600L
+        }
+        if (matchingCue != null && matchingCue.endMs > matchingCue.startMs) {
+            (matchingCue.endMs - matchingCue.startMs).coerceIn(1200L, 25000L)
+        } else {
+            (endMs - practiceLastSegmentStartMs).coerceIn(1200L, 25000L)
+        }
+    } else {
+        (endMs - practiceLastSegmentStartMs).coerceAtLeast(1200L)
+    }
+
+    practiceLastPlayedSegmentStartMs = practiceLastSegmentStartMs
+    practiceLastSegmentStartMs = endMs
+    practiceNextBoundaryIndex = segments.size
+    pendingEndOfTrackAfterPracticePause = true
+    stopProgressTracking()
+    triggerPracticePause(segmentLengthMs, boundary)
+    return true
 }
 
 internal fun AudioPlayerManager.checkPracticeSegmentBoundary(currentPosMs: Long) {
@@ -526,6 +586,17 @@ internal fun AudioPlayerManager.checkPracticeSegmentBoundary(currentPosMs: Long)
         practiceLastPlayedSegmentStartMs = practiceLastSegmentStartMs
         practiceLastSegmentStartMs = boundary
         practiceNextBoundaryIndex++
+        val track = currentTrackValue
+        val effectiveDuration = if (track != null && track.isVirtualScene) {
+            track.duration
+        } else {
+            val mpDur = try { mediaPlayer?.duration?.toLong() ?: 0L } catch (e: Exception) { 0L }
+            if (mpDur > 0) mpDur else (track?.duration?.takeIf { it > 0 } ?: _duration.value)
+        }
+        if (effectiveDuration > 0L && boundary >= effectiveDuration - 150L) {
+            flushContinuousSegmentsBeforeCompletion()
+            pendingEndOfTrackAfterPracticePause = true
+        }
         triggerPracticePause(segmentLengthMs, boundary)
     }
 }
@@ -564,7 +635,9 @@ internal fun AudioPlayerManager.triggerPracticePause(segmentLengthMs: Long, boun
     accumulateActiveListeningTime()
     lastActivePlayTimestamp = 0L
     lastPracticePauseTimestamp = System.currentTimeMillis()
-    flushContinuousSegmentsOnEvent()
+    if (!pendingEndOfTrackAfterPracticePause) {
+        flushContinuousSegmentsOnEvent()
+    }
 
     coroutineScope.launch(Dispatchers.Main) {
         try {
@@ -597,6 +670,11 @@ fun AudioPlayerManager.resumeFromPracticePause() {
     practicePauseJob?.cancel()
     _isPracticePausing.value = false
     _practicePauseRemainingSeconds.value = 0f
+    if (pendingEndOfTrackAfterPracticePause) {
+        pendingEndOfTrackAfterPracticePause = false
+        handlePhysicalEndOfTrack()
+        return
+    }
     coroutineScope.launch(Dispatchers.Main) {
         try {
             mediaPlayer?.start()
@@ -617,6 +695,7 @@ fun AudioPlayerManager.repeatPracticeSegment() {
     accumulatePracticePauseTime()
     lastPracticePauseTimestamp = 0L
     practicePauseJob?.cancel()
+    pendingEndOfTrackAfterPracticePause = false
     _isPracticePausing.value = false
     _practicePauseRemainingSeconds.value = 0f
 

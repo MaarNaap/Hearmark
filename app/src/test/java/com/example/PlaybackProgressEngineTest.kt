@@ -3,6 +3,7 @@ package com.example
 import com.example.data.AudioTrack
 import com.example.player.AudioPlayerManager
 import com.example.player.PlaybackProgressEngine
+import com.example.player.handleEndOfTrackPracticePauseIfNeeded
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -175,5 +176,51 @@ class PlaybackProgressEngineTest {
         assertEquals(2L, AudioPlayerManager.currentTrackValue?.id)
         assertEquals(2L, AudioPlayerManager.currentTrack.value?.id)
         assertEquals(0L, AudioPlayerManager.currentTrackValue?.lastPosition)
+    }
+
+    @Test
+    fun practiceMode_finalCutAtEndOfTrack_pausesBeforeResettingProgress() {
+        val durationMs = 20_000L // 20s track -> 20 segments (0..19)
+        val initialSegments = (0..18).joinToString(",")
+        val track = AudioTrack(
+            id = 55L,
+            filePath = "/a/practice.mp3",
+            fileName = "practice.mp3",
+            duration = durationMs,
+            lastPosition = 19_500L,
+            listenedSegments = initialSegments,
+            practiceSegments = "SIL:6000,13000,20000"
+        )
+
+        AudioPlayerManager.currentTrackValue = track
+        AudioPlayerManager._currentTrack.value = track
+        AudioPlayerManager._duration.value = durationMs
+        AudioPlayerManager._currentPosition.value = 19_500L
+        AudioPlayerManager.setLastTrackedPosition(19_500L)
+        AudioPlayerManager._isPracticeMode.value = true
+        AudioPlayerManager._isPracticePausing.value = false
+        AudioPlayerManager.pendingEndOfTrackAfterPracticePause = false
+        AudioPlayerManager._currentPracticeSegments.value = listOf(6000L, 13000L, 20000L)
+        AudioPlayerManager.practiceLastSegmentStartMs = 13_000L
+        AudioPlayerManager.practiceNextBoundaryIndex = 2
+        AudioPlayerManager.practicePauseMultiplier = 1.0f
+
+        // Simulate track reaching physical completion while playing the final cut (13000 -> 20000)
+        PlaybackProgressEngine.flushContinuousSegmentsBeforeCompletion()
+        val pausedForFinalCut = AudioPlayerManager.handleEndOfTrackPracticePauseIfNeeded()
+
+        assertTrue("Final cut at end of track should trigger practice pause", pausedForFinalCut)
+        assertTrue(AudioPlayerManager.isPracticePausing.value)
+        assertTrue(AudioPlayerManager.pendingEndOfTrackAfterPracticePause)
+        assertEquals(7.0f, AudioPlayerManager.practicePauseTotalSeconds.value, 0.01f)
+        assertEquals(13_000L, AudioPlayerManager.practiceRepeatSegmentStartMs)
+        assertEquals("Progress must remain at 100% during final cut practice pause", 100, AudioPlayerManager.currentTrackValue?.getProgressPercent())
+        assertEquals(durationMs, AudioPlayerManager.currentPosition.value)
+
+        // Clean up practice pause job
+        AudioPlayerManager.practicePauseJob?.cancel()
+        AudioPlayerManager._isPracticeMode.value = false
+        AudioPlayerManager._isPracticePausing.value = false
+        AudioPlayerManager.pendingEndOfTrackAfterPracticePause = false
     }
 }

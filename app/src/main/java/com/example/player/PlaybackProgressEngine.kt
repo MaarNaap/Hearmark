@@ -259,9 +259,10 @@ internal object PlaybackProgressEngine {
                 }
                 val endPhysicalPos = if (track.isVirtualScene) (track.startOffsetMs + effectiveDuration) else effectiveDuration
                 setLastTrackedPosition(endPhysicalPos)
+                _currentPosition.value = effectiveDuration
                 if (hadNewSegments) {
                     val serialized = serializeBitSet(bitSet)
-                    val updated = track.copy(listenedSegments = serialized)
+                    val updated = track.copy(lastPosition = effectiveDuration, listenedSegments = serialized)
                     currentTrackValue = updated
                     _currentTrack.value = updated
                 }
@@ -424,7 +425,9 @@ internal object PlaybackProgressEngine {
                                         try {
                                             mediaPlayer?.pause()
                                         } catch (e: Exception) {}
-                                        handlePhysicalEndOfTrack()
+                                        if (!handleEndOfTrackPracticePauseIfNeeded()) {
+                                            handlePhysicalEndOfTrack()
+                                        }
                                     }
                                     return@launch
                                 }
