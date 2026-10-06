@@ -1,0 +1,281 @@
+From f5ddf26be4a07ca4ff091e0ddefc6b63911e2ba6 Mon Sep 17 00:00:00 2001
+From: claude <claude@example.com>
+Date: Tue, 6 Oct 2026 13:40:13 +0000
+Subject: [PATCH] feat: add optional voice boost (LoudnessEnhancer) with
+ settings slider
+
+---
+ .../com/example/player/AudioPlayerManager.kt  |  4 +
+ .../example/player/VoiceBoostController.kt    | 76 +++++++++++++++++++
+ .../main/java/com/example/ui/AppViewModel.kt  | 14 ++++
+ app/src/main/java/com/example/ui/Loc.kt       |  3 +
+ .../ui/settings/PlaybackSettingsCard.kt       | 26 ++++++-
+ .../com/example/ui/settings/SettingsView.kt   |  4 +-
+ .../com/example/VoiceBoostControllerTest.kt   | 36 +++++++++
+ 7 files changed, 161 insertions(+), 2 deletions(-)
+ create mode 100644 app/src/main/java/com/example/player/VoiceBoostController.kt
+ create mode 100644 app/src/test/java/com/example/VoiceBoostControllerTest.kt
+
+diff --git a/app/src/main/java/com/example/player/AudioPlayerManager.kt b/app/src/main/java/com/example/player/AudioPlayerManager.kt
+index 0c0dc06..17c59da 100644
+--- a/app/src/main/java/com/example/player/AudioPlayerManager.kt
++++ b/app/src/main/java/com/example/player/AudioPlayerManager.kt
+@@ -22,6 +22,10 @@ object AudioPlayerManager {
+     internal const val TAG = "AudioPlayerManager"
+ 
+     internal var mediaPlayer: MediaPlayer? = null
++        set(value) {
++            field = value
++            VoiceBoostController.attach(value)
++        }
+     internal var currentTrackValue: AudioTrack? = null
+     private val _currentQueueFlow = MutableStateFlow<List<AudioTrack>>(emptyList())
+     val currentQueueFlow: StateFlow<List<AudioTrack>> = _currentQueueFlow.asStateFlow()
+diff --git a/app/src/main/java/com/example/player/VoiceBoostController.kt b/app/src/main/java/com/example/player/VoiceBoostController.kt
+new file mode 100644
+index 0000000..17728c8
+--- /dev/null
++++ b/app/src/main/java/com/example/player/VoiceBoostController.kt
+@@ -0,0 +1,76 @@
++package com.example.player
++
++import android.media.MediaPlayer
++import android.media.audiofx.LoudnessEnhancer
++import android.util.Log
++
++/**
++ * Optional "voice boost": adds gain on top of the normal volume using Android's
++ * LoudnessEnhancer, so quiet recordings can be played louder than setVolume(1.0f) allows.
++ *
++ * - Level 0 means off: no audio effect is created at all.
++ * - Each level adds +3 dB (300 mB), up to +15 dB at MAX_LEVEL.
++ * - The effect is tied to one MediaPlayer's audio session, so AudioPlayerManager's
++ *   mediaPlayer setter calls [attach] every time the player changes (including null on release).
++ * - Everything is best effort: if a device rejects the effect, playback continues unboosted.
++ */
++object VoiceBoostController {
++    private const val TAG = "VoiceBoost"
++    const val MAX_LEVEL = 5
++    private const val GAIN_MB_PER_LEVEL = 300
++
++    private var level = 0
++    private var player: MediaPlayer? = null
++    private var enhancer: LoudnessEnhancer? = null
++
++    fun levelToGainMb(level: Int): Int = level.coerceIn(0, MAX_LEVEL) * GAIN_MB_PER_LEVEL
++
++    fun levelToDb(level: Int): Int = levelToGainMb(level) / 100
++
++    @Synchronized
++    fun setLevel(newLevel: Int) {
++        level = newLevel.coerceIn(0, MAX_LEVEL)
++        applyToCurrentPlayer()
++    }
++
++    /** Called whenever the active MediaPlayer changes. Pass null when it is released. */
++    @Synchronized
++    fun attach(newPlayer: MediaPlayer?) {
++        releaseEnhancer()
++        player = newPlayer
++        applyToCurrentPlayer()
++    }
++
++    private fun applyToCurrentPlayer() {
++        val gainMb = levelToGainMb(level)
++        val p = player
++        if (p == null || gainMb == 0) {
++            releaseEnhancer()
++            return
++        }
++        try {
++            var e = enhancer
++            if (e == null) {
++                val session = p.audioSessionId
++                // 0 is the global output mix: never attach an effect there.
++                if (session <= 0) return
++                e = LoudnessEnhancer(session)
++                e.setEnabled(true)
++                enhancer = e
++            }
++            e.setTargetGain(gainMb)
++        } catch (ex: Exception) {
++            Log.w(TAG, "Voice boost unavailable: ${ex.message}")
++            releaseEnhancer()
++        }
++    }
++
++    private fun releaseEnhancer() {
++        try {
++            enhancer?.release()
++        } catch (ex: Exception) {
++            Log.w(TAG, "Voice boost release failed: ${ex.message}")
++        }
++        enhancer = null
++    }
++}
+diff --git a/app/src/main/java/com/example/ui/AppViewModel.kt b/app/src/main/java/com/example/ui/AppViewModel.kt
+index a01c988..ff6c25a 100644
+--- a/app/src/main/java/com/example/ui/AppViewModel.kt
++++ b/app/src/main/java/com/example/ui/AppViewModel.kt
+@@ -116,6 +116,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
+     var selectedTheme by mutableStateOf("dark") // system, light, dark
+     var thresholdSetting by mutableStateOf(90) // 80 - 100
+     var skipSecondsSetting by mutableStateOf(10) // 5, 10, 15, 30
++    var voiceBoostLevel by mutableStateOf(0) // 0 = off, 1..5 = +3 dB per step
+     var headsetControlsEnabled by mutableStateOf(true)
+     var headsetMultiClickAction by mutableStateOf("NEXT_PREV") // "NEXT_PREV" or "SKIP_SECONDS"
+     var segmentSourceSetting by mutableStateOf("SILENCE") // "SILENCE" or "SUBTITLES"
+@@ -322,6 +323,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
+         selectedTheme = sharedPref.getString("theme", "dark") ?: "dark"
+         thresholdSetting = sharedPref.getInt("threshold", 90)
+         skipSecondsSetting = sharedPref.getInt("skip_seconds", 10)
++        voiceBoostLevel = sharedPref.getInt("voice_boost_level", 0).coerceIn(0, VoiceBoostController.MAX_LEVEL)
+         headsetControlsEnabled = sharedPref.getBoolean("headset_controls_enabled", true)
+         headsetMultiClickAction = sharedPref.getString("headset_multiclick_action", "NEXT_PREV") ?: "NEXT_PREV"
+         
+@@ -378,6 +380,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
+ 
+         AudioPlayerManager.init(application, repository)
+         AudioPlayerManager.setSettings(thresholdSetting, skipSecondsSetting)
++        VoiceBoostController.setLevel(voiceBoostLevel)
+         AudioPlayerManager.setHeadsetSettings(headsetControlsEnabled, headsetMultiClickAction)
+         AudioPlayerManager.setPracticeSettings(segmentSourceSetting, practicePauseMultiplierSetting)
+         AudioPlayerManager.setSilenceSettings(silenceSensitivitySetting, silenceMinDurationSetting, silencePaddingSetting)
+@@ -640,4 +643,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
+     val detectingTrackName = MutableStateFlow<String?>(null)
+     val sceneDetectionStatus = MutableStateFlow<String?>(null)
+     internal var sceneDetectionJob: kotlinx.coroutines.Job? = null
++
++    fun updateVoiceBoost(level: Int) {
++        val clamped = level.coerceIn(0, VoiceBoostController.MAX_LEVEL)
++        voiceBoostLevel = clamped
++        getApplication<Application>()
++            .getSharedPreferences("app_settings", Context.MODE_PRIVATE)
++            .edit()
++            .putInt("voice_boost_level", clamped)
++            .apply()
++        VoiceBoostController.setLevel(clamped)
++    }
+ }
+diff --git a/app/src/main/java/com/example/ui/Loc.kt b/app/src/main/java/com/example/ui/Loc.kt
+index 461d2ff..e5067db 100644
+--- a/app/src/main/java/com/example/ui/Loc.kt
++++ b/app/src/main/java/com/example/ui/Loc.kt
+@@ -477,6 +477,9 @@ object Loc {
+         // Settings
+         "completion_slider" to mapOf("en" to "Completion Threshold", "ar" to "عتبة اكتمال الملف الصوتي"),
+         "skip_duration_label" to mapOf("en" to "Navigation skip duration", "ar" to "مدة أزرار التنقل السريع"),
++        "voice_boost_label" to mapOf("en" to "Voice boost", "ar" to "تعزيز الصوت"),
++        "voice_boost_off" to mapOf("en" to "Off", "ar" to "إيقاف"),
++        "voice_boost_note" to mapOf("en" to "Makes quiet recordings louder. High levels may distort loud parts, so lower the level if the sound crackles.", "ar" to "يرفع مستوى الأصوات الهادئة. المستويات العالية قد تُشوّه الأصوات المرتفعة، فخفّض المستوى إذا ظهر تقطّع في الصوت."),
+         "theme" to mapOf("en" to "App Theme visual style", "ar" to "ثيم التطبيق المعتمد"),
+         "light" to mapOf("en" to "Light theme", "ar" to "فاتح مريح للعين"),
+         "dark" to mapOf("en" to "Dark elegant slate", "ar" to "داكن كحلي فخم"),
+diff --git a/app/src/main/java/com/example/ui/settings/PlaybackSettingsCard.kt b/app/src/main/java/com/example/ui/settings/PlaybackSettingsCard.kt
+index aae4ebd..83e8b60 100644
+--- a/app/src/main/java/com/example/ui/settings/PlaybackSettingsCard.kt
++++ b/app/src/main/java/com/example/ui/settings/PlaybackSettingsCard.kt
+@@ -12,13 +12,17 @@ import androidx.compose.ui.platform.testTag
+ import androidx.compose.ui.text.font.FontWeight
+ import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.unit.sp
++import com.example.player.VoiceBoostController
++import kotlin.math.roundToInt
+ 
+ @Composable
+ fun PlaybackSettingsCard(
+     sliderValue: Float,
+     onSliderValueChange: (Float) -> Unit,
+     skipVal: Int,
+-    onSkipValChange: (Int) -> Unit
++    onSkipValChange: (Int) -> Unit,
++    voiceBoostLevel: Int,
++    onVoiceBoostChange: (Int) -> Unit
+ ) {
+     // Threshold slider
+     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+@@ -59,4 +63,24 @@ fun PlaybackSettingsCard(
+             }
+         }
+     }
++    // voice boost
++    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
++        Column(modifier = Modifier.padding(12.dp)) {
++            val boostText = if (voiceBoostLevel <= 0) {
++                Loc.getText("voice_boost_off")
++            } else {
++                "+${VoiceBoostController.levelToDb(voiceBoostLevel)} dB"
++            }
++            Text(Loc.getText("voice_boost_label") + ": " + boostText, fontWeight = FontWeight.Bold, fontSize = 13.sp)
++            Spacer(modifier = Modifier.height(2.dp))
++            Slider(
++                value = voiceBoostLevel.toFloat(),
++                onValueChange = { onVoiceBoostChange(it.roundToInt()) },
++                valueRange = 0f..VoiceBoostController.MAX_LEVEL.toFloat(),
++                steps = VoiceBoostController.MAX_LEVEL - 1,
++                modifier = Modifier.testTag("voice_boost_slider")
++            )
++            Text(Loc.getText("voice_boost_note"), fontSize = 10.sp, color = Color.Gray)
++        }
++    }
+ }
+diff --git a/app/src/main/java/com/example/ui/settings/SettingsView.kt b/app/src/main/java/com/example/ui/settings/SettingsView.kt
+index ad51a2c..380c9ce 100644
+--- a/app/src/main/java/com/example/ui/settings/SettingsView.kt
++++ b/app/src/main/java/com/example/ui/settings/SettingsView.kt
+@@ -84,7 +84,9 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
+             sliderValue = sliderValue,
+             onSliderValueChange = { sliderValue = it },
+             skipVal = skipVal,
+-            onSkipValChange = { skipVal = it }
++            onSkipValChange = { skipVal = it },
++            voiceBoostLevel = viewModel.voiceBoostLevel,
++            onVoiceBoostChange = { viewModel.updateVoiceBoost(it) }
+         )
+ 
+         // 2. Headset & Media Controls Card
+diff --git a/app/src/test/java/com/example/VoiceBoostControllerTest.kt b/app/src/test/java/com/example/VoiceBoostControllerTest.kt
+new file mode 100644
+index 0000000..b19f0bd
+--- /dev/null
++++ b/app/src/test/java/com/example/VoiceBoostControllerTest.kt
+@@ -0,0 +1,36 @@
++package com.example
++
++import com.example.player.VoiceBoostController
++import org.junit.Assert.assertEquals
++import org.junit.Test
++
++class VoiceBoostControllerTest {
++
++    @Test
++    fun levelZero_isOff() {
++        assertEquals(0, VoiceBoostController.levelToGainMb(0))
++        assertEquals(0, VoiceBoostController.levelToDb(0))
++    }
++
++    @Test
++    fun eachLevelAddsThreeDb() {
++        assertEquals(300, VoiceBoostController.levelToGainMb(1))
++        assertEquals(3, VoiceBoostController.levelToDb(1))
++        assertEquals(9, VoiceBoostController.levelToDb(3))
++    }
++
++    @Test
++    fun levelsAreClampedToTheSafeRange() {
++        assertEquals(0, VoiceBoostController.levelToGainMb(-4))
++        val max = VoiceBoostController.levelToGainMb(VoiceBoostController.MAX_LEVEL)
++        assertEquals(1500, max)
++        assertEquals(max, VoiceBoostController.levelToGainMb(99))
++    }
++
++    @Test
++    fun settingLevelWithNoPlayer_doesNothingAndDoesNotCrash() {
++        VoiceBoostController.attach(null)
++        VoiceBoostController.setLevel(3)
++        VoiceBoostController.setLevel(0)
++    }
++}
+-- 
+2.43.0
+
