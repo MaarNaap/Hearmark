@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,6 +40,203 @@ fun UnifiedTrackDropdownMenu(
     onImportScenesJson: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    var showResetSegmentsConfirm by remember { mutableStateOf(false) }
+    var showResetTaskProgressConfirm by remember { mutableStateOf(false) }
+    var showRemoveFromPlaylistConfirm by remember { mutableStateOf(false) }
+    var showDeleteTrackConfirm by remember { mutableStateOf(false) }
+
+    if (showResetSegmentsConfirm) {
+        AlertDialog(
+            onDismissRequest = { showResetSegmentsConfirm = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.RestartAlt,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = Loc.getText("reset_track_progress_confirm_title"),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = Loc.getFormattedText("reset_track_progress_confirm_desc", track.getDisplayTitle()),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showResetSegmentsConfirm = false
+                        viewModel.resetTrackSegments(track)
+                        Toast.makeText(context, Loc.getText("segments_reset_success"), Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("confirm_reset_track_progress_btn")
+                ) {
+                    Text(Loc.getText("reset_segments"))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showResetSegmentsConfirm = false },
+                    modifier = Modifier.testTag("cancel_reset_track_progress_btn")
+                ) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
+
+    if (showResetTaskProgressConfirm && taskId != null) {
+        AlertDialog(
+            onDismissRequest = { showResetTaskProgressConfirm = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.RestartAlt,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = Loc.getText("reset_task_progress_confirm_title"),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = Loc.getFormattedText("reset_task_progress_confirm_desc", track.getDisplayTitle()),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showResetTaskProgressConfirm = false
+                        viewModel.resetTaskTrackProgress(taskId, track.id)
+                        Toast.makeText(context, Loc.getText("re_activated_msg"), Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("confirm_reset_task_progress_btn")
+                ) {
+                    Text(Loc.getText("reset_task_progress_action"))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showResetTaskProgressConfirm = false },
+                    modifier = Modifier.testTag("cancel_reset_task_progress_btn")
+                ) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
+
+    if (showRemoveFromPlaylistConfirm && playlistId != null) {
+        AlertDialog(
+            onDismissRequest = { showRemoveFromPlaylistConfirm = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = Loc.getText("remove_from_playlist_confirm_title"),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = Loc.getFormattedText("remove_from_playlist_confirm_desc", track.getDisplayTitle()),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showRemoveFromPlaylistConfirm = false
+                        viewModel.removeTrackFromPlaylist(playlistId, track.id)
+                        Toast.makeText(context, Loc.getText("remove_from_playlist_success"), Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("confirm_remove_from_playlist_btn")
+                ) {
+                    Text(Loc.getText("delete_history"))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showRemoveFromPlaylistConfirm = false },
+                    modifier = Modifier.testTag("cancel_remove_from_playlist_btn")
+                ) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
+
+    if (showDeleteTrackConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteTrackConfirm = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = if (track.isVirtualScene) Loc.getText("delete_scene_confirm_title") else Loc.getText("delete_track_confirm_title"),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = if (track.isVirtualScene) {
+                        Loc.getFormattedText("delete_scene_confirm_desc", track.getDisplayTitle())
+                    } else {
+                        Loc.getFormattedText("delete_track_confirm_desc", track.getDisplayTitle())
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteTrackConfirm = false
+                        viewModel.deleteTrackFromApp(track)
+                        Toast.makeText(
+                            context,
+                            if (track.isVirtualScene) Loc.getText("scene_deleted_success") else Loc.getText("delete_history"),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("confirm_delete_track_btn")
+                ) {
+                    Text(Loc.getText("delete"))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteTrackConfirm = false },
+                    modifier = Modifier.testTag("cancel_delete_track_btn")
+                ) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
+
     DropdownMenu(expanded = expanded, onDismissRequest = onDismissRequest) {
         DropdownMenuItem(
             text = { Text(Loc.getText("play_next")) },
@@ -80,9 +278,9 @@ fun UnifiedTrackDropdownMenu(
             text = { Text(Loc.getText("reset_segments")) },
             onClick = {
                 onDismissRequest()
-                viewModel.resetTrackSegments(track)
-                Toast.makeText(context, Loc.getText("segments_reset_success"), Toast.LENGTH_SHORT).show()
-            }
+                showResetSegmentsConfirm = true
+            },
+            modifier = Modifier.testTag("menu_reset_segments")
         )
         if (track.isVirtualScene) {
             DropdownMenuItem(
@@ -118,25 +316,22 @@ fun UnifiedTrackDropdownMenu(
                 }
             )
         }
+        val destructiveLabel = when {
+            taskId != null -> Loc.getText("reset_task_progress_action")
+            playlistId != null -> Loc.getText("remove_from_playlist_action")
+            else -> Loc.getText("delete_history")
+        }
         DropdownMenuItem(
-            text = { Text(Loc.getText("delete_history"), color = MaterialTheme.colorScheme.error) },
+            text = { Text(destructiveLabel, color = MaterialTheme.colorScheme.error) },
             onClick = {
                 onDismissRequest()
                 when {
-                    taskId != null -> {
-                        viewModel.resetTaskTrackProgress(taskId, track.id)
-                        Toast.makeText(context, Loc.getText("re_activated_msg"), Toast.LENGTH_SHORT).show()
-                    }
-                    playlistId != null -> {
-                        viewModel.removeTrackFromPlaylist(playlistId, track.id)
-                        Toast.makeText(context, Loc.getText("delete_history"), Toast.LENGTH_SHORT).show()
-                    }
-                    else -> {
-                        viewModel.deleteTrackFromApp(track)
-                        Toast.makeText(context, Loc.getText("delete_history"), Toast.LENGTH_SHORT).show()
-                    }
+                    taskId != null -> showResetTaskProgressConfirm = true
+                    playlistId != null -> showRemoveFromPlaylistConfirm = true
+                    else -> showDeleteTrackConfirm = true
                 }
-            }
+            },
+            modifier = Modifier.testTag("menu_destructive_track_action")
         )
     }
 }

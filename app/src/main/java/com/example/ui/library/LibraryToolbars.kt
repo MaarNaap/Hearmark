@@ -10,7 +10,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -149,6 +149,54 @@ fun LibraryTracksBulkToolbar(
     onAddToPlaylistRequest: (AudioTrack) -> Unit,
     onExitBulkMode: () -> Unit
 ) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = Loc.getText("delete_tracks_bulk_confirm_title"),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = Loc.getFormattedText("delete_tracks_bulk_confirm_desc", selectedTrackIdsSet.size),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirm = false
+                        viewModel.deleteSelectedTracks()
+                        onExitBulkMode()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("confirm_bulk_delete_tracks_btn")
+                ) {
+                    Text(Loc.getText("delete"))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteConfirm = false },
+                    modifier = Modifier.testTag("cancel_bulk_delete_tracks_btn")
+                ) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.secondaryContainer
@@ -179,10 +227,14 @@ fun LibraryTracksBulkToolbar(
                         tint = if (areAllTracksSelected) MaterialTheme.colorScheme.primary else Color.Gray
                     )
                 }
-                IconButton(onClick = {
-                    viewModel.deleteSelectedTracks()
-                    onExitBulkMode()
-                }) {
+                IconButton(
+                    onClick = {
+                        if (selectedTrackIdsSet.isNotEmpty()) {
+                            showDeleteConfirm = true
+                        }
+                    },
+                    modifier = Modifier.testTag("bulk_delete_tracks_btn")
+                ) {
                     Icon(Icons.Filled.Delete, "Delete selection", tint = MaterialTheme.colorScheme.error)
                 }
                 IconButton(onClick = {
@@ -225,6 +277,55 @@ fun LibraryFoldersBulkToolbar(
     onSelectedFolderIdsChange: (Set<Long>) -> Unit,
     onExitBulkMode: () -> Unit
 ) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = Loc.getText("delete_folders_bulk_confirm_title"),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = Loc.getFormattedText("delete_folders_bulk_confirm_desc", selectedFolderIds.size),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirm = false
+                        viewModel.deleteMultipleFolders(selectedFolderIds)
+                        onExitBulkMode()
+                        onSelectedFolderIdsChange(emptySet())
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("confirm_bulk_delete_folders_btn")
+                ) {
+                    Text(Loc.getText("delete"))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteConfirm = false },
+                    modifier = Modifier.testTag("cancel_bulk_delete_folders_btn")
+                ) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.secondaryContainer
@@ -255,11 +356,14 @@ fun LibraryFoldersBulkToolbar(
                         tint = if (areAllFoldersSelected) MaterialTheme.colorScheme.primary else Color.Gray
                     )
                 }
-                IconButton(onClick = {
-                    viewModel.deleteMultipleFolders(selectedFolderIds)
-                    onExitBulkMode()
-                    onSelectedFolderIdsChange(emptySet())
-                }) {
+                IconButton(
+                    onClick = {
+                        if (selectedFolderIds.isNotEmpty()) {
+                            showDeleteConfirm = true
+                        }
+                    },
+                    modifier = Modifier.testTag("bulk_delete_folders_btn")
+                ) {
                     Icon(Icons.Filled.Delete, "Delete folders", tint = MaterialTheme.colorScheme.error)
                 }
                 IconButton(onClick = {
@@ -292,6 +396,55 @@ fun LibraryPlaylistsBulkToolbar(
     onSelectedPlaylistIdsChange: (Set<Long>) -> Unit,
     onExitBulkMode: () -> Unit
 ) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = Loc.getText("delete_playlists_bulk_confirm_title"),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = Loc.getFormattedText("delete_playlists_bulk_confirm_desc", selectedPlaylistIds.size),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirm = false
+                        viewModel.deleteMultiplePlaylists(selectedPlaylistIds)
+                        onExitBulkMode()
+                        onSelectedPlaylistIdsChange(emptySet())
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("confirm_bulk_delete_playlists_btn")
+                ) {
+                    Text(Loc.getText("delete"))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteConfirm = false },
+                    modifier = Modifier.testTag("cancel_bulk_delete_playlists_btn")
+                ) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.secondaryContainer
@@ -322,11 +475,14 @@ fun LibraryPlaylistsBulkToolbar(
                         tint = if (areAllPlaylistsSelected) MaterialTheme.colorScheme.primary else Color.Gray
                     )
                 }
-                IconButton(onClick = {
-                    viewModel.deleteMultiplePlaylists(selectedPlaylistIds)
-                    onExitBulkMode()
-                    onSelectedPlaylistIdsChange(emptySet())
-                }) {
+                IconButton(
+                    onClick = {
+                        if (selectedPlaylistIds.isNotEmpty()) {
+                            showDeleteConfirm = true
+                        }
+                    },
+                    modifier = Modifier.testTag("bulk_delete_playlists_btn")
+                ) {
                     Icon(Icons.Filled.Delete, "Delete playlists", tint = MaterialTheme.colorScheme.error)
                 }
                 IconButton(onClick = {

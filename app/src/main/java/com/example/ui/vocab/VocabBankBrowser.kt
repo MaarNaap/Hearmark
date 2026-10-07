@@ -12,8 +12,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,6 +43,52 @@ fun VocabBankBrowserView(
     val dueColor = if (isDarkSurface) Color(0xFFFFB74D) else Color(0xFFE65100)
     val scheduledColor = if (isDarkSurface) Color(0xFF81C784) else Color(0xFF2E7D32)
     val badgeBgAlpha = if (isDarkSurface) 0.18f else 0.15f
+    var questionToDelete by remember { mutableStateOf<QuizQuestion?>(null) }
+
+    if (questionToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { questionToDelete = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.DeleteOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = Loc.getText("delete_question_confirm_title"),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = Loc.getText("delete_question_confirm_desc"),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        questionToDelete?.let { onDeleteQuestion(it) }
+                        questionToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("confirm_delete_vocab_question_btn")
+                ) {
+                    Text(Loc.getText("delete"))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { questionToDelete = null },
+                    modifier = Modifier.testTag("cancel_delete_vocab_question_btn")
+                ) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
 
     val dueCount = remember(allQuestions) {
         allQuestions.count { com.example.util.SpacedRepetition.isDue(it.srNextReviewAt) }
@@ -226,7 +271,7 @@ fun VocabBankBrowserView(
                                         }
                                     }
                                     IconButton(
-                                        onClick = { onDeleteQuestion(q) },
+                                        onClick = { questionToDelete = q },
                                         modifier = Modifier.size(32.dp)
                                     ) {
                                         Icon(

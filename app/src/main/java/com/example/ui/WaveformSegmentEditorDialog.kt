@@ -9,6 +9,8 @@ import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -87,6 +90,53 @@ fun WaveformSegmentEditorDialog(
 
     var selectedCutIndex by remember { mutableStateOf<Int?>(null) }
     var followPlayhead by remember { mutableStateOf(true) }
+    var showClearAllCutsConfirm by remember { mutableStateOf(false) }
+
+    if (showClearAllCutsConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearAllCutsConfirm = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.DeleteSweep,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = Loc.getText("clear_all_cuts_confirm_title"),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = Loc.getFormattedText("clear_all_cuts_confirm_desc", cuts.size),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        cuts.clear()
+                        selectedCutIndex = null
+                        showClearAllCutsConfirm = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("confirm_clear_all_cuts_btn")
+                ) {
+                    Text(Loc.getText("clear_all_cuts"))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showClearAllCutsConfirm = false },
+                    modifier = Modifier.testTag("cancel_clear_all_cuts_btn")
+                ) {
+                    Text(Loc.getText("cancel"))
+                }
+            }
+        )
+    }
 
     val zoomLevels = remember { defaultWaveformZoomLevels() }
     var zoomIndex by remember { mutableIntStateOf(2) } // Default: index 2 -> 1x (220 dp/sec)
@@ -467,8 +517,9 @@ fun WaveformSegmentEditorDialog(
                     onImportFromSilence = { importFromSilence("cuts_imported_from_silence") },
                     onImportFromSubtitles = importFromSubtitles,
                     onClearAllCuts = {
-                        cuts.clear()
-                        selectedCutIndex = null
+                        if (cuts.isNotEmpty()) {
+                            showClearAllCutsConfirm = true
+                        }
                     }
                 )
 

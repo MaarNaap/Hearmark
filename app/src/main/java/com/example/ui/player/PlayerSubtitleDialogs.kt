@@ -37,6 +37,18 @@ fun SubtitlePasteEditDialog(
     var textFieldValue by remember {
         mutableStateOf(TextFieldValue(initialText, TextRange(initialText.length)))
     }
+    var showClearSubtitlesConfirm by remember { mutableStateOf(false) }
+
+    if (showClearSubtitlesConfirm) {
+        DeleteSubtitleConfirmDialog(
+            onDismiss = { showClearSubtitlesConfirm = false },
+            onConfirmDelete = {
+                AudioPlayerManager.clearSubtitlesForCurrentTrack()
+                showClearSubtitlesConfirm = false
+                onSaveCleared()
+            }
+        )
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -265,10 +277,13 @@ fun SubtitlePasteEditDialog(
                                 val textToSave = textFieldValue.text
                                 if (textToSave.isNotBlank()) {
                                     AudioPlayerManager.setSubtitleContentForCurrentTrack(textToSave)
+                                    onSaveCleared()
+                                } else if (isEditingExistingSubtitles || initialText.isNotBlank()) {
+                                    showClearSubtitlesConfirm = true
                                 } else {
                                     AudioPlayerManager.clearSubtitlesForCurrentTrack()
+                                    onSaveCleared()
                                 }
-                                onSaveCleared()
                             },
                             modifier = Modifier.height(40.dp),
                             shape = RoundedCornerShape(10.dp)
