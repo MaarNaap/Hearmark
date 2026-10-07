@@ -122,6 +122,7 @@ fun HomeView(
     val allTaskProgress by viewModel.allTaskProgress.collectAsStateWithLifecycle()
     val todayDailyProgressList by viewModel.todayDailyProgress.collectAsStateWithLifecycle()
     val allVocabQuestions by viewModel.allVocabularyQuestions.collectAsStateWithLifecycle()
+    val playbackHistory by viewModel.playbackHistory.collectAsStateWithLifecycle(emptyList())
 
     val dayOfWeekToday = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
     val todayStr = when (dayOfWeekToday) {
@@ -133,6 +134,11 @@ fun HomeView(
         Calendar.FRIDAY -> "FRIDAY"
         Calendar.SATURDAY -> "SATURDAY"
         else -> ""
+    }
+
+    val todayActualListenMs = remember(playbackHistory, tracks, todayStr) {
+        val todayHistory = filterHistoryByTimeRange(playbackHistory, "today")
+        computeAggregatedStats(todayHistory, tracks).second
     }
 
     val todayTasks = remember(activeTasks, todayStr) {
@@ -220,56 +226,99 @@ fun HomeView(
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_logo),
-                        contentDescription = "Hearmark Logo",
-                        modifier = Modifier
-                            .size(46.dp)
-                            .padding(end = 10.dp)
-                            .testTag("app_logo")
-                    )
-                    Column {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_logo),
+                    contentDescription = "Hearmark Logo",
+                    modifier = Modifier
+                        .size(46.dp)
+                        .padding(end = 10.dp)
+                        .testTag("app_logo")
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
                             text = Loc.getText("app_name"),
                             fontSize = 24.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        Text(
-                            text = "🗓️ " + SimpleDateFormat("EEEE, dd MMM", Locale(Loc.currentLanguage)).format(Date()).toWesternDigits(),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
-                        )
-                    }
-                }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = onVocabularyReviewClicked,
-                        modifier = Modifier.testTag("btn_home_vocab_review")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Spellcheck,
-                            contentDescription = Loc.getText("vocab_review_title"),
-                            tint = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.size(26.dp)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = onVocabularyReviewClicked,
+                                modifier = Modifier
+                                    .size(width = 40.dp, height = 32.dp)
+                                    .testTag("btn_home_vocab_review")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Spellcheck,
+                                    contentDescription = Loc.getText("vocab_review_title"),
+                                    tint = MaterialTheme.colorScheme.onBackground,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = onSettingsClicked,
+                                modifier = Modifier
+                                    .size(width = 40.dp, height = 32.dp)
+                                    .testTag("btn_home_settings")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Settings,
+                                    contentDescription = "Settings",
+                                    tint = MaterialTheme.colorScheme.onBackground,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        }
                     }
-                    IconButton(
-                        onClick = onSettingsClicked,
-                        modifier = Modifier.testTag("btn_home_settings")
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Settings,
-                            contentDescription = "Settings",
-                            tint = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.size(28.dp)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Filled.CalendarToday,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = SimpleDateFormat("EEEE, dd MMM", Locale(Loc.currentLanguage)).format(Date()).toWesternDigits(),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+                            )
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .padding(end = 6.dp)
+                                .testTag("home_today_listen_time")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Timer,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = formatStatsDuration(todayActualListenMs),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+                            )
+                        }
                     }
                 }
             }
