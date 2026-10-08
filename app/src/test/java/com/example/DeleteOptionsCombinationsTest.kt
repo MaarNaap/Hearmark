@@ -23,7 +23,9 @@ class DeleteOptionsCombinationsTest {
         return Pair(db, repo)
     }
 
-    private suspend fun seedTestData(repo: AppRepository): Triple<Long, Long, Long> {
+    data class TestEntities(val trackId: Long, val noteId: Long, val compQId: Long, val vocabQId: Long)
+
+    private suspend fun seedTestData(repo: AppRepository): TestEntities {
         val folderId = repo.addFolder("/test", "TestFolder")
         val trackId = repo.insertTrack(
             AudioTrack(
@@ -70,7 +72,7 @@ class DeleteOptionsCombinationsTest {
                 explanation = "exp"
             )
         )
-        return Triple(noteId, compQId, vocabQId)
+        return TestEntities(trackId, noteId, compQId, vocabQId)
     }
 
     // Combination 1: (deleteNotes=false, deleteComprehension=false, deleteVocabulary=false) -> ALL KEPT & DETACHED
@@ -79,8 +81,8 @@ class DeleteOptionsCombinationsTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val (db, repo) = setupTestDb(context)
         try {
-            val (noteId, compQId, vocabQId) = seedTestData(repo)
-            val track = repo.getTrackById(1L)!!
+            val (trackId, noteId, compQId, vocabQId) = seedTestData(repo)
+            val track = repo.getTrackById(trackId)!!
 
             repo.deleteTrack(track, DeleteOptions(deleteNotes = false, deleteComprehension = false, deleteVocabulary = false))
 
@@ -116,8 +118,8 @@ class DeleteOptionsCombinationsTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val (db, repo) = setupTestDb(context)
         try {
-            val (noteId, compQId, vocabQId) = seedTestData(repo)
-            val track = repo.getTrackById(1L)!!
+            val (trackId, noteId, compQId, vocabQId) = seedTestData(repo)
+            val track = repo.getTrackById(trackId)!!
 
             repo.deleteTrack(track, DeleteOptions(deleteNotes = true, deleteComprehension = false, deleteVocabulary = false))
 
@@ -135,8 +137,8 @@ class DeleteOptionsCombinationsTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val (db, repo) = setupTestDb(context)
         try {
-            val (noteId, compQId, vocabQId) = seedTestData(repo)
-            val track = repo.getTrackById(1L)!!
+            val (trackId, noteId, compQId, vocabQId) = seedTestData(repo)
+            val track = repo.getTrackById(trackId)!!
 
             repo.deleteTrack(track, DeleteOptions(deleteNotes = false, deleteComprehension = true, deleteVocabulary = false))
 
@@ -154,8 +156,8 @@ class DeleteOptionsCombinationsTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val (db, repo) = setupTestDb(context)
         try {
-            val (noteId, compQId, vocabQId) = seedTestData(repo)
-            val track = repo.getTrackById(1L)!!
+            val (trackId, noteId, compQId, vocabQId) = seedTestData(repo)
+            val track = repo.getTrackById(trackId)!!
 
             repo.deleteTrack(track, DeleteOptions(deleteNotes = false, deleteComprehension = false, deleteVocabulary = true))
 
@@ -173,8 +175,8 @@ class DeleteOptionsCombinationsTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val (db, repo) = setupTestDb(context)
         try {
-            val (noteId, compQId, vocabQId) = seedTestData(repo)
-            val track = repo.getTrackById(1L)!!
+            val (trackId, noteId, compQId, vocabQId) = seedTestData(repo)
+            val track = repo.getTrackById(trackId)!!
 
             repo.deleteTrack(track, DeleteOptions(deleteNotes = true, deleteComprehension = true, deleteVocabulary = false))
 
@@ -192,8 +194,8 @@ class DeleteOptionsCombinationsTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val (db, repo) = setupTestDb(context)
         try {
-            val (noteId, compQId, vocabQId) = seedTestData(repo)
-            val track = repo.getTrackById(1L)!!
+            val (trackId, noteId, compQId, vocabQId) = seedTestData(repo)
+            val track = repo.getTrackById(trackId)!!
 
             repo.deleteTrack(track, DeleteOptions(deleteNotes = true, deleteComprehension = false, deleteVocabulary = true))
 
@@ -211,8 +213,8 @@ class DeleteOptionsCombinationsTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val (db, repo) = setupTestDb(context)
         try {
-            val (noteId, compQId, vocabQId) = seedTestData(repo)
-            val track = repo.getTrackById(1L)!!
+            val (trackId, noteId, compQId, vocabQId) = seedTestData(repo)
+            val track = repo.getTrackById(trackId)!!
 
             repo.deleteTrack(track, DeleteOptions(deleteNotes = false, deleteComprehension = true, deleteVocabulary = true))
 
@@ -230,8 +232,8 @@ class DeleteOptionsCombinationsTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val (db, repo) = setupTestDb(context)
         try {
-            val (noteId, compQId, vocabQId) = seedTestData(repo)
-            val track = repo.getTrackById(1L)!!
+            val (trackId, noteId, compQId, vocabQId) = seedTestData(repo)
+            val track = repo.getTrackById(trackId)!!
 
             repo.deleteTrack(track, DeleteOptions(deleteNotes = true, deleteComprehension = true, deleteVocabulary = true))
 

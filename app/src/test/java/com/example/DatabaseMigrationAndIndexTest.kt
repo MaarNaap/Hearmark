@@ -262,12 +262,34 @@ class DatabaseMigrationAndIndexTest {
             val sqlDb = roomDb.openHelper.writableDatabase
 
             // Set up test data on schema 20 structure:
-            // 1) Physical parent track and scene track
-            sqlDb.execSQL("INSERT INTO `audio_tracks` (`id`, `filePath`, `fileName`, `duration`, `isVirtualScene`, `isIndependent`) VALUES (500, '/audio/p.mp3', 'parent_file', 100000, 0, 0)")
-            sqlDb.execSQL("INSERT INTO `audio_tracks` (`id`, `filePath`, `fileName`, `duration`, `parentTrackId`, `isVirtualScene`, `isIndependent`) VALUES (501, '/audio/p.mp3', 'scene_1', 30000, 500, 1, 0)")
+            // 1) Physical parent track and scene track (supplying all non-null columns)
+            sqlDb.execSQL("""
+                INSERT INTO `audio_tracks` (
+                    `id`, `filePath`, `fileName`, `duration`, `playCount`, `lastPosition`, `isMissing`,
+                    `isIndependent`, `listenedSegments`, `subtitleOffsetMs`, `startOffsetMs`, `isVirtualScene`,
+                    `parentTrackId`, `currentPlayActualListeningMs`
+                ) VALUES (
+                    500, '/audio/p.mp3', 'parent_file', 100000, 0, 0, 0, 0, '', 0, 0, 0, NULL, 0
+                )
+            """.trimIndent())
+            sqlDb.execSQL("""
+                INSERT INTO `audio_tracks` (
+                    `id`, `filePath`, `fileName`, `duration`, `playCount`, `lastPosition`, `isMissing`,
+                    `isIndependent`, `listenedSegments`, `subtitleOffsetMs`, `startOffsetMs`, `isVirtualScene`,
+                    `parentTrackId`, `currentPlayActualListeningMs`
+                ) VALUES (
+                    501, '/audio/p.mp3', 'scene_1', 30000, 0, 0, 0, 0, '', 0, 0, 1, 500, 0
+                )
+            """.trimIndent())
 
             // 2) Note attached to scene
-            sqlDb.execSQL("INSERT INTO `notes` (`id`, `trackId`, `trackName`, `startTimestampMs`, `endTimestampMs`, `text`, `createdAt`, `updatedAt`) VALUES (901, 501, 'scene_1', 5000, 10000, 'Scene Note', 1000, 1000)")
+            sqlDb.execSQL("""
+                INSERT INTO `notes` (
+                    `id`, `text`, `comment`, `trackId`, `trackName`, `startTimestampMs`, `endTimestampMs`, `tags`, `createdAt`, `updatedAt`
+                ) VALUES (
+                    901, 'Scene Note', '', 501, 'scene_1', 5000, 10000, '', 1000, 1000
+                )
+            """.trimIndent())
 
             // Run migration 20 -> 21
             DatabaseMigrations.MIGRATION_20_21.migrate(sqlDb)

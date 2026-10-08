@@ -63,6 +63,7 @@ class DeleteReimportRelinkRoundTripTest {
             assertEquals("AudioCourse", detachedNote.folderName)
 
             // Step 2: User re-imports the physical audio file (creates new track with new id)
+            tempAudio.writeText("fake audio binary reimported")
             val newTrackId = repo.insertTrack(
                 AudioTrack(
                     filePath = tempAudio.absolutePath,

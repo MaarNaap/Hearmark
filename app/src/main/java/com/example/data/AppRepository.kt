@@ -637,11 +637,14 @@ class AppRepository(
     suspend fun getAllVocabularyQuestionsDirect(): List<QuizQuestion> = dao.getAllVocabularyQuestionsDirect()
     fun getQuestionsForTrackAndCategoryFlow(trackId: Long, category: String): Flow<List<QuizQuestion>> = dao.getQuestionsForTrackAndCategoryFlow(trackId, category)
     suspend fun insertQuizQuestions(questions: List<QuizQuestion>): List<Long> {
+        val allTracks = dao.getAllTracksDirect().associateBy { it.id }
         val prepared = questions.map { q ->
             val resolvedWord: String? = q.targetWord?.takeIf { it.isNotBlank() } ?: q.getIsolatedTargetWord().takeIf { it.isNotBlank() }
             val resolvedMeaning: String? = q.meaning?.takeIf { it.isNotBlank() } ?: q.getIsolatedMeaning().takeIf { it.isNotBlank() }
             val resolvedContext: String? = q.contextSentence?.takeIf { it.isNotBlank() } ?: q.getIsolatedContextSentence().takeIf { it.isNotBlank() }
+            val resolvedTrackName: String? = q.trackName?.takeIf { it.isNotBlank() } ?: q.trackId?.let { allTracks[it]?.fileName }
             q.copy(
+                trackName = resolvedTrackName,
                 targetWord = resolvedWord,
                 meaning = resolvedMeaning,
                 contextSentence = resolvedContext
@@ -667,7 +670,9 @@ class AppRepository(
         val resolvedWord: String? = question.targetWord?.takeIf { it.isNotBlank() } ?: question.getIsolatedTargetWord().takeIf { it.isNotBlank() }
         val resolvedMeaning: String? = question.meaning?.takeIf { it.isNotBlank() } ?: question.getIsolatedMeaning().takeIf { it.isNotBlank() }
         val resolvedContext: String? = question.contextSentence?.takeIf { it.isNotBlank() } ?: question.getIsolatedContextSentence().takeIf { it.isNotBlank() }
+        val resolvedTrackName: String? = question.trackName?.takeIf { it.isNotBlank() } ?: question.trackId?.let { dao.getTrackById(it)?.fileName }
         val prepared = question.copy(
+            trackName = resolvedTrackName,
             targetWord = resolvedWord,
             meaning = resolvedMeaning,
             contextSentence = resolvedContext
