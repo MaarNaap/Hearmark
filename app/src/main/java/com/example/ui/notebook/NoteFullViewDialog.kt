@@ -101,6 +101,9 @@ fun NoteFullViewDialog(
                 notes = listOf(noteForQuiz)
             )
         },
+        onRelinkTrack = { selectedTrack ->
+            viewModel.relinkNoteToTrack(liveNote, selectedTrack)
+        },
         onDismiss = onDismiss
     )
 }

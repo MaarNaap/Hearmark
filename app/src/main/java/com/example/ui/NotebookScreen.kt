@@ -42,6 +42,7 @@ fun NotebookScreen(
     var selectedTrackId by remember { mutableStateOf<Long?>(null) }
     var noteToDelete by remember { mutableStateOf<Note?>(null) }
     var viewingNoteTarget by remember { mutableStateOf<Note?>(null) }
+    var noteToRelink by remember { mutableStateOf<Note?>(null) }
 
     val context = LocalContext.current
 
@@ -105,7 +106,8 @@ fun NotebookScreen(
                 onAddNoteClicked = onAddNoteClicked,
                 onViewNote = { viewingNoteTarget = it },
                 onEditNoteClicked = onEditNoteClicked,
-                onDeleteNote = { noteToDelete = it }
+                onDeleteNote = { noteToDelete = it },
+                onRelinkNote = { noteToRelink = it }
             )
         }
     }
@@ -128,6 +130,18 @@ fun NotebookScreen(
             onEditNoteClicked = onEditNoteClicked,
             onRequestDelete = { noteToDelete = it },
             onDismiss = { viewingNoteTarget = null }
+        )
+    }
+
+    noteToRelink?.let { targetNote ->
+        com.example.ui.dialogs.TrackPickerForNoteRelinkDialog(
+            tracks = tracks,
+            noteTitle = targetNote.text,
+            onTrackSelected = { selectedTrack ->
+                noteToRelink = null
+                viewModel.relinkNoteToTrack(targetNote, selectedTrack)
+            },
+            onDismiss = { noteToRelink = null }
         )
     }
 

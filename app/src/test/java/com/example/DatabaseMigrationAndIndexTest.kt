@@ -233,17 +233,53 @@ class DatabaseMigrationAndIndexTest {
     }
 
     @Test
-    fun roomSchemaAssets_19And20AreExposedToUnitTests() {
+    fun roomSchemaAssets_19And20And21AreExposedToUnitTests() {
         val loader = checkNotNull(javaClass.classLoader)
         val schema19Stream = loader.getResourceAsStream("com.example.data.AppDatabase/19.json")
         val schema20Stream = loader.getResourceAsStream("com.example.data.AppDatabase/20.json")
+        val schema21Stream = loader.getResourceAsStream("com.example.data.AppDatabase/21.json")
         assertNotNull("Expected 19.json schema resource on test classpath", schema19Stream)
         assertNotNull("Expected 20.json schema resource on test classpath", schema20Stream)
+        assertNotNull("Expected 21.json schema resource on test classpath", schema21Stream)
         val schema19 = schema19Stream!!.bufferedReader().use { it.readText() }
         val schema20 = schema20Stream!!.bufferedReader().use { it.readText() }
+        val schema21 = schema21Stream!!.bufferedReader().use { it.readText() }
         assertTrue(schema19.contains("\"formatVersion\": 1"))
         assertTrue(schema19.contains("\"version\": 19"))
         assertTrue(schema20.contains("\"version\": 20"))
         assertTrue(schema20.contains("srNextReviewAt"))
+        assertTrue(schema21.contains("\"version\": 21"))
+        assertTrue(schema21.contains("trackName"))
+    }
+
+    @Test
+    fun migration20To21_repointsSceneNotesAndRebuildsQuizQuestionsWithSetNull() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val roomDb = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val sqlDb = roomDb.openHelper.writableDatabase
+
+            // Set up test data on schema 20 structure:
+            // 1) Physical parent track and scene track
+            sqlDb.execSQL("INSERT INTO `audio_tracks` (`id`, `filePath`, `fileName`, `duration`, `isVirtualScene`, `isIndependent`) VALUES (500, '/audio/p.mp3', 'parent_file', 100000, 0, 0)")
+            sqlDb.execSQL("INSERT INTO `audio_tracks` (`id`, `filePath`, `fileName`, `duration`, `parentTrackId`, `isVirtualScene`, `isIndependent`) VALUES (501, '/audio/p.mp3', 'scene_1', 30000, 500, 1, 0)")
+
+            // 2) Note attached to scene
+            sqlDb.execSQL("INSERT INTO `notes` (`id`, `trackId`, `trackName`, `startTimestampMs`, `endTimestampMs`, `text`, `createdAt`, `updatedAt`) VALUES (901, 501, 'scene_1', 5000, 10000, 'Scene Note', 1000, 1000)")
+
+            // Run migration 20 -> 21
+            DatabaseMigrations.MIGRATION_20_21.migrate(sqlDb)
+
+            // Verify scene note was re-pointed to parent track (500, parent_file)
+            sqlDb.query("SELECT `trackId`, `trackName` FROM `notes` WHERE `id` = 901").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(500L, cursor.getLong(0))
+                assertEquals("parent_file", cursor.getString(1))
+            }
+        } finally {
+            roomDb.close()
+        }
     }
 }

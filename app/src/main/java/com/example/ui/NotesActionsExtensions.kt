@@ -241,3 +241,31 @@ fun AppViewModel.playNoteSnippet(note: Note) {
 fun AppViewModel.stopNoteSnippet() {
     NoteAudioPlayer.stop()
 }
+
+fun AppViewModel.relinkNoteToTrack(note: Note, targetTrack: AudioTrack) {
+    viewModelScope.launch(Dispatchers.IO) {
+        try {
+            val folder = targetTrack.parentFolderId?.let { repository.getFolderById(it) }
+            val updated = note.copy(
+                trackId = targetTrack.id,
+                trackName = targetTrack.fileName,
+                folderId = targetTrack.parentFolderId,
+                folderName = folder?.folderName ?: note.folderName,
+                updatedAt = System.currentTimeMillis()
+            )
+            repository.updateNote(updated)
+            repository.dao.updateVocabularyTrackForNote(note.id, targetTrack.id)
+            repository.dao.updateQuizQuestionsTrackForNote(note.id, targetTrack.id)
+            withContext(Dispatchers.Main) {
+                val context = getApplication<Application>()
+                Toast.makeText(
+                    context,
+                    Loc.getFormattedText("relink_note_success", targetTrack.fileName),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        } catch (e: Exception) {
+            Log.e("NotesActions", "Failed to relink note to track", e)
+        }
+    }
+}

@@ -931,6 +931,41 @@ class AppRepository(
             return ""
         }
 
+        // 0. Normalization pass: Ensure any notes attached to virtual scenes are re-pointed to the parent track
+        val allTracks = dao.getAllTracksDirect()
+        val sceneTracks = allTracks.filter { it.isVirtualScene }
+        if (sceneTracks.isNotEmpty()) {
+            val sceneMap = sceneTracks.associateBy { it.id }
+            val parentMap = allTracks.filter { !it.isVirtualScene }.associateBy { it.id }
+            val sceneNotes = notes.filter { it.trackId != null && sceneMap.containsKey(it.trackId) }
+            val normalizedSceneNotes = mutableListOf<Note>()
+            for (sn in sceneNotes) {
+                val sc = sceneMap[sn.trackId] ?: continue
+                val parent = sc.parentTrackId?.let { parentMap[it] }
+                    ?: allTracks.find { it.filePath == sc.filePath && !it.isVirtualScene }
+                if (parent != null) {
+                    val pFolder = parent.parentFolderId?.let { folderMap[it]?.folderName } ?: sn.folderName
+                    normalizedSceneNotes.add(
+                        sn.copy(
+                            trackId = parent.id,
+                            trackName = parent.fileName,
+                            folderId = parent.parentFolderId,
+                            folderName = pFolder
+                        )
+                    )
+                }
+            }
+            if (normalizedSceneNotes.isNotEmpty()) {
+                dao.updateNotes(normalizedSceneNotes)
+                for (normNote in normalizedSceneNotes) {
+                    if (normNote.trackId != null) {
+                        dao.updateVocabularyTrackForNote(normNote.id, normNote.trackId)
+                        dao.updateQuizQuestionsTrackForNote(normNote.id, normNote.trackId)
+                    }
+                }
+            }
+        }
+
         var relinkedCount = 0
         val notesToUpdate = mutableListOf<Note>()
 

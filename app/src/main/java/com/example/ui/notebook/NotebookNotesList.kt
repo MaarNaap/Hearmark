@@ -34,7 +34,8 @@ fun NotebookNotesList(
     onAddNoteClicked: () -> Unit,
     onViewNote: (Note) -> Unit,
     onEditNoteClicked: (Note) -> Unit,
-    onDeleteNote: (Note) -> Unit
+    onDeleteNote: (Note) -> Unit,
+    onRelinkNote: ((Note) -> Unit)? = null
 ) {
     if (filteredNotes.isEmpty()) {
         Box(
@@ -131,7 +132,8 @@ fun NotebookNotesList(
                             track = associatedTrack,
                             notes = listOf(note)
                         )
-                    }
+                    },
+                    onRelink = if (onRelinkNote != null) { { onRelinkNote(note) } } else null
                 )
             }
         }
