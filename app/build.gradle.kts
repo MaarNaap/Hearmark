@@ -48,9 +48,9 @@ android {
     }
   }
   sourceSets {
-    getByName("test").assets.srcDirs("$projectDir/schemas")
-    getByName("test").resources.srcDirs("$projectDir/schemas")
-    getByName("androidTest").assets.srcDirs("$projectDir/schemas")
+    getByName("test").assets.directories.add("$projectDir/schemas")
+    getByName("test").resources.directories.add("$projectDir/schemas")
+    getByName("androidTest").assets.directories.add("$projectDir/schemas")
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
