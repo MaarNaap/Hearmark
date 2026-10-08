@@ -29,16 +29,40 @@ fun AppViewModel.saveNote(
 ) {
     viewModelScope.launch(Dispatchers.IO) {
         try {
+            var resolvedTrackId = trackId
             var resolvedTrackName: String? = null
             var resolvedFolderId: Long? = null
             var resolvedFolderName: String? = null
 
+            // If editing an existing note, preserve cached names by default (e.g. for detached notes)
+            val existingNote = if (id != 0L) notes.value.find { it.id == id } else null
+            if (existingNote != null) {
+                resolvedTrackName = existingNote.trackName
+                resolvedFolderId = existingNote.folderId
+                resolvedFolderName = existingNote.folderName
+            }
+
             if (trackId != null) {
-                val track = tracks.value.find { it.id == trackId }
+                val rawTrack = tracks.value.find { it.id == trackId }
                     ?: repository.dao.getTrackById(trackId)
-                if (track != null) {
-                    resolvedTrackName = track.fileName
-                    resolvedFolderId = track.parentFolderId
+                if (rawTrack != null) {
+                    // One place to redirect scene notes: if the track is a scene, swap in the parent's ID, name and folder
+                    val targetTrack = if (rawTrack.isVirtualScene) {
+                        val parentId = rawTrack.parentTrackId
+                            ?: tracks.value.find { it.filePath == rawTrack.filePath && !it.isVirtualScene }?.id
+                            ?: repository.dao.getAllTracksDirect().find { it.filePath == rawTrack.filePath && !it.isVirtualScene }?.id
+                        if (parentId != null) {
+                            tracks.value.find { it.id == parentId } ?: repository.dao.getTrackById(parentId) ?: rawTrack
+                        } else {
+                            rawTrack
+                        }
+                    } else {
+                        rawTrack
+                    }
+
+                    resolvedTrackId = targetTrack.id
+                    resolvedTrackName = targetTrack.fileName
+                    resolvedFolderId = targetTrack.parentFolderId
                     if (resolvedFolderId != null) {
                         val folder = folders.value.find { it.id == resolvedFolderId }
                             ?: repository.dao.getFolderById(resolvedFolderId)
@@ -53,7 +77,6 @@ fun AppViewModel.saveNote(
             }
 
             // If editing existing note, preserve its favorite status
-            val existingNote = if (id != 0L) notes.value.find { it.id == id } else null
             val wasFavorite = existingNote?.getTagsList()?.any { isFavoriteTag(it) } == true
 
             val cleanUserTags = tags.map { it.trim() }.filter { it.isNotEmpty() && !isFavoriteTag(it) }
@@ -75,7 +98,7 @@ fun AppViewModel.saveNote(
                 id = id,
                 text = text.trim(),
                 comment = comment.trim(),
-                trackId = trackId,
+                trackId = resolvedTrackId,
                 trackName = resolvedTrackName,
                 folderId = resolvedFolderId,
                 folderName = resolvedFolderName,

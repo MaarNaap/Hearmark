@@ -224,7 +224,11 @@ fun AppViewModel.updateVirtualScene(
     }
 }
 
-fun AppViewModel.deleteVirtualScene(track: AudioTrack, onSuccess: (() -> Unit)? = null) {
+fun AppViewModel.deleteVirtualScene(
+    track: AudioTrack,
+    options: com.example.data.DeleteOptions = com.example.data.DeleteOptions(),
+    onSuccess: (() -> Unit)? = null
+) {
     viewModelScope.launch(Dispatchers.IO) {
         // If currently playing, stop
         if (AudioPlayerManager.currentTrack.value?.id == track.id) {
@@ -232,7 +236,7 @@ fun AppViewModel.deleteVirtualScene(track: AudioTrack, onSuccess: (() -> Unit)? 
                 AudioPlayerManager.pause()
             }
         }
-        repository.deleteTrack(track)
+        repository.deleteTrack(track, options)
         withContext(Dispatchers.Main) {
             val context = getApplication<Application>()
             Toast.makeText(context, Loc.getText("scene_deleted_success"), Toast.LENGTH_SHORT).show()

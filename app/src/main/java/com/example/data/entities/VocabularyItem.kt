@@ -13,7 +13,7 @@ import androidx.room.PrimaryKey
             entity = AudioTrack::class,
             parentColumns = ["id"],
             childColumns = ["trackId"],
-            onDelete = ForeignKey.CASCADE
+            onDelete = ForeignKey.SET_NULL
         )
     ],
     indices = [
@@ -26,6 +26,7 @@ import androidx.room.PrimaryKey
 data class QuizQuestion(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val trackId: Long? = null,
+    val trackName: String? = null, // Cached track title/filename for relinking when detached
     val noteId: Long? = null,
     val questionType: String, // "MCQ" or "TRUE_FALSE"
     val category: String = "COMPREHENSION", // "VOCABULARY" or "COMPREHENSION"

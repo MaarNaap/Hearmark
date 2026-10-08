@@ -174,28 +174,30 @@ fun FolderDetailsView(
     var showBulkDeleteConfirm by remember { mutableStateOf(false) }
 
     if (showBulkDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showBulkDeleteConfirm = false },
-            title = { Text(Loc.getText("delete_tracks_bulk_confirm_title")) },
-            text = { Text(Loc.getFormattedText("delete_tracks_bulk_confirm_desc", selectedDetailTrackIds.size)) },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteTracksByIds(selectedDetailTrackIds)
-                        selectedDetailTrackIds = emptySet()
-                        isBulkSelectMode = false
-                        showBulkDeleteConfirm = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text(Loc.getText("delete"))
-                }
+        var noteCount by remember { mutableIntStateOf(0) }
+        var compCount by remember { mutableIntStateOf(0) }
+        var vocabCount by remember { mutableIntStateOf(0) }
+
+        LaunchedEffect(selectedDetailTrackIds) {
+            noteCount = viewModel.repository.getNoteCountForTracks(selectedDetailTrackIds)
+            compCount = viewModel.repository.getComprehensionQuestionCountForTracks(selectedDetailTrackIds)
+            vocabCount = viewModel.repository.getVocabQuestionCountForTracks(selectedDetailTrackIds)
+        }
+
+        com.example.ui.dialogs.ConfirmDeleteTrackDialog(
+            title = Loc.getText("delete_tracks_bulk_confirm_title"),
+            desc = Loc.getFormattedText("delete_tracks_bulk_confirm_desc", selectedDetailTrackIds.size),
+            isScene = false,
+            noteCount = noteCount,
+            comprehensionCount = compCount,
+            vocabCount = vocabCount,
+            onConfirmDelete = { options ->
+                viewModel.deleteTracksByIds(selectedDetailTrackIds, options)
+                selectedDetailTrackIds = emptySet()
+                isBulkSelectMode = false
+                showBulkDeleteConfirm = false
             },
-            dismissButton = {
-                TextButton(onClick = { showBulkDeleteConfirm = false }) {
-                    Text(Loc.getText("cancel"))
-                }
-            }
+            onDismiss = { showBulkDeleteConfirm = false }
         )
     }
 
@@ -494,29 +496,37 @@ fun FolderDetailsView(
         }
 
         if (showDeleteFolderConfirmDialog) {
-            AlertDialog(
-                onDismissRequest = { showDeleteFolderConfirmDialog = false },
-                title = { Text(Loc.getText("delete_folder_title")) },
-                text = { Text(Loc.getText("delete_folder_confirm")) },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showDeleteFolderConfirmDialog = false
-                            coroutineScope.launch {
-                                viewModel.repository.deleteFolder(currentFolderId)
-                            }
-                            handleBack()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Text(Loc.getText("delete"))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showDeleteFolderConfirmDialog = false }) {
-                        Text(Loc.getText("cancel"))
-                    }
+            var noteCount by remember { mutableIntStateOf(0) }
+            var compCount by remember { mutableIntStateOf(0) }
+            var vocabCount by remember { mutableIntStateOf(0) }
+
+            LaunchedEffect(currentFolderId) {
+                val allFolders = viewModel.folders.value
+                val subIds = viewModel.repository.getAllSubfolderIds(currentFolderId, allFolders)
+                val allTracks = viewModel.tracks.value
+                val folderTrackIds = allTracks.filter { it.parentFolderId in subIds }.map { it.id }.toSet()
+                if (folderTrackIds.isNotEmpty()) {
+                    noteCount = viewModel.repository.getNoteCountForTracks(folderTrackIds)
+                    compCount = viewModel.repository.getComprehensionQuestionCountForTracks(folderTrackIds)
+                    vocabCount = viewModel.repository.getVocabQuestionCountForTracks(folderTrackIds)
                 }
+            }
+
+            com.example.ui.dialogs.ConfirmDeleteTrackDialog(
+                title = Loc.getText("delete_folder_title"),
+                desc = Loc.getText("delete_folder_confirm"),
+                isScene = false,
+                noteCount = noteCount,
+                comprehensionCount = compCount,
+                vocabCount = vocabCount,
+                onConfirmDelete = { options ->
+                    showDeleteFolderConfirmDialog = false
+                    coroutineScope.launch {
+                        viewModel.repository.deleteFolder(currentFolderId, options)
+                    }
+                    handleBack()
+                },
+                onDismiss = { showDeleteFolderConfirmDialog = false }
             )
         }
 

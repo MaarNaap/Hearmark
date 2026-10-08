@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.AudioTrack
 import com.example.player.SubtitleParser
+import com.example.ui.dialogs.ConfirmDeleteTrackDialog
 
 @Composable
 fun UnifiedTrackDropdownMenu(
@@ -184,56 +185,40 @@ fun UnifiedTrackDropdownMenu(
     }
 
     if (showDeleteTrackConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteTrackConfirm = false },
-            icon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
+        var noteCount by remember { mutableIntStateOf(0) }
+        var compCount by remember { mutableIntStateOf(0) }
+        var vocabCount by remember { mutableIntStateOf(0) }
+
+        LaunchedEffect(track.id) {
+            val n = viewModel.repository.getNoteCountForTrack(track.id)
+            val c = viewModel.repository.getComprehensionQuestionCountForTrack(track.id)
+            val v = viewModel.repository.getVocabQuestionCountForTrack(track.id)
+            noteCount = n
+            compCount = c
+            vocabCount = v
+        }
+
+        ConfirmDeleteTrackDialog(
+            title = if (track.isVirtualScene) Loc.getText("delete_scene_confirm_title") else Loc.getText("delete_track_confirm_title"),
+            desc = if (track.isVirtualScene) {
+                Loc.getFormattedText("delete_scene_confirm_desc", track.getDisplayTitle())
+            } else {
+                Loc.getFormattedText("delete_track_confirm_desc", track.getDisplayTitle())
             },
-            title = {
-                Text(
-                    text = if (track.isVirtualScene) Loc.getText("delete_scene_confirm_title") else Loc.getText("delete_track_confirm_title"),
-                    fontWeight = FontWeight.Bold
-                )
+            isScene = track.isVirtualScene,
+            noteCount = noteCount,
+            comprehensionCount = compCount,
+            vocabCount = vocabCount,
+            onConfirmDelete = { options ->
+                showDeleteTrackConfirm = false
+                viewModel.deleteTrackFromApp(track, options)
+                Toast.makeText(
+                    context,
+                    if (track.isVirtualScene) Loc.getText("scene_deleted_success") else Loc.getText("delete_history"),
+                    Toast.LENGTH_SHORT
+                ).show()
             },
-            text = {
-                Text(
-                    text = if (track.isVirtualScene) {
-                        Loc.getFormattedText("delete_scene_confirm_desc", track.getDisplayTitle())
-                    } else {
-                        Loc.getFormattedText("delete_track_confirm_desc", track.getDisplayTitle())
-                    },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showDeleteTrackConfirm = false
-                        viewModel.deleteTrackFromApp(track)
-                        Toast.makeText(
-                            context,
-                            if (track.isVirtualScene) Loc.getText("scene_deleted_success") else Loc.getText("delete_history"),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    modifier = Modifier.testTag("confirm_delete_track_btn")
-                ) {
-                    Text(Loc.getText("delete"))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showDeleteTrackConfirm = false },
-                    modifier = Modifier.testTag("cancel_delete_track_btn")
-                ) {
-                    Text(Loc.getText("cancel"))
-                }
-            }
+            onDismiss = { showDeleteTrackConfirm = false }
         )
     }
 

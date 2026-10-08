@@ -152,48 +152,29 @@ fun LibraryTracksBulkToolbar(
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            icon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
+        var noteCount by remember { mutableIntStateOf(0) }
+        var compCount by remember { mutableIntStateOf(0) }
+        var vocabCount by remember { mutableIntStateOf(0) }
+
+        LaunchedEffect(selectedTrackIdsSet) {
+            noteCount = viewModel.repository.getNoteCountForTracks(selectedTrackIdsSet)
+            compCount = viewModel.repository.getComprehensionQuestionCountForTracks(selectedTrackIdsSet)
+            vocabCount = viewModel.repository.getVocabQuestionCountForTracks(selectedTrackIdsSet)
+        }
+
+        com.example.ui.dialogs.ConfirmDeleteTrackDialog(
+            title = Loc.getText("delete_tracks_bulk_confirm_title"),
+            desc = Loc.getFormattedText("delete_tracks_bulk_confirm_desc", selectedTrackIdsSet.size),
+            isScene = false,
+            noteCount = noteCount,
+            comprehensionCount = compCount,
+            vocabCount = vocabCount,
+            onConfirmDelete = { options ->
+                showDeleteConfirm = false
+                viewModel.deleteSelectedTracks(options)
+                onExitBulkMode()
             },
-            title = {
-                Text(
-                    text = Loc.getText("delete_tracks_bulk_confirm_title"),
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    text = Loc.getFormattedText("delete_tracks_bulk_confirm_desc", selectedTrackIdsSet.size),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showDeleteConfirm = false
-                        viewModel.deleteSelectedTracks()
-                        onExitBulkMode()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    modifier = Modifier.testTag("confirm_bulk_delete_tracks_btn")
-                ) {
-                    Text(Loc.getText("delete"))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showDeleteConfirm = false },
-                    modifier = Modifier.testTag("cancel_bulk_delete_tracks_btn")
-                ) {
-                    Text(Loc.getText("cancel"))
-                }
-            }
+            onDismiss = { showDeleteConfirm = false }
         )
     }
 

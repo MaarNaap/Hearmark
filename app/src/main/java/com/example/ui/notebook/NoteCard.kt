@@ -35,12 +35,14 @@ fun NoteCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onCopy: () -> Unit,
-    onCreateQuizQuestion: (() -> Unit)? = null
+    onCreateQuizQuestion: (() -> Unit)? = null,
+    onRelink: (() -> Unit)? = null
 ) {
     val favTag = Loc.getText("favorite_tag_name")
     val isFavorite = remember(note.tags, favTag) {
         note.getTagsList().any { it.equals("favorite", ignoreCase = true) || it == "المفضلة" || it == favTag }
     }
+    val isDetached = note.trackId == null && !note.trackName.isNullOrBlank()
 
     Card(
         modifier = Modifier
@@ -218,7 +220,7 @@ fun NoteCard(
                     }
                 }
 
-                // Audio Snippet Play Button on the right (if linked to track)
+                // Audio Snippet Play Button on the right (if linked to track) or Audio removed badge with Relink
                 if (note.trackId != null) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -246,6 +248,40 @@ fun NoteCard(
                                 contentDescription = Loc.getText("play_clip"),
                                 modifier = Modifier.size(17.dp)
                             )
+                        }
+                    }
+                } else if (isDetached) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)
+                        ) {
+                            Text(
+                                text = Loc.getText("audio_removed_badge"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                fontSize = 10.sp
+                            )
+                        }
+
+                        if (onRelink != null) {
+                            IconButton(
+                                onClick = onRelink,
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .testTag("note_relink_btn_${note.id}")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Link,
+                                    contentDescription = Loc.getText("relink_note_action"),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
                     }
                 } else {

@@ -43,12 +43,41 @@ fun filterNotes(
         }
 
         val matchesTrack = if (selectedTrackId == null) true else {
-            note.trackId == selectedTrackId ||
-            (selectedTrackName != null && note.trackName?.trim()?.lowercase() == selectedTrackName)
+            if (selectedTrack?.isVirtualScene == true) {
+                belongsToScene(note, selectedTrack, tracks)
+            } else {
+                note.trackId == selectedTrackId ||
+                (selectedTrackName != null && note.trackName?.trim()?.lowercase() == selectedTrackName)
+            }
         }
 
         matchesSearch && matchesFolder && matchesTag && matchesTrack
     }
+}
+
+/**
+ * Standard scene membership rule across Hearmark:
+ * Notes belong to the physical file and are anchored on originStartMs ?: startTimestampMs.
+ * A scene owns a note if the anchor falls within [start, end), where start is startOffsetMs
+ * and end is endOffsetMs ?: (startOffsetMs + duration).
+ */
+fun belongsToScene(note: Note, scene: AudioTrack, allTracks: List<AudioTrack> = emptyList()): Boolean {
+    if (!scene.isVirtualScene) return note.trackId == scene.id
+
+    val parentId = scene.parentTrackId
+        ?: allTracks.find { it.filePath == scene.filePath && !it.isVirtualScene }?.id
+    val isParentMatch = if (parentId != null) {
+        note.trackId == parentId || note.trackId == scene.id
+    } else {
+        note.trackId == scene.id
+    }
+    if (!isParentMatch) return false
+
+    val anchor = note.originStartMs ?: note.startTimestampMs
+    val sceneStart = scene.startOffsetMs
+    val sceneEnd = scene.endOffsetMs ?: (scene.startOffsetMs + scene.duration)
+
+    return anchor >= sceneStart && anchor < sceneEnd
 }
 
 fun extractAllNotebookTags(notes: List<Note>): List<String> {

@@ -52,7 +52,7 @@ class AppRepository(
 
     suspend fun updateFolder(folder: Folder) = dao.updateFolder(folder)
 
-    suspend fun deleteFolder(id: Long) {
+    suspend fun deleteFolder(id: Long, options: DeleteOptions = DeleteOptions()) {
         val allFolders = dao.getAllFoldersDirect()
         val allFolderIdsToDelete = getAllSubfolderIds(id, allFolders)
         val allTracks = dao.getAllTracksDirect()
@@ -60,7 +60,7 @@ class AppRepository(
 
         runInTransaction {
             for (track in tracksToDelete) {
-                deleteTrackDbRecords(track)
+                deleteTrackDbRecords(track, options)
             }
             for (folderId in allFolderIdsToDelete) {
                 dao.deleteFolder(folderId)
@@ -90,17 +90,55 @@ class AppRepository(
     suspend fun updateTrack(track: AudioTrack) = dao.updateTrack(track)
     suspend fun updateTrackPracticeSegments(trackId: Long, segments: String?) = dao.updateTrackPracticeSegments(trackId, segments)
 
-    private suspend fun deleteTrackDbRecords(track: AudioTrack) {
+    // Count queries for deletion dialog
+    suspend fun getNoteCountForTrack(trackId: Long): Int = dao.getNoteCountForTrack(trackId)
+    suspend fun getNoteCountForTracks(trackIds: Set<Long>): Int = dao.getNoteCountForTracks(trackIds)
+    suspend fun getVocabQuestionCountForTrack(trackId: Long): Int = dao.getVocabQuestionCountForTrack(trackId)
+    suspend fun getVocabQuestionCountForTracks(trackIds: Set<Long>): Int = dao.getVocabQuestionCountForTracks(trackIds)
+    suspend fun getComprehensionQuestionCountForTrack(trackId: Long): Int = dao.getComprehensionQuestionCountForTrack(trackId)
+    suspend fun getComprehensionQuestionCountForTracks(trackIds: Set<Long>): Int = dao.getComprehensionQuestionCountForTracks(trackIds)
+
+    private suspend fun deleteTrackDbRecords(track: AudioTrack, options: DeleteOptions = DeleteOptions()) {
         val scenes = dao.getScenesForParentTrack(track.id)
         for (scene in scenes) {
-            dao.deleteNotesForTrack(scene.id)
-            dao.deleteQuizQuestionsForTrack(scene.id)
+            // Note: Notes belong to parent track, but clean any legacy note bindings
+            if (options.deleteNotes) {
+                dao.deleteNotesForTrack(scene.id)
+            } else {
+                dao.detachNotesForTrack(scene.id)
+            }
+
+            if (options.deleteComprehension) {
+                dao.deleteComprehensionQuestionsForTrack(scene.id)
+            }
+            if (options.deleteVocabulary) {
+                dao.deleteVocabQuestionsForTrack(scene.id)
+            }
+            // Any remaining quiz questions for scene are detached
+            dao.detachQuizQuestionsForTrack(scene.id)
+
             dao.deletePlaylistTracksByTrackId(scene.id)
             dao.deleteTaskTrackProgressByTrackId(scene.id)
             dao.deleteTrack(scene)
         }
-        dao.deleteNotesForTrack(track.id)
-        dao.deleteQuizQuestionsForTrack(track.id)
+
+        // Parent track / direct track records
+        if (options.deleteNotes) {
+            dao.deleteNotesForTrack(track.id)
+        } else {
+            // Detached state: set trackId = null while keeping trackName and folderName
+            dao.detachNotesForTrack(track.id)
+        }
+
+        if (options.deleteComprehension) {
+            dao.deleteComprehensionQuestionsForTrack(track.id)
+        }
+        if (options.deleteVocabulary) {
+            dao.deleteVocabQuestionsForTrack(track.id)
+        }
+        // Questions that survive (kept) are detached: trackId = null, retaining cached trackName
+        dao.detachQuizQuestionsForTrack(track.id)
+
         dao.deletePlaylistTracksByTrackId(track.id)
         dao.deleteTaskTrackProgressByTrackId(track.id)
         dao.deleteTrack(track)
@@ -125,9 +163,9 @@ class AppRepository(
         }
     }
 
-    suspend fun deleteTrack(track: AudioTrack) {
+    suspend fun deleteTrack(track: AudioTrack, options: DeleteOptions = DeleteOptions()) {
         runInTransaction {
-            deleteTrackDbRecords(track)
+            deleteTrackDbRecords(track, options)
         }
         if (!track.isVirtualScene) {
             val remainingTracks = dao.getAllTracksDirect()
@@ -135,7 +173,7 @@ class AppRepository(
         }
     }
 
-    suspend fun deleteTracksByIds(ids: Set<Long>) {
+    suspend fun deleteTracksByIds(ids: Set<Long>, options: DeleteOptions = DeleteOptions()) {
         if (ids.isEmpty()) return
         val tracksToDelete = mutableListOf<AudioTrack>()
         runInTransaction {
@@ -143,7 +181,7 @@ class AppRepository(
                 val track = dao.getTrackById(id)
                 if (track != null) {
                     tracksToDelete.add(track)
-                    deleteTrackDbRecords(track)
+                    deleteTrackDbRecords(track, options)
                 }
             }
         }
@@ -180,7 +218,7 @@ class AppRepository(
         return allTracks.filter { it.parentFolderId in targetFolderIds }
     }
 
-    private fun getAllSubfolderIds(parentFolderId: Long, allFolders: List<Folder>): Set<Long> {
+    fun getAllSubfolderIds(parentFolderId: Long, allFolders: List<Folder>): Set<Long> {
         val set = mutableSetOf(parentFolderId)
         val children = allFolders.filter { it.parentFolderId == parentFolderId }
         for (child in children) {

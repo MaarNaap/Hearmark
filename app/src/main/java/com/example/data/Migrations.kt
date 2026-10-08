@@ -306,6 +306,138 @@ internal object DatabaseMigrations {
         }
     }
 
+    val MIGRATION_20_21 = object : Migration(20, 21) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 1. Point scene notes at their physical parent track, updating trackId, trackName, folderId, folderName
+            try {
+                db.execSQL("""
+                    UPDATE `notes`
+                    SET `trackId` = (
+                            SELECT p.`id` FROM `audio_tracks` s
+                            JOIN `audio_tracks` p ON (s.`parentTrackId` = p.`id` OR (p.`filePath` = s.`filePath` AND p.`isVirtualScene` = 0))
+                            WHERE s.`id` = `notes`.`trackId` AND s.`isVirtualScene` = 1
+                            LIMIT 1
+                        ),
+                        `trackName` = (
+                            SELECT p.`fileName` FROM `audio_tracks` s
+                            JOIN `audio_tracks` p ON (s.`parentTrackId` = p.`id` OR (p.`filePath` = s.`filePath` AND p.`isVirtualScene` = 0))
+                            WHERE s.`id` = `notes`.`trackId` AND s.`isVirtualScene` = 1
+                            LIMIT 1
+                        ),
+                        `folderId` = (
+                            SELECT p.`parentFolderId` FROM `audio_tracks` s
+                            JOIN `audio_tracks` p ON (s.`parentTrackId` = p.`id` OR (p.`filePath` = s.`filePath` AND p.`isVirtualScene` = 0))
+                            WHERE s.`id` = `notes`.`trackId` AND s.`isVirtualScene` = 1
+                            LIMIT 1
+                        ),
+                        `folderName` = (
+                            SELECT f.`folderName` FROM `audio_tracks` s
+                            JOIN `audio_tracks` p ON (s.`parentTrackId` = p.`id` OR (p.`filePath` = s.`filePath` AND p.`isVirtualScene` = 0))
+                            LEFT JOIN `folders` f ON f.`id` = p.`parentFolderId`
+                            WHERE s.`id` = `notes`.`trackId` AND s.`isVirtualScene` = 1
+                            LIMIT 1
+                        )
+                    WHERE `trackId` IN (SELECT `id` FROM `audio_tracks` WHERE `isVirtualScene` = 1)
+                """.trimIndent())
+            } catch (e: Exception) {
+                Log.w("Migrations", "MIGRATION_20_21 re-pointing scene notes warning: ${e.message}")
+            }
+
+            // Also re-point vocabulary_items attached to scene tracks to parent
+            try {
+                db.execSQL("""
+                    UPDATE `vocabulary_items`
+                    SET `trackId` = (
+                            SELECT p.`id` FROM `audio_tracks` s
+                            JOIN `audio_tracks` p ON (s.`parentTrackId` = p.`id` OR (p.`filePath` = s.`filePath` AND p.`isVirtualScene` = 0))
+                            WHERE s.`id` = `vocabulary_items`.`trackId` AND s.`isVirtualScene` = 1
+                            LIMIT 1
+                        )
+                    WHERE `trackId` IN (SELECT `id` FROM `audio_tracks` WHERE `isVirtualScene` = 1)
+                """.trimIndent())
+            } catch (e: Exception) {
+                Log.w("Migrations", "MIGRATION_20_21 re-pointing vocab trackId warning: ${e.message}")
+            }
+
+            // 2. Re-point quiz_questions attached to scene tracks to parent track
+            try {
+                db.execSQL("""
+                    UPDATE `quiz_questions`
+                    SET `trackId` = (
+                            SELECT p.`id` FROM `audio_tracks` s
+                            JOIN `audio_tracks` p ON (s.`parentTrackId` = p.`id` OR (p.`filePath` = s.`filePath` AND p.`isVirtualScene` = 0))
+                            WHERE s.`id` = `quiz_questions`.`trackId` AND s.`isVirtualScene` = 1
+                            LIMIT 1
+                        )
+                    WHERE `trackId` IN (SELECT `id` FROM `audio_tracks` WHERE `isVirtualScene` = 1)
+                """.trimIndent())
+            } catch (e: Exception) {
+                Log.w("Migrations", "MIGRATION_20_21 re-pointing quiz_questions trackId warning: ${e.message}")
+            }
+
+            // 3. Rebuild quiz_questions table with ON DELETE SET NULL and cached trackName
+            try {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `quiz_questions_new` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `trackId` INTEGER,
+                        `trackName` TEXT DEFAULT NULL,
+                        `noteId` INTEGER,
+                        `questionType` TEXT NOT NULL,
+                        `category` TEXT NOT NULL,
+                        `question` TEXT NOT NULL,
+                        `optionsJson` TEXT NOT NULL,
+                        `correctIndex` INTEGER NOT NULL,
+                        `explanation` TEXT NOT NULL,
+                        `timestampMs` INTEGER,
+                        `timesAnswered` INTEGER NOT NULL,
+                        `timesCorrect` INTEGER NOT NULL,
+                        `lastAnsweredAt` INTEGER,
+                        `createdAt` INTEGER NOT NULL,
+                        `targetWord` TEXT,
+                        `meaning` TEXT,
+                        `contextSentence` TEXT,
+                        `srRepetitions` INTEGER NOT NULL DEFAULT 0,
+                        `srIntervalDays` INTEGER NOT NULL DEFAULT 0,
+                        `srEase` REAL NOT NULL DEFAULT 2.5,
+                        `srLapses` INTEGER NOT NULL DEFAULT 0,
+                        `srNextReviewAt` INTEGER DEFAULT NULL,
+                        FOREIGN KEY(`trackId`) REFERENCES `audio_tracks`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+                    )
+                """.trimIndent())
+
+                // Copy data from old quiz_questions and backfill trackName from audio_tracks
+                db.execSQL("""
+                    INSERT INTO `quiz_questions_new` (
+                        `id`, `trackId`, `trackName`, `noteId`, `questionType`, `category`, `question`,
+                        `optionsJson`, `correctIndex`, `explanation`, `timestampMs`, `timesAnswered`,
+                        `timesCorrect`, `lastAnsweredAt`, `createdAt`, `targetWord`, `meaning`,
+                        `contextSentence`, `srRepetitions`, `srIntervalDays`, `srEase`, `srLapses`, `srNextReviewAt`
+                    )
+                    SELECT 
+                        q.`id`, q.`trackId`, t.`fileName` AS `trackName`, q.`noteId`, q.`questionType`, q.`category`, q.`question`,
+                        q.`optionsJson`, q.`correctIndex`, q.`explanation`, q.`timestampMs`, q.`timesAnswered`,
+                        q.`timesCorrect`, q.`lastAnsweredAt`, q.`createdAt`, q.`targetWord`, q.`meaning`,
+                        q.`contextSentence`, q.`srRepetitions`, q.`srIntervalDays`, q.`srEase`, q.`srLapses`, q.`srNextReviewAt`
+                    FROM `quiz_questions` q
+                    LEFT JOIN `audio_tracks` t ON q.`trackId` = t.`id`
+                """.trimIndent())
+
+                db.execSQL("DROP TABLE `quiz_questions`")
+                db.execSQL("ALTER TABLE `quiz_questions_new` RENAME TO `quiz_questions`")
+
+                // Re-create indices
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_questions_trackId` ON `quiz_questions` (`trackId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_questions_category` ON `quiz_questions` (`category`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_questions_noteId` ON `quiz_questions` (`noteId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_questions_srNextReviewAt` ON `quiz_questions` (`srNextReviewAt`)")
+            } catch (e: Exception) {
+                Log.e("Migrations", "MIGRATION_20_21 rebuild quiz_questions failed: ${e.message}", e)
+                throw e
+            }
+        }
+    }
+
     val ALL_MIGRATIONS = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -325,6 +457,7 @@ internal object DatabaseMigrations {
         MIGRATION_16_17,
         MIGRATION_17_18,
         MIGRATION_18_19,
-        MIGRATION_19_20
+        MIGRATION_19_20,
+        MIGRATION_20_21
     )
 }

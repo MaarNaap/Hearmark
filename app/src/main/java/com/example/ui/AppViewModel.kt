@@ -585,9 +585,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val relinkCandidates = mutableStateOf<List<com.example.data.entities.TrackRelinkCandidate>>(emptyList())
     val showRelinkDialog = mutableStateOf(false)
 
-    fun deleteTrackFromApp(track: AudioTrack) {
+    fun deleteTrackFromApp(track: AudioTrack, options: com.example.data.DeleteOptions = com.example.data.DeleteOptions()) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.deleteTrack(track)
+            repository.deleteTrack(track, options)
         }
     }
 
@@ -619,22 +619,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         selectedTrackIds.value = emptySet()
     }
 
-    fun deleteSelectedTracks() {
+    fun deleteSelectedTracks(options: com.example.data.DeleteOptions = com.example.data.DeleteOptions()) {
         val targets = selectedTrackIds.value.toSet()
         if (targets.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
-            repository.deleteTracksByIds(targets)
+            repository.deleteTracksByIds(targets, options)
             withContext(Dispatchers.Main) {
                 clearTrackSelections()
             }
         }
     }
 
-    fun deleteTracksByIds(ids: Set<Long>) {
+    fun deleteTracksByIds(ids: Set<Long>, options: com.example.data.DeleteOptions = com.example.data.DeleteOptions()) {
         if (ids.isEmpty()) return
         val targets = ids.toSet()
         viewModelScope.launch(Dispatchers.IO) {
-            repository.deleteTracksByIds(targets)
+            repository.deleteTracksByIds(targets, options)
         }
     }
 

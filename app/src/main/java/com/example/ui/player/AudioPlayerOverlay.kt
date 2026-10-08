@@ -194,24 +194,8 @@ fun AudioPlayerOverlay(
     val allNotesList by viewModel.notes.collectAsStateWithLifecycle()
     val trackNotes = remember(allNotesList, allTracksList, track.id, track.isVirtualScene, track.parentTrackId, track.startOffsetMs, track.duration) {
         if (track.isVirtualScene) {
-            val sceneStart = track.startOffsetMs
-            val sceneEnd = track.endOffsetMs ?: (track.startOffsetMs + track.duration)
-            val parentId = track.parentTrackId ?: allTracksList.find { it.filePath == track.filePath && !it.isVirtualScene }?.id
-            val parentTrack = allTracksList.find { it.id == parentId }
             allNotesList.filter { note ->
-                if (note.trackId == track.id) {
-                    true
-                } else if (parentId != null && note.trackId == parentId) {
-                    val s = note.originStartMs ?: note.startTimestampMs
-                    val e = if (note.endTimestampMs > s) note.endTimestampMs else s
-                    (s <= sceneEnd && e >= sceneStart) || (s in 0L..track.duration)
-                } else if (note.trackName != null && (note.trackName == track.fileName || (parentTrack != null && note.trackName == parentTrack.fileName))) {
-                    val s = note.originStartMs ?: note.startTimestampMs
-                    val e = if (note.endTimestampMs > s) note.endTimestampMs else s
-                    (s <= sceneEnd && e >= sceneStart) || (s in 0L..track.duration)
-                } else {
-                    false
-                }
+                belongsToScene(note, track, allTracksList)
             }
         } else {
             // Parent or regular track (audio or video)

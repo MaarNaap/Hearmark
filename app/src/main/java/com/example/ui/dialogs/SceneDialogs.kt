@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.AudioTrack
 import com.example.player.NoteAudioPlayer
+import com.example.ui.dialogs.ConfirmDeleteTrackDialog
 import java.util.Locale
 
 @Composable
@@ -47,48 +48,22 @@ fun EditVirtualSceneDialog(
     }
 
     if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            icon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
+        var compCount by remember { mutableIntStateOf(0) }
+        LaunchedEffect(track.id) {
+            compCount = viewModel.repository.getComprehensionQuestionCountForTrack(track.id)
+        }
+
+        ConfirmDeleteTrackDialog(
+            title = Loc.getText("delete_scene_confirm_title"),
+            desc = Loc.getFormattedText("delete_scene_confirm_desc", track.getDisplayTitle()),
+            isScene = true,
+            comprehensionCount = compCount,
+            onConfirmDelete = { options ->
+                showDeleteConfirm = false
+                NoteAudioPlayer.stop()
+                viewModel.deleteVirtualScene(track, options, onSuccess = onDismiss)
             },
-            title = {
-                Text(
-                    text = Loc.getText("delete_scene_confirm_title"),
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    text = Loc.getFormattedText("delete_scene_confirm_desc", track.getDisplayTitle()),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showDeleteConfirm = false
-                        NoteAudioPlayer.stop()
-                        viewModel.deleteVirtualScene(track, onSuccess = onDismiss)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    modifier = Modifier.testTag("confirm_delete_scene_btn")
-                ) {
-                    Text(Loc.getText("delete"))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showDeleteConfirm = false },
-                    modifier = Modifier.testTag("cancel_delete_scene_btn")
-                ) {
-                    Text(Loc.getText("cancel"))
-                }
-            }
+            onDismiss = { showDeleteConfirm = false }
         )
     }
 
@@ -652,48 +627,21 @@ fun ReviewScenesDialog(
     var showImportJsonDialog by remember { mutableStateOf(false) }
 
     sceneToDelete?.let { targetScene ->
-        AlertDialog(
-            onDismissRequest = { sceneToDelete = null },
-            icon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
+        var compCount by remember { mutableIntStateOf(0) }
+        LaunchedEffect(targetScene.id) {
+            compCount = viewModel.repository.getComprehensionQuestionCountForTrack(targetScene.id)
+        }
+
+        ConfirmDeleteTrackDialog(
+            title = Loc.getText("delete_scene_confirm_title"),
+            desc = Loc.getFormattedText("delete_scene_confirm_desc", targetScene.getDisplayTitle()),
+            isScene = true,
+            comprehensionCount = compCount,
+            onConfirmDelete = { options ->
+                viewModel.deleteVirtualScene(targetScene, options)
+                sceneToDelete = null
             },
-            title = {
-                Text(
-                    text = Loc.getText("delete_scene_confirm_title"),
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-            },
-            text = {
-                Text(
-                    text = Loc.getFormattedText("delete_scene_confirm_desc", targetScene.getDisplayTitle()),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteVirtualScene(targetScene)
-                        sceneToDelete = null
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    modifier = Modifier.testTag("confirm_delete_review_scene_btn")
-                ) {
-                    Text(Loc.getText("delete_scene_btn"))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { sceneToDelete = null },
-                    modifier = Modifier.testTag("cancel_delete_review_scene_btn")
-                ) {
-                    Text(Loc.getText("cancel"))
-                }
-            }
+            onDismiss = { sceneToDelete = null }
         )
     }
 

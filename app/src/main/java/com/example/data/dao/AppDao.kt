@@ -485,4 +485,47 @@ interface AppDao {
 
     @Query("SELECT * FROM playlist_tracks WHERE trackId = :trackId")
     suspend fun getPlaylistCrossRefsForTrackDirect(trackId: Long): List<PlaylistTrackCrossRef>
+
+    // --- Granular Track Delete & Detach Operations ---
+    @Query("SELECT COUNT(*) FROM notes WHERE trackId = :trackId")
+    suspend fun getNoteCountForTrack(trackId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM notes WHERE trackId IN (:trackIds)")
+    suspend fun getNoteCountForTracks(trackIds: Set<Long>): Int
+
+    @Query("SELECT COUNT(*) FROM quiz_questions WHERE trackId = :trackId AND (category = 'VOCABULARY' OR (category = 'COMPREHENSION' AND (question LIKE '%meaning%' OR question LIKE '%means%' OR question LIKE '%word%' OR question LIKE '%definition%' OR question LIKE '%phrase%' OR question LIKE '%idiom%' OR question LIKE '%معنى%' OR question LIKE '%مرادف%')))")
+    suspend fun getVocabQuestionCountForTrack(trackId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM quiz_questions WHERE trackId IN (:trackIds) AND (category = 'VOCABULARY' OR (category = 'COMPREHENSION' AND (question LIKE '%meaning%' OR question LIKE '%means%' OR question LIKE '%word%' OR question LIKE '%definition%' OR question LIKE '%phrase%' OR question LIKE '%idiom%' OR question LIKE '%معنى%' OR question LIKE '%مرادف%')))")
+    suspend fun getVocabQuestionCountForTracks(trackIds: Set<Long>): Int
+
+    @Query("SELECT COUNT(*) FROM quiz_questions WHERE trackId = :trackId AND category = 'COMPREHENSION' AND NOT (question LIKE '%meaning%' OR question LIKE '%means%' OR question LIKE '%word%' OR question LIKE '%definition%' OR question LIKE '%phrase%' OR question LIKE '%idiom%' OR question LIKE '%معنى%' OR question LIKE '%مرادف%')")
+    suspend fun getComprehensionQuestionCountForTrack(trackId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM quiz_questions WHERE trackId IN (:trackIds) AND category = 'COMPREHENSION' AND NOT (question LIKE '%meaning%' OR question LIKE '%means%' OR question LIKE '%word%' OR question LIKE '%definition%' OR question LIKE '%phrase%' OR question LIKE '%idiom%' OR question LIKE '%معنى%' OR question LIKE '%مرادف%')")
+    suspend fun getComprehensionQuestionCountForTracks(trackIds: Set<Long>): Int
+
+    @Query("UPDATE notes SET trackId = NULL WHERE trackId = :trackId")
+    suspend fun detachNotesForTrack(trackId: Long)
+
+    @Query("UPDATE notes SET trackId = NULL WHERE trackId IN (:trackIds)")
+    suspend fun detachNotesForTracks(trackIds: Set<Long>)
+
+    @Query("UPDATE quiz_questions SET trackId = NULL WHERE trackId = :trackId")
+    suspend fun detachQuizQuestionsForTrack(trackId: Long)
+
+    @Query("UPDATE quiz_questions SET trackId = NULL WHERE trackId IN (:trackIds)")
+    suspend fun detachQuizQuestionsForTracks(trackIds: Set<Long>)
+
+    @Query("DELETE FROM quiz_questions WHERE trackId = :trackId AND category = 'COMPREHENSION' AND NOT (question LIKE '%meaning%' OR question LIKE '%means%' OR question LIKE '%word%' OR question LIKE '%definition%' OR question LIKE '%phrase%' OR question LIKE '%idiom%' OR question LIKE '%معنى%' OR question LIKE '%مرادف%')")
+    suspend fun deleteComprehensionQuestionsForTrack(trackId: Long)
+
+    @Query("DELETE FROM quiz_questions WHERE trackId IN (:trackIds) AND category = 'COMPREHENSION' AND NOT (question LIKE '%meaning%' OR question LIKE '%means%' OR question LIKE '%word%' OR question LIKE '%definition%' OR question LIKE '%phrase%' OR question LIKE '%idiom%' OR question LIKE '%معنى%' OR question LIKE '%مرادف%')")
+    suspend fun deleteComprehensionQuestionsForTracks(trackIds: Set<Long>)
+
+    @Query("DELETE FROM quiz_questions WHERE trackId = :trackId AND (category = 'VOCABULARY' OR (category = 'COMPREHENSION' AND (question LIKE '%meaning%' OR question LIKE '%means%' OR question LIKE '%word%' OR question LIKE '%definition%' OR question LIKE '%phrase%' OR question LIKE '%idiom%' OR question LIKE '%معنى%' OR question LIKE '%مرادف%')))")
+    suspend fun deleteVocabQuestionsForTrack(trackId: Long)
+
+    @Query("DELETE FROM quiz_questions WHERE trackId IN (:trackIds) AND (category = 'VOCABULARY' OR (category = 'COMPREHENSION' AND (question LIKE '%meaning%' OR question LIKE '%means%' OR question LIKE '%word%' OR question LIKE '%definition%' OR question LIKE '%phrase%' OR question LIKE '%idiom%' OR question LIKE '%معنى%' OR question LIKE '%مرادف%')))")
+    suspend fun deleteVocabQuestionsForTracks(trackIds: Set<Long>)
 }

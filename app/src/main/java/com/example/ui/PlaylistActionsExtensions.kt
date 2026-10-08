@@ -29,9 +29,9 @@ fun AppViewModel.editFolderName(id: Long, newName: String) {
     }
 }
 
-fun AppViewModel.deleteFolder(id: Long) {
+fun AppViewModel.deleteFolder(id: Long, options: com.example.data.DeleteOptions = com.example.data.DeleteOptions()) {
     viewModelScope.launch(Dispatchers.IO) {
-        repository.deleteFolder(id)
+        repository.deleteFolder(id, options)
     }
 }
 

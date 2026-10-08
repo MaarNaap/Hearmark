@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.Folder
+import com.example.ui.dialogs.ConfirmDeleteTrackDialog
 
 @Composable
 fun SubfolderDetailsItem(
@@ -381,26 +382,34 @@ fun FolderTreeNodeItem(
         }
 
         if (showDeleteFolderConfirm) {
-            AlertDialog(
-                onDismissRequest = { showDeleteFolderConfirm = false },
-                title = { Text(Loc.getText("delete_folder_title")) },
-                text = { Text(Loc.getText("delete_folder_confirm")) },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showDeleteFolderConfirm = false
-                            viewModel.deleteFolder(folder.id)
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Text(Loc.getText("delete"))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showDeleteFolderConfirm = false }) {
-                        Text(Loc.getText("cancel"))
-                    }
+            var noteCount by remember { mutableIntStateOf(0) }
+            var compCount by remember { mutableIntStateOf(0) }
+            var vocabCount by remember { mutableIntStateOf(0) }
+
+            LaunchedEffect(folder.id) {
+                val allFolders = viewModel.folders.value
+                val subIds = viewModel.repository.getAllSubfolderIds(folder.id, allFolders)
+                val allTracks = viewModel.tracks.value
+                val folderTrackIds = allTracks.filter { it.parentFolderId in subIds }.map { it.id }.toSet()
+                if (folderTrackIds.isNotEmpty()) {
+                    noteCount = viewModel.repository.getNoteCountForTracks(folderTrackIds)
+                    compCount = viewModel.repository.getComprehensionQuestionCountForTracks(folderTrackIds)
+                    vocabCount = viewModel.repository.getVocabQuestionCountForTracks(folderTrackIds)
                 }
+            }
+
+            ConfirmDeleteTrackDialog(
+                title = Loc.getText("delete_folder_title"),
+                desc = Loc.getText("delete_folder_confirm"),
+                isScene = false,
+                noteCount = noteCount,
+                comprehensionCount = compCount,
+                vocabCount = vocabCount,
+                onConfirmDelete = { options ->
+                    showDeleteFolderConfirm = false
+                    viewModel.deleteFolder(folder.id, options)
+                },
+                onDismiss = { showDeleteFolderConfirm = false }
             )
         }
 

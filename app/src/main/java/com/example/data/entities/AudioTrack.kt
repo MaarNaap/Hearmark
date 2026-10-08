@@ -204,3 +204,14 @@ data class PlaylistTrackCrossRef(
     val trackId: Long,
     val displayOrder: Int = 0
 )
+
+/**
+ * Deletion options governing whether notes, comprehension questions, and vocabulary questions
+ * should be permanently deleted or preserved in a detached state (trackId set to null).
+ * Unchecked by default (false = keep/detach, true = delete permanently).
+ */
+data class DeleteOptions(
+    val deleteNotes: Boolean = false,
+    val deleteComprehension: Boolean = false,
+    val deleteVocabulary: Boolean = false
+)

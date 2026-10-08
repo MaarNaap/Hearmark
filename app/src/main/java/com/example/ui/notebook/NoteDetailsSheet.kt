@@ -291,12 +291,16 @@ fun ViewNoteDetailsModal(
     onDelete: () -> Unit,
     onCopy: () -> Unit,
     onCreateQuizQuestion: () -> Unit = {},
+    onRelinkTrack: ((AudioTrack) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val favTag = Loc.getText("favorite_tag_name")
     val isFavorite = remember(note.tags, favTag) {
         note.getTagsList().any { it.equals("favorite", ignoreCase = true) || it == "المفضلة" || it == favTag }
     }
+    val isDetached = note.trackId == null && !note.trackName.isNullOrBlank()
+    var showRelinkPicker by remember { mutableStateOf(false) }
+
     val associatedTrack = remember(note.trackId, note.trackName, allTracks) {
         if (note.trackId != null) {
             allTracks.find { it.id == note.trackId }
@@ -508,13 +512,32 @@ fun ViewNoteDetailsModal(
                                     )
                                 }
                                 Column {
-                                    Text(
-                                        text = associatedTrack?.fileName ?: note.trackName ?: Loc.getText("linked_audio_clip"),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = associatedTrack?.fileName ?: note.trackName ?: Loc.getText("linked_audio_clip"),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        if (isDetached) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)
+                                            ) {
+                                                Text(
+                                                    text = Loc.getText("audio_removed_badge"),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    fontSize = 10.sp
+                                                )
+                                            }
+                                        }
+                                    }
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -538,71 +561,89 @@ fun ViewNoteDetailsModal(
                                 }
                             }
 
-                            // Open in folder / library indicator
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                                contentDescription = Loc.getText("open_in_library"),
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Audio Action Buttons: Isolated Snippet Player & Full Main Player
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // 1. Isolated Note Snippet Player Toggle
-                            FilledTonalButton(
-                                onClick = onPlaySnippet,
-                                modifier = Modifier.weight(1f).height(38.dp),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-                                    contentColor = if (isPlaying) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
-                                ),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
-                            ) {
+                            // Open in folder / library indicator or Relink action
+                            if (isDetached) {
+                                TextButton(
+                                    onClick = { showRelinkPicker = true },
+                                    modifier = Modifier.testTag("details_relink_note_btn")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Link,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(Loc.getText("relink_note_action"), fontSize = 12.sp)
+                                }
+                            } else {
                                 Icon(
-                                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                    contentDescription = null,
+                                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                    contentDescription = Loc.getText("open_in_library"),
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(18.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = if (isPlaying) Loc.getText("pause_clip") else Loc.getText("play_clip"),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
                             }
+                        }
 
-                            // 2. Play Full Audio in Main Player
-                            if (associatedTrack != null) {
-                                OutlinedButton(
-                                    onClick = {
-                                        onPlayInMainPlayer(associatedTrack, note.startTimestampMs)
-                                    },
+                        if (!isDetached) {
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Audio Action Buttons: Isolated Snippet Player & Full Main Player
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // 1. Isolated Note Snippet Player Toggle
+                                FilledTonalButton(
+                                    onClick = onPlaySnippet,
                                     modifier = Modifier.weight(1f).height(38.dp),
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = MaterialTheme.colorScheme.primary
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                        contentColor = if (isPlaying) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
                                     ),
                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.PlayCircleOutline,
+                                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                         contentDescription = null,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = Loc.getText("play_in_main_player"),
+                                        text = if (isPlaying) Loc.getText("pause_clip") else Loc.getText("play_clip"),
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold
                                     )
+                                }
+
+                                // 2. Play Full Audio in Main Player
+                                if (associatedTrack != null) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            onPlayInMainPlayer(associatedTrack, note.startTimestampMs)
+                                        },
+                                        modifier = Modifier.weight(1f).height(38.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = MaterialTheme.colorScheme.primary
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.PlayCircleOutline,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = Loc.getText("play_in_main_player"),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -768,5 +809,17 @@ fun ViewNoteDetailsModal(
                 }
             }
         }
+    }
+
+    if (showRelinkPicker) {
+        com.example.ui.dialogs.TrackPickerForNoteRelinkDialog(
+            tracks = allTracks,
+            noteTitle = note.text,
+            onTrackSelected = { selectedTrack ->
+                showRelinkPicker = false
+                onRelinkTrack?.invoke(selectedTrack)
+            },
+            onDismiss = { showRelinkPicker = false }
+        )
     }
 }
