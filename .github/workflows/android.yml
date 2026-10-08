@@ -34,10 +34,22 @@ jobs:
             cp .env.example .env
           fi
 
-      - name: Decode debug keystore if absent
+      - name: Prepare debug keystore if absent
         run: |
-          if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
+          if [ ! -s debug.keystore ] && [ -s debug.keystore.base64 ]; then
             base64 --decode debug.keystore.base64 > debug.keystore
+          fi
+          if [ ! -s debug.keystore ]; then
+            rm -f debug.keystore
+            keytool -genkeypair -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
           fi
 
       - name: Run Unit and Robolectric Tests
