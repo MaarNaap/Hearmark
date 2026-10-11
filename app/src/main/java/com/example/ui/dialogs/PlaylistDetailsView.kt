@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.AudioTrack
 import com.example.player.AudioPlayerManager
+import com.example.ui.dialogs.ConfirmDeletePlaylistDialog
 
 @Composable
 fun PlaylistDetailsView(
@@ -57,38 +58,34 @@ fun PlaylistDetailsView(
     var showAddToPlaylistDialogForTrack by remember { mutableStateOf<AudioTrack?>(null) }
 
     if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text(Loc.getText("delete")) },
-            text = { Text(Loc.getText("delete_playlist_confirm")) },
-            confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
-                        onClick = {
-                            showDeleteConfirm = false
-                            viewModel.deletePlaylist(playlistId, false)
-                            backPressed()
-                        }
-                    ) {
-                        Text(Loc.getText("keep_tracks"))
-                    }
-                    Button(
-                        onClick = {
-                            showDeleteConfirm = false
-                            viewModel.deletePlaylist(playlistId, true)
-                            backPressed()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Text(Loc.getText("delete_completely"))
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text(Loc.getText("cancel"))
-                }
+        var noteCount by remember { mutableIntStateOf(0) }
+        var compCount by remember { mutableIntStateOf(0) }
+        var vocabCount by remember { mutableIntStateOf(0) }
+
+        LaunchedEffect(playlistId, tracks) {
+            val trackIds = tracks.map { if (it.isVirtualScene && it.parentTrackId != null) it.parentTrackId else it.id }.toSet()
+            if (trackIds.isNotEmpty()) {
+                noteCount = viewModel.repository.getNoteCountForTracks(trackIds)
+                compCount = viewModel.repository.getComprehensionQuestionCountForTracks(trackIds)
+                vocabCount = viewModel.repository.getVocabQuestionCountForTracks(trackIds)
             }
+        }
+
+        ConfirmDeletePlaylistDialog(
+            noteCount = noteCount,
+            comprehensionCount = compCount,
+            vocabCount = vocabCount,
+            onKeepTracks = {
+                showDeleteConfirm = false
+                viewModel.deletePlaylist(playlistId, false)
+                backPressed()
+            },
+            onDeleteCompletely = { options ->
+                showDeleteConfirm = false
+                viewModel.deletePlaylist(playlistId, true, options)
+                backPressed()
+            },
+            onDismiss = { showDeleteConfirm = false }
         )
     }
 

@@ -180,8 +180,9 @@ class QuizViewModel(
             }
 
             viewModelScope.launch {
-                loadQuizQuestionsForTrack(track.id)
-                val trackQuestions = repository.getQuestionsForTrackDirect(track.id)
+                val targetTrackId = if (track.isVirtualScene && track.parentTrackId != null) track.parentTrackId else track.id
+                loadQuizQuestionsForTrack(targetTrackId)
+                val trackQuestions = repository.getQuestionsForTrackDirect(targetTrackId)
                 if (trackQuestions.isNotEmpty()) {
                     startQuizSession(trackQuestions)
                 } else {
@@ -198,7 +199,8 @@ class QuizViewModel(
         } else {
             activeQuizTabMode.value = QuizTabMode.TRACK
             viewModelScope.launch {
-                loadQuizQuestionsForTrack(track.id)
+                val targetTrackId = if (track.isVirtualScene && track.parentTrackId != null) track.parentTrackId else track.id
+                loadQuizQuestionsForTrack(targetTrackId)
                 isQuizSheetOpen.value = true
                 isUnifiedQuizSheetOpen.value = true
             }
@@ -221,7 +223,13 @@ class QuizViewModel(
 
     fun loadQuizQuestionsForTrack(trackId: Long) {
         viewModelScope.launch {
-            val questions = repository.getQuestionsForTrackDirect(trackId)
+            val track = repository.getTrackById(trackId)
+            val resolvedTrackId = if (track?.isVirtualScene == true && track.parentTrackId != null) {
+                track.parentTrackId
+            } else {
+                trackId
+            }
+            val questions = repository.getQuestionsForTrackDirect(resolvedTrackId)
             currentTrackQuizQuestions.value = questions
         }
     }
@@ -263,7 +271,19 @@ class QuizViewModel(
 
         viewModelScope.launch {
             try {
-                val existingQuestions = repository.getQuestionsForTrackDirect(track.id)
+                val parentTrack = if (track.isVirtualScene && track.parentTrackId != null) {
+                    repository.getTrackById(track.parentTrackId)
+                } else {
+                    null
+                }
+                val targetTrackId = if (track.isVirtualScene && track.parentTrackId != null) {
+                    track.parentTrackId
+                } else {
+                    track.id
+                }
+                val targetTrackName = parentTrack?.fileName ?: track.fileName
+
+                val existingQuestions = repository.getQuestionsForTrackDirect(targetTrackId)
                 val existingQuestionTexts = existingQuestions.map { it.question.trim() }.filter { it.isNotBlank() }
 
                 val source = QuizContentSource.Transcript(
@@ -287,22 +307,28 @@ class QuizViewModel(
 
                     val entities = uniqueGenerated.map { item ->
                         val optionsJson = org.json.JSONArray(item.options).toString()
+                        val physicalTimestampMs = if (track.isVirtualScene && item.timestampMs != null && item.timestampMs < track.startOffsetMs) {
+                            track.startOffsetMs + item.timestampMs
+                        } else {
+                            item.timestampMs
+                        }
                         QuizQuestion(
-                            trackId = track.id,
+                            trackId = targetTrackId,
+                            trackName = targetTrackName,
                             questionType = item.questionType,
                             category = item.category,
                             question = item.question,
                             optionsJson = optionsJson,
                             correctIndex = item.correctIndex,
                             explanation = item.explanation,
-                            timestampMs = item.timestampMs,
+                            timestampMs = physicalTimestampMs,
                             targetWord = item.targetWord,
                             meaning = item.meaning,
                             contextSentence = item.contextSentence
                         )
                     }
                     repository.insertQuizQuestions(entities)
-                    loadQuizQuestionsForTrack(track.id)
+                    loadQuizQuestionsForTrack(targetTrackId)
                     isGeneratingQuiz.value = false
                     quizGenerationSuccessMessage.value = Loc.getFormattedText("quiz_generated_success", entities.size)
                     // Automatically launch into practice with the newly generated questions
@@ -332,8 +358,14 @@ class QuizViewModel(
 
     fun clearQuizBankForTrack(trackId: Long) {
         viewModelScope.launch {
-            repository.deleteQuizQuestionsForTrack(trackId)
-            loadQuizQuestionsForTrack(trackId)
+            val track = repository.getTrackById(trackId)
+            val resolvedTrackId = if (track?.isVirtualScene == true && track.parentTrackId != null) {
+                track.parentTrackId
+            } else {
+                trackId
+            }
+            repository.deleteQuizQuestionsForTrack(resolvedTrackId)
+            loadQuizQuestionsForTrack(resolvedTrackId)
         }
     }
 
@@ -435,6 +467,7 @@ class QuizViewModel(
                             val isolatedContext = item.contextSentence.ifBlank { sourceNote?.getIsolatedContextSentence() ?: sourceNote?.text ?: "" }
                             QuizQuestion(
                                 trackId = item.trackId ?: sourceNote?.trackId,
+                                trackName = sourceNote?.trackName ?: "",
                                 noteId = item.sourceNoteId,
                                 questionType = item.questionType,
                                 category = "VOCABULARY",
@@ -504,6 +537,7 @@ class QuizViewModel(
                 val isolatedContext = item.contextSentence.ifBlank { sourceNote?.getIsolatedContextSentence() ?: sourceNote?.text ?: "" }
                 QuizQuestion(
                     trackId = item.trackId ?: sourceNote?.trackId,
+                    trackName = sourceNote?.trackName ?: "",
                     noteId = item.sourceNoteId,
                     questionType = item.questionType,
                     category = "VOCABULARY",
@@ -566,6 +600,7 @@ class QuizViewModel(
                         val isolatedContext = first.contextSentence.ifBlank { note.getIsolatedContextSentence() }
                         val entity = QuizQuestion(
                             trackId = first.trackId ?: note.trackId,
+                            trackName = note.trackName,
                             noteId = note.id,
                             questionType = first.questionType,
                             category = "VOCABULARY",

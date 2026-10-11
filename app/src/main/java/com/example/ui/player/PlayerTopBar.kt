@@ -216,12 +216,13 @@ fun PlayerTopBarAndFocusHeader(
                             }
                         }
                         val dur = durationState
+                        val effectiveChatPhysPos = if (track.isVirtualScene) (track.startOffsetMs + playPositionState) else playPositionState
                         val formattedPos = if (dur > 0) "${formatDuration(playPositionState)} / ${formatDuration(dur)}" else formatDuration(playPositionState)
                         viewModel.openChatWithContext(
                             com.example.ai.AudioContextSummary(
                                 trackTitle = track.getDisplayTitle(),
                                 trackArtist = null,
-                                currentPositionMs = playPositionState,
+                                currentPositionMs = effectiveChatPhysPos,
                                 formattedPosition = formattedPos,
                                 activeSubtitleLine = null,
                                 activeTaskTitle = relatedTasks.firstOrNull()?.getDisplayTitle(),

@@ -255,10 +255,13 @@ fun AppViewModel.duplicateTask(id: Long, onCompleted: (() -> Unit)? = null) {
     }
 }
 
-fun AppViewModel.deleteMultipleFolders(ids: Set<Long>) {
+fun AppViewModel.deleteMultipleFolders(
+    ids: Set<Long>,
+    options: com.example.data.DeleteOptions = com.example.data.DeleteOptions()
+) {
     viewModelScope.launch(Dispatchers.IO) {
         for (id in ids) {
-            repository.deleteFolder(id)
+            repository.deleteFolder(id, options)
         }
     }
 }

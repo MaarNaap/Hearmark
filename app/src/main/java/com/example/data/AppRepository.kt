@@ -62,6 +62,9 @@ class AppRepository(
             for (track in tracksToDelete) {
                 deleteTrackDbRecords(track, options)
             }
+            if (!options.deleteNotes && allFolderIdsToDelete.isNotEmpty()) {
+                dao.detachNotesForFolders(allFolderIdsToDelete)
+            }
             for (folderId in allFolderIdsToDelete) {
                 dao.deleteFolder(folderId)
             }
@@ -98,49 +101,68 @@ class AppRepository(
     suspend fun getComprehensionQuestionCountForTrack(trackId: Long): Int = dao.getComprehensionQuestionCountForTrack(trackId)
     suspend fun getComprehensionQuestionCountForTracks(trackIds: Set<Long>): Int = dao.getComprehensionQuestionCountForTracks(trackIds)
 
+    private suspend fun deleteSingleTrackRecords(trackId: Long, trackFileName: String, options: DeleteOptions) {
+        dao.backfillQuizQuestionTrackNameForTrack(trackId, trackFileName)
+
+        if (options.deleteComprehension) {
+            dao.deleteComprehensionQuestionsForTrack(trackId)
+        }
+
+        if (options.deleteVocabulary) {
+            dao.deleteVocabQuestionsForTrack(trackId)
+            dao.deleteVocabItemsForTrack(trackId)
+        } else {
+            dao.detachVocabItemsForTrack(trackId)
+        }
+
+        if (options.deleteNotes) {
+            dao.detachQuizQuestionNotesForTrack(trackId)
+            dao.detachVocabItemNotesForTrack(trackId)
+            dao.deleteNotesForTrack(trackId)
+        } else {
+            // Detached state: set trackId = null while keeping trackName and folderName
+            dao.detachNotesForTrack(trackId)
+        }
+
+        // Questions that survive (kept) are detached: trackId = null, retaining cached trackName
+        dao.detachQuizQuestionsForTrack(trackId)
+
+        dao.deletePlaylistTracksByTrackId(trackId)
+        dao.deleteTaskTrackProgressByTrackId(trackId)
+    }
+
     private suspend fun deleteTrackDbRecords(track: AudioTrack, options: DeleteOptions = DeleteOptions()) {
+        if (track.isVirtualScene) {
+            val parentId = track.parentTrackId
+            val parentTrack = parentId?.let { dao.getTrackById(it) }
+            if (parentTrack != null) {
+                val parentFolder = parentTrack.parentFolderId?.let { dao.getFolderById(it) }
+                dao.reassignNotesWithMetadata(
+                    fromTrackId = track.id,
+                    toTrackId = parentTrack.id,
+                    toFolderId = parentTrack.parentFolderId,
+                    trackName = parentTrack.fileName,
+                    folderName = parentFolder?.folderName
+                )
+                dao.reassignVocabularyItems(track.id, parentTrack.id)
+                dao.reassignQuizQuestions(track.id, parentTrack.id)
+                dao.deletePlaylistTracksByTrackId(track.id)
+                dao.deleteTaskTrackProgressByTrackId(track.id)
+            } else {
+                deleteSingleTrackRecords(track.id, track.fileName, options)
+            }
+            dao.deleteTrack(track)
+            return
+        }
+
         val scenes = dao.getScenesForParentTrack(track.id)
         for (scene in scenes) {
-            // Note: Notes belong to parent track, but clean any legacy note bindings
-            if (options.deleteNotes) {
-                dao.deleteNotesForTrack(scene.id)
-            } else {
-                dao.detachNotesForTrack(scene.id)
-            }
-
-            if (options.deleteComprehension) {
-                dao.deleteComprehensionQuestionsForTrack(scene.id)
-            }
-            if (options.deleteVocabulary) {
-                dao.deleteVocabQuestionsForTrack(scene.id)
-            }
-            // Any remaining quiz questions for scene are detached
-            dao.detachQuizQuestionsForTrack(scene.id)
-
-            dao.deletePlaylistTracksByTrackId(scene.id)
-            dao.deleteTaskTrackProgressByTrackId(scene.id)
+            deleteSingleTrackRecords(scene.id, track.fileName, options)
             dao.deleteTrack(scene)
         }
 
         // Parent track / direct track records
-        if (options.deleteNotes) {
-            dao.deleteNotesForTrack(track.id)
-        } else {
-            // Detached state: set trackId = null while keeping trackName and folderName
-            dao.detachNotesForTrack(track.id)
-        }
-
-        if (options.deleteComprehension) {
-            dao.deleteComprehensionQuestionsForTrack(track.id)
-        }
-        if (options.deleteVocabulary) {
-            dao.deleteVocabQuestionsForTrack(track.id)
-        }
-        // Questions that survive (kept) are detached: trackId = null, retaining cached trackName
-        dao.detachQuizQuestionsForTrack(track.id)
-
-        dao.deletePlaylistTracksByTrackId(track.id)
-        dao.deleteTaskTrackProgressByTrackId(track.id)
+        deleteSingleTrackRecords(track.id, track.fileName, options)
         dao.deleteTrack(track)
     }
 
@@ -637,13 +659,27 @@ class AppRepository(
     suspend fun getAllVocabularyQuestionsDirect(): List<QuizQuestion> = dao.getAllVocabularyQuestionsDirect()
     fun getQuestionsForTrackAndCategoryFlow(trackId: Long, category: String): Flow<List<QuizQuestion>> = dao.getQuestionsForTrackAndCategoryFlow(trackId, category)
     suspend fun insertQuizQuestions(questions: List<QuizQuestion>): List<Long> {
-        val allTracks = dao.getAllTracksDirect().associateBy { it.id }
+        val allTracksList = dao.getAllTracksDirect()
+        val allTracks = allTracksList.associateBy { it.id }
+        val allNotes = dao.getAllNotesDirect().associateBy { it.id }
         val prepared = questions.map { q ->
+            val rawTrack = q.trackId?.let { allTracks[it] }
+            val resolvedTrack = if (rawTrack?.isVirtualScene == true) {
+                rawTrack.parentTrackId?.let { allTracks[it] }
+                    ?: allTracksList.find { !it.isVirtualScene && it.filePath == rawTrack.filePath }
+                    ?: rawTrack
+            } else {
+                rawTrack
+            }
+            val resolvedTrackId = resolvedTrack?.id ?: q.trackId
             val resolvedWord: String? = q.targetWord?.takeIf { it.isNotBlank() } ?: q.getIsolatedTargetWord().takeIf { it.isNotBlank() }
             val resolvedMeaning: String? = q.meaning?.takeIf { it.isNotBlank() } ?: q.getIsolatedMeaning().takeIf { it.isNotBlank() }
             val resolvedContext: String? = q.contextSentence?.takeIf { it.isNotBlank() } ?: q.getIsolatedContextSentence().takeIf { it.isNotBlank() }
-            val resolvedTrackName: String? = q.trackName?.takeIf { it.isNotBlank() } ?: q.trackId?.let { allTracks[it]?.fileName }
+            val resolvedTrackName: String? = resolvedTrack?.fileName?.takeIf { it.isNotBlank() }
+                ?: q.trackName?.takeIf { it.isNotBlank() }
+                ?: q.noteId?.let { allNotes[it]?.trackName?.takeIf { name -> name.isNotBlank() } }
             q.copy(
+                trackId = resolvedTrackId,
                 trackName = resolvedTrackName,
                 targetWord = resolvedWord,
                 meaning = resolvedMeaning,
@@ -651,7 +687,7 @@ class AppRepository(
             )
         }
         val ids = dao.insertQuizQuestions(prepared)
-        prepared.forEachIndexed { index, q ->
+        prepared.forEach { q ->
             if (q.category == "VOCABULARY" && !q.targetWord.isNullOrBlank()) {
                 insertOrUpdateVocabularyItem(
                     targetWord = q.targetWord,
@@ -667,11 +703,23 @@ class AppRepository(
     }
 
     suspend fun insertQuizQuestion(question: QuizQuestion): Long {
+        val rawTrack = question.trackId?.let { dao.getTrackById(it) }
+        val resolvedTrack = if (rawTrack?.isVirtualScene == true) {
+            rawTrack.parentTrackId?.let { dao.getTrackById(it) }
+                ?: dao.getAllTracksDirect().find { !it.isVirtualScene && it.filePath == rawTrack.filePath }
+                ?: rawTrack
+        } else {
+            rawTrack
+        }
+        val resolvedTrackId = resolvedTrack?.id ?: question.trackId
         val resolvedWord: String? = question.targetWord?.takeIf { it.isNotBlank() } ?: question.getIsolatedTargetWord().takeIf { it.isNotBlank() }
         val resolvedMeaning: String? = question.meaning?.takeIf { it.isNotBlank() } ?: question.getIsolatedMeaning().takeIf { it.isNotBlank() }
         val resolvedContext: String? = question.contextSentence?.takeIf { it.isNotBlank() } ?: question.getIsolatedContextSentence().takeIf { it.isNotBlank() }
-        val resolvedTrackName: String? = question.trackName?.takeIf { it.isNotBlank() } ?: question.trackId?.let { dao.getTrackById(it)?.fileName }
+        val resolvedTrackName: String? = resolvedTrack?.fileName?.takeIf { it.isNotBlank() }
+            ?: question.trackName?.takeIf { it.isNotBlank() }
+            ?: question.noteId?.let { dao.getNoteById(it)?.trackName?.takeIf { name -> name.isNotBlank() } }
         val prepared = question.copy(
+            trackId = resolvedTrackId,
             trackName = resolvedTrackName,
             targetWord = resolvedWord,
             meaning = resolvedMeaning,
@@ -899,17 +947,17 @@ class AppRepository(
     }
 
     /**
-     * Scans all notes in the database and re-links any unlinked or orphaned notes
-     * to current active tracks and folders based on file and folder name matches.
+     * Scans all notes and quiz questions in the database, normalizes any virtual-scene references
+     * to their physical parent track, and re-links any detached or orphaned notes/questions
+     * to current active tracks based on folder-first + file name matching.
      */
     suspend fun relinkNotesToActiveTracks(): Int {
-        val activeTracks = dao.getAllTracksDirect().filter { !it.isVirtualScene && File(it.filePath).exists() && !it.isMissing }
-        if (activeTracks.isEmpty()) return 0
-
+        val allTracks = dao.getAllTracksDirect()
         val folders = dao.getAllFoldersDirect()
         val folderMap = folders.associateBy { it.id }
-        val notes = dao.getAllNotesDirect()
-        if (notes.isEmpty()) return 0
+        val physicalTrackMap = allTracks.filter { !it.isVirtualScene }.associateBy { it.id }
+        val sceneTracks = allTracks.filter { it.isVirtualScene }
+        val sceneMap = sceneTracks.associateBy { it.id }
 
         fun cleanStr(s: String?): String {
             if (s.isNullOrBlank()) return ""
@@ -936,39 +984,95 @@ class AppRepository(
             return ""
         }
 
-        // 0. Normalization pass: Ensure any notes attached to virtual scenes are re-pointed to the parent track
-        val allTracks = dao.getAllTracksDirect()
-        val sceneTracks = allTracks.filter { it.isVirtualScene }
-        if (sceneTracks.isNotEmpty()) {
-            val sceneMap = sceneTracks.associateBy { it.id }
-            val parentMap = allTracks.filter { !it.isVirtualScene }.associateBy { it.id }
-            val sceneNotes = notes.filter { it.trackId != null && sceneMap.containsKey(it.trackId) }
-            val normalizedSceneNotes = mutableListOf<Note>()
-            for (sn in sceneNotes) {
-                val sc = sceneMap[sn.trackId] ?: continue
-                val parent = sc.parentTrackId?.let { parentMap[it] }
-                    ?: allTracks.find { it.filePath == sc.filePath && !it.isVirtualScene }
-                if (parent != null) {
-                    val pFolder = parent.parentFolderId?.let { folderMap[it]?.folderName } ?: sn.folderName
-                    normalizedSceneNotes.add(
-                        sn.copy(
-                            trackId = parent.id,
-                            trackName = parent.fileName,
-                            folderId = parent.parentFolderId,
-                            folderName = pFolder
+        // 0. Normalization pass: Ensure any notes, quiz_questions, or vocabulary_items attached to virtual scenes
+        // are re-pointed to the physical parent track, and clean up any dangling trackIds (e.g. after backup restore)
+        var notes = dao.getAllNotesDirect()
+        if (sceneTracks.isNotEmpty() || notes.any { it.trackId != null && !physicalTrackMap.containsKey(it.trackId) }) {
+            val normalizedNotes = mutableListOf<Note>()
+            for (n in notes) {
+                val tid = n.trackId ?: continue
+                val sc = sceneMap[tid]
+                if (sc != null) {
+                    val parent = sc.parentTrackId?.let { physicalTrackMap[it] }
+                        ?: allTracks.find { it.filePath == sc.filePath && !it.isVirtualScene }
+                    if (parent != null) {
+                        val pFolder = parent.parentFolderId?.let { folderMap[it]?.folderName } ?: n.folderName
+                        normalizedNotes.add(
+                            n.copy(
+                                trackId = parent.id,
+                                trackName = parent.fileName,
+                                folderId = parent.parentFolderId,
+                                folderName = pFolder
+                            )
                         )
-                    )
+                    } else {
+                        normalizedNotes.add(n.copy(trackId = null))
+                    }
+                } else if (!physicalTrackMap.containsKey(tid)) {
+                    normalizedNotes.add(n.copy(trackId = null))
                 }
             }
-            if (normalizedSceneNotes.isNotEmpty()) {
-                dao.updateNotes(normalizedSceneNotes)
-                for (normNote in normalizedSceneNotes) {
+            if (normalizedNotes.isNotEmpty()) {
+                dao.updateNotes(normalizedNotes)
+                for (normNote in normalizedNotes) {
                     if (normNote.trackId != null) {
                         dao.updateVocabularyTrackForNote(normNote.id, normNote.trackId)
-                        dao.updateQuizQuestionsTrackForNote(normNote.id, normNote.trackId)
+                        dao.updateQuizQuestionsTrackAndNameForNote(normNote.id, normNote.trackId, normNote.trackName ?: "")
                     }
                 }
+                notes = dao.getAllNotesDirect()
             }
+        }
+
+        val notesById = notes.associateBy { it.id }
+        val existingQuestions = dao.getAllQuizQuestionsDirect()
+        for (q in existingQuestions) {
+            val tid = q.trackId
+            val sc = if (tid != null) sceneMap[tid] else null
+            if (sc != null) {
+                val parent = sc.parentTrackId?.let { physicalTrackMap[it] }
+                    ?: allTracks.find { it.filePath == sc.filePath && !it.isVirtualScene }
+                if (parent != null) {
+                    dao.updateQuizQuestion(q.copy(trackId = parent.id, trackName = parent.fileName))
+                } else {
+                    dao.updateQuizQuestion(q.copy(trackId = null))
+                }
+            } else if (tid != null && !physicalTrackMap.containsKey(tid)) {
+                val fallbackName = q.trackName?.takeIf { it.isNotBlank() } ?: q.noteId?.let { notesById[it]?.trackName }
+                dao.updateQuizQuestion(q.copy(trackId = null, trackName = fallbackName))
+            } else if (q.trackName.isNullOrBlank()) {
+                val backfilledName = (tid?.let { physicalTrackMap[it]?.fileName }) ?: q.noteId?.let { notesById[it]?.trackName }
+                if (!backfilledName.isNullOrBlank()) {
+                    dao.updateQuizQuestion(q.copy(trackName = backfilledName))
+                }
+            }
+        }
+
+        val activeTracks = allTracks.filter { !it.isVirtualScene && File(it.filePath).exists() && !it.isMissing }
+        if (activeTracks.isEmpty()) return 0
+
+        fun findMatchingActiveTrack(cleanTargetName: String, cleanTargetFolder: String): AudioTrack? {
+            if (cleanTargetName.isBlank()) return null
+            val nameCandidates = activeTracks.filter { active ->
+                val cleanActiveName = cleanStr(active.fileName)
+                cleanActiveName == cleanTargetName ||
+                    cleanActiveName.replace(" ", "") == cleanTargetName.replace(" ", "")
+            }
+            if (nameCandidates.isEmpty()) return null
+
+            if (cleanTargetFolder.isNotBlank()) {
+                val folderMatch = nameCandidates.firstOrNull { active ->
+                    val cleanActiveFolder = cleanStr(getFolderForTrack(active))
+                    cleanActiveFolder.isNotBlank() && (
+                        cleanActiveFolder == cleanTargetFolder ||
+                        cleanActiveFolder.contains(cleanTargetFolder) ||
+                        cleanTargetFolder.contains(cleanActiveFolder)
+                    )
+                }
+                if (folderMatch != null) return folderMatch
+            }
+            // Fallback to track name alone when no same-folder match exists
+            return nameCandidates.firstOrNull()
         }
 
         var relinkedCount = 0
@@ -995,28 +1099,9 @@ class AppRepository(
 
             val cleanNoteTrackName = cleanStr(note.trackName)
             if (cleanNoteTrackName.isBlank()) continue
-
             val cleanNoteFolder = cleanStr(note.folderName)
 
-            val matchedTrack = activeTracks.firstOrNull { active ->
-                val cleanActiveName = cleanStr(active.fileName)
-                val nameMatch = cleanActiveName == cleanNoteTrackName ||
-                        cleanActiveName.replace(" ", "") == cleanNoteTrackName.replace(" ", "")
-                if (!nameMatch) return@firstOrNull false
-
-                val activeFolder = getFolderForTrack(active)
-                val cleanActiveFolder = cleanStr(activeFolder)
-
-                when {
-                    cleanNoteFolder.isNotBlank() && cleanActiveFolder.isNotBlank() ->
-                        cleanActiveFolder == cleanNoteFolder ||
-                        cleanActiveFolder.contains(cleanNoteFolder) ||
-                        cleanNoteFolder.contains(cleanActiveFolder)
-                    cleanNoteFolder.isBlank() && cleanActiveFolder.isBlank() -> true
-                    else -> true
-                }
-            }
-
+            val matchedTrack = findMatchingActiveTrack(cleanNoteTrackName, cleanNoteFolder)
             if (matchedTrack != null) {
                 val activeFolder = getFolderForTrack(matchedTrack)
                 notesToUpdate.add(
@@ -1024,7 +1109,7 @@ class AppRepository(
                         trackId = matchedTrack.id,
                         trackName = matchedTrack.fileName,
                         folderId = matchedTrack.parentFolderId,
-                        folderName = activeFolder
+                        folderName = activeFolder.ifBlank { note.folderName }
                     )
                 )
                 relinkedCount++
@@ -1036,8 +1121,50 @@ class AppRepository(
             for (updatedNote in notesToUpdate) {
                 if (updatedNote.trackId != null) {
                     dao.updateVocabularyTrackForNote(updatedNote.id, updatedNote.trackId)
-                    dao.updateQuizQuestionsTrackForNote(updatedNote.id, updatedNote.trackId)
+                    dao.updateQuizQuestionsTrackAndNameForNote(updatedNote.id, updatedNote.trackId, updatedNote.trackName ?: "")
                 }
+            }
+        }
+
+        // Direct relink pass for detached quiz_questions (comprehension questions & orphaned vocabulary questions)
+        val refreshedNotesMap = dao.getAllNotesDirect().associateBy { it.id }
+        val activeTrackMap = activeTracks.associateBy { it.id }
+        val allQuizQuestions = dao.getAllQuizQuestionsDirect()
+        for (q in allQuizQuestions) {
+            val activeById = q.trackId?.let { activeTrackMap[it] }
+            if (activeById != null) {
+                if (q.trackName != activeById.fileName) {
+                    dao.updateQuizQuestion(q.copy(trackName = activeById.fileName))
+                }
+                continue
+            }
+
+            val linkedNote = q.noteId?.let { refreshedNotesMap[it] }
+            val noteActiveTrack = linkedNote?.trackId?.let { activeTrackMap[it] }
+            if (noteActiveTrack != null) {
+                dao.updateQuizQuestionTrackAndName(q.id, noteActiveTrack.id, noteActiveTrack.fileName)
+                relinkedCount++
+                continue
+            }
+
+            val cleanQName = cleanStr(q.trackName ?: linkedNote?.trackName)
+            if (cleanQName.isBlank()) continue
+            val cleanQFolder = cleanStr(linkedNote?.folderName)
+            val matchedTrack = findMatchingActiveTrack(cleanQName, cleanQFolder)
+            if (matchedTrack != null) {
+                dao.updateQuizQuestionTrackAndName(q.id, matchedTrack.id, matchedTrack.fileName)
+                relinkedCount++
+            }
+        }
+
+        // Also relink detached vocabulary_items via their linked note or cached word/track
+        val allVocabItems = vocabDao?.getAllVocabularyItemsDirect() ?: emptyList()
+        for (v in allVocabItems) {
+            if (v.trackId != null && activeTrackMap.containsKey(v.trackId)) continue
+            val linkedNote = v.noteId?.let { refreshedNotesMap[it] }
+            val targetTrackId = linkedNote?.trackId
+            if (targetTrackId != null && activeTrackMap.containsKey(targetTrackId)) {
+                vocabDao?.updateVocabularyItem(v.copy(trackId = targetTrackId))
             }
         }
 

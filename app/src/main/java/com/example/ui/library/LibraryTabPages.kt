@@ -200,36 +200,34 @@ fun LibraryPlaylistsPage(
     var playlistToDelete by remember { mutableStateOf<Playlist?>(null) }
 
     if (playlistToDelete != null) {
-        AlertDialog(
-            onDismissRequest = { playlistToDelete = null },
-            title = { Text(Loc.getText("delete")) },
-            text = { Text(Loc.getText("delete_playlist_confirm")) },
-            confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
-                        onClick = {
-                            playlistToDelete?.let { viewModel.deletePlaylist(it.id, false) }
-                            playlistToDelete = null
-                        }
-                    ) {
-                        Text(Loc.getText("keep_tracks"))
-                    }
-                    Button(
-                        onClick = {
-                            playlistToDelete?.let { viewModel.deletePlaylist(it.id, true) }
-                            playlistToDelete = null
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Text(Loc.getText("delete_completely"))
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { playlistToDelete = null }) {
-                    Text(Loc.getText("cancel"))
-                }
+        val targetPlaylistId = playlistToDelete!!.id
+        var noteCount by remember(targetPlaylistId) { mutableIntStateOf(0) }
+        var compCount by remember(targetPlaylistId) { mutableIntStateOf(0) }
+        var vocabCount by remember(targetPlaylistId) { mutableIntStateOf(0) }
+
+        LaunchedEffect(targetPlaylistId) {
+            val playlistTracks = viewModel.repository.getTracksForPlaylist(targetPlaylistId)
+            val trackIds = playlistTracks.map { if (it.isVirtualScene && it.parentTrackId != null) it.parentTrackId else it.id }.toSet()
+            if (trackIds.isNotEmpty()) {
+                noteCount = viewModel.repository.getNoteCountForTracks(trackIds)
+                compCount = viewModel.repository.getComprehensionQuestionCountForTracks(trackIds)
+                vocabCount = viewModel.repository.getVocabQuestionCountForTracks(trackIds)
             }
+        }
+
+        com.example.ui.dialogs.ConfirmDeletePlaylistDialog(
+            noteCount = noteCount,
+            comprehensionCount = compCount,
+            vocabCount = vocabCount,
+            onKeepTracks = {
+                playlistToDelete?.let { viewModel.deletePlaylist(it.id, false) }
+                playlistToDelete = null
+            },
+            onDeleteCompletely = { options ->
+                playlistToDelete?.let { viewModel.deletePlaylist(it.id, true, options) }
+                playlistToDelete = null
+            },
+            onDismiss = { playlistToDelete = null }
         )
     }
 

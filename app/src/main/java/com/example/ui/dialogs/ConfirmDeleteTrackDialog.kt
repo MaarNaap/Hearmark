@@ -33,6 +33,8 @@ fun ConfirmDeleteTrackDialog(
     noteCount: Int = 0,
     comprehensionCount: Int = 0,
     vocabCount: Int = 0,
+    confirmButtonTestTag: String = "confirm_delete_dialog_btn",
+    dismissButtonTestTag: String = "cancel_delete_dialog_btn",
     onConfirmDelete: (DeleteOptions) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -70,7 +72,7 @@ fun ConfirmDeleteTrackDialog(
                 )
 
                 if (isScene) {
-                    // Confirmation that notes are safely anchored to parent track
+                    // Confirmation that notes and quizzes are safely anchored to parent track
                     Surface(
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                         shape = RoundedCornerShape(8.dp),
@@ -83,18 +85,8 @@ fun ConfirmDeleteTrackDialog(
                             modifier = Modifier.padding(10.dp)
                         )
                     }
-
-                    // Only show comprehension question option for scenes
-                    if (comprehensionCount > 0) {
-                        DeleteOptionCheckboxRow(
-                            checked = deleteComprehension,
-                            onCheckedChange = { deleteComprehension = it },
-                            label = Loc.getFormattedText("delete_option_comprehension", comprehensionCount),
-                            testTag = "checkbox_delete_comprehension"
-                        )
-                    }
                 } else {
-                    // Standard track or bulk delete: show all 3 independent checkboxes
+                    // Standard track, folder, or bulk delete: show all 3 independent checkboxes
                     val hasAnyOptions = noteCount > 0 || comprehensionCount > 0 || vocabCount > 0
 
                     if (hasAnyOptions) {
@@ -141,15 +133,131 @@ fun ConfirmDeleteTrackDialog(
                     onConfirmDelete(
                         DeleteOptions(
                             deleteNotes = if (isScene) false else deleteNotes,
-                            deleteComprehension = deleteComprehension,
+                            deleteComprehension = if (isScene) false else deleteComprehension,
                             deleteVocabulary = if (isScene) false else deleteVocabulary
                         )
                     )
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                modifier = Modifier.testTag("confirm_delete_dialog_btn")
+                modifier = Modifier.testTag(confirmButtonTestTag)
             ) {
                 Text(Loc.getText("delete"))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.testTag(dismissButtonTestTag)
+            ) {
+                Text(Loc.getText("cancel"))
+            }
+        }
+    )
+}
+
+@Composable
+fun ConfirmDeletePlaylistDialog(
+    noteCount: Int = 0,
+    comprehensionCount: Int = 0,
+    vocabCount: Int = 0,
+    onKeepTracks: () -> Unit,
+    onDeleteCompletely: (DeleteOptions) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var deleteNotes by remember { mutableStateOf(false) }
+    var deleteComprehension by remember { mutableStateOf(false) }
+    var deleteVocabulary by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Filled.Delete,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error
+            )
+        },
+        title = {
+            Text(
+                text = Loc.getText("delete"),
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = Loc.getText("delete_playlist_confirm"),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                val hasAnyOptions = noteCount > 0 || comprehensionCount > 0 || vocabCount > 0
+                if (hasAnyOptions) {
+                    Text(
+                        text = Loc.getText("delete_options_keep_hint"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.5.sp
+                    )
+
+                    if (noteCount > 0) {
+                        DeleteOptionCheckboxRow(
+                            checked = deleteNotes,
+                            onCheckedChange = { deleteNotes = it },
+                            label = Loc.getFormattedText("delete_option_notes", noteCount),
+                            testTag = "checkbox_delete_notes"
+                        )
+                    }
+
+                    if (comprehensionCount > 0) {
+                        DeleteOptionCheckboxRow(
+                            checked = deleteComprehension,
+                            onCheckedChange = { deleteComprehension = it },
+                            label = Loc.getFormattedText("delete_option_comprehension", comprehensionCount),
+                            testTag = "checkbox_delete_comprehension"
+                        )
+                    }
+
+                    if (vocabCount > 0) {
+                        DeleteOptionCheckboxRow(
+                            checked = deleteVocabulary,
+                            onCheckedChange = { deleteVocabulary = it },
+                            label = Loc.getFormattedText("delete_option_vocabulary", vocabCount),
+                            testTag = "checkbox_delete_vocabulary"
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = onKeepTracks,
+                    modifier = Modifier.testTag("playlist_delete_keep_tracks_btn")
+                ) {
+                    Text(Loc.getText("keep_tracks"))
+                }
+                Button(
+                    onClick = {
+                        onDeleteCompletely(
+                            DeleteOptions(
+                                deleteNotes = deleteNotes,
+                                deleteComprehension = deleteComprehension,
+                                deleteVocabulary = deleteVocabulary
+                            )
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("playlist_delete_completely_btn")
+                ) {
+                    Text(Loc.getText("delete_completely"))
+                }
             }
         },
         dismissButton = {

@@ -439,6 +439,12 @@ fun AppViewModel.importIndependentTracks(uris: List<Uri>) {
             }
         }
         
+        try {
+            repository.relinkNotesToActiveTracks()
+        } catch (e: Exception) {
+            Log.w("ImportManager", "Failed to relink notes after independent track import", e)
+        }
+
         withContext(Dispatchers.Main) {
             Toast.makeText(context, Loc.getFormattedText("imported_files_success", successCount), Toast.LENGTH_SHORT).show()
             checkFilesSanity()

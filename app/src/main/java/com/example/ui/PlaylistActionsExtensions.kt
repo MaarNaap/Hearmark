@@ -35,12 +35,16 @@ fun AppViewModel.deleteFolder(id: Long, options: com.example.data.DeleteOptions 
     }
 }
 
-fun AppViewModel.deletePlaylist(id: Long, removeAudioFilesToo: Boolean) {
+fun AppViewModel.deletePlaylist(
+    id: Long,
+    removeAudioFilesToo: Boolean,
+    options: com.example.data.DeleteOptions = com.example.data.DeleteOptions()
+) {
     viewModelScope.launch(Dispatchers.IO) {
         if (removeAudioFilesToo) {
             val tracks = repository.getTracksForPlaylist(id)
             for (track in tracks) {
-                repository.deleteTrack(track)
+                repository.deleteTrack(track, options)
             }
         } else {
             // Keep them - since they were in playlist, make sure they are flagged as independent

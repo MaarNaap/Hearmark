@@ -74,18 +74,27 @@ fun AddEditNoteModal(
     var commentText by remember {
         mutableStateOf(initialNote?.comment ?: prefilledComment)
     }
+    val rawInitialTrackId = initialNote?.trackId ?: prefilledTrackId
+    val rawInitialTrack = remember(rawInitialTrackId, allTracks) {
+        allTracks.find { it.id == rawInitialTrackId }
+    }
     var selectedTrackId by remember {
-        mutableStateOf(initialNote?.trackId ?: prefilledTrackId)
+        val normalizedId = if (rawInitialTrack?.isVirtualScene == true && rawInitialTrack.parentTrackId != null) {
+            rawInitialTrack.parentTrackId
+        } else {
+            rawInitialTrackId
+        }
+        mutableStateOf(normalizedId)
     }
     val selectedTrack = remember(selectedTrackId, allTracks) {
         allTracks.find { it.id == selectedTrackId }
     }
     var startMs by remember {
         val initialStart = initialNote?.startTimestampMs ?: prefilledStartMs
-        val adjustedStart = if (selectedTrack?.isVirtualScene == true && initialStart > 0 && initialStart < selectedTrack.startOffsetMs) {
-            selectedTrack.startOffsetMs + initialStart
-        } else if (selectedTrack?.isVirtualScene == true && initialStart <= 0) {
-            selectedTrack.startOffsetMs
+        val adjustedStart = if (rawInitialTrack?.isVirtualScene == true && initialStart > 0 && initialStart < rawInitialTrack.startOffsetMs) {
+            rawInitialTrack.startOffsetMs + initialStart
+        } else if (rawInitialTrack?.isVirtualScene == true && initialStart <= 0) {
+            rawInitialTrack.startOffsetMs
         } else {
             initialStart
         }
@@ -93,10 +102,10 @@ fun AddEditNoteModal(
     }
     var endMs by remember {
         val initialEnd = initialNote?.endTimestampMs ?: if (prefilledEndMs > prefilledStartMs) prefilledEndMs else (prefilledStartMs + 5000L)
-        val adjustedEnd = if (selectedTrack?.isVirtualScene == true && initialEnd > 0 && initialEnd < selectedTrack.startOffsetMs) {
-            selectedTrack.startOffsetMs + initialEnd
-        } else if (selectedTrack?.isVirtualScene == true && initialEnd <= 0) {
-            selectedTrack.startOffsetMs + 5000L
+        val adjustedEnd = if (rawInitialTrack?.isVirtualScene == true && initialEnd > 0 && initialEnd < rawInitialTrack.startOffsetMs) {
+            rawInitialTrack.startOffsetMs + initialEnd
+        } else if (rawInitialTrack?.isVirtualScene == true && initialEnd <= 0) {
+            rawInitialTrack.startOffsetMs + 5000L
         } else {
             initialEnd
         }

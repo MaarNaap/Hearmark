@@ -375,6 +375,14 @@ internal object DatabaseMigrations {
                 Log.w("Migrations", "MIGRATION_20_21 re-pointing quiz_questions trackId warning: ${e.message}")
             }
 
+            // Nullify any dangling trackIds on notes and vocabulary_items
+            try {
+                db.execSQL("UPDATE `notes` SET `trackId` = NULL WHERE `trackId` IS NOT NULL AND `trackId` NOT IN (SELECT `id` FROM `audio_tracks`)")
+                db.execSQL("UPDATE `vocabulary_items` SET `trackId` = NULL WHERE `trackId` IS NOT NULL AND `trackId` NOT IN (SELECT `id` FROM `audio_tracks`)")
+            } catch (e: Exception) {
+                Log.w("Migrations", "MIGRATION_20_21 dangling trackId cleanup warning: ${e.message}")
+            }
+
             // 3. Rebuild quiz_questions table with ON DELETE SET NULL and cached trackName
             try {
                 db.execSQL("""
@@ -406,7 +414,7 @@ internal object DatabaseMigrations {
                     )
                 """.trimIndent())
 
-                // Copy data from old quiz_questions and backfill trackName from audio_tracks
+                // Copy data from old quiz_questions, nullifying dangling trackIds and backfilling trackName from audio_tracks or notes
                 db.execSQL("""
                     INSERT INTO `quiz_questions_new` (
                         `id`, `trackId`, `trackName`, `noteId`, `questionType`, `category`, `question`,
@@ -415,12 +423,16 @@ internal object DatabaseMigrations {
                         `contextSentence`, `srRepetitions`, `srIntervalDays`, `srEase`, `srLapses`, `srNextReviewAt`
                     )
                     SELECT 
-                        q.`id`, q.`trackId`, t.`fileName` AS `trackName`, q.`noteId`, q.`questionType`, q.`category`, q.`question`,
+                        q.`id`,
+                        CASE WHEN t.`id` IS NOT NULL THEN q.`trackId` ELSE NULL END AS `trackId`,
+                        COALESCE(t.`fileName`, n.`trackName`) AS `trackName`,
+                        q.`noteId`, q.`questionType`, q.`category`, q.`question`,
                         q.`optionsJson`, q.`correctIndex`, q.`explanation`, q.`timestampMs`, q.`timesAnswered`,
                         q.`timesCorrect`, q.`lastAnsweredAt`, q.`createdAt`, q.`targetWord`, q.`meaning`,
                         q.`contextSentence`, q.`srRepetitions`, q.`srIntervalDays`, q.`srEase`, q.`srLapses`, q.`srNextReviewAt`
                     FROM `quiz_questions` q
                     LEFT JOIN `audio_tracks` t ON q.`trackId` = t.`id`
+                    LEFT JOIN `notes` n ON q.`noteId` = n.`id`
                 """.trimIndent())
 
                 db.execSQL("DROP TABLE `quiz_questions`")

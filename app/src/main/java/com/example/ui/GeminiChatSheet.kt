@@ -641,8 +641,26 @@ fun GeminiChatSheet(
                                         ?: AudioPlayerManager.activeSubtitleCue.value?.text
                                         ?: ""
                                     val explanation = msg.text
-                                    val start = msg.attachedContext?.currentPositionMs ?: maxOf(0L, currentPos - 5000L)
-                                    val end = (start + 10000L).coerceAtMost(currentTrack?.duration ?: (start + 10000L))
+                                    val effectivePos = if (currentTrack?.isVirtualScene == true) {
+                                        currentTrack.startOffsetMs + currentPos
+                                    } else {
+                                        currentPos
+                                    }
+                                    val minStart = if (currentTrack?.isVirtualScene == true) currentTrack.startOffsetMs else 0L
+                                    val maxEnd = if (currentTrack?.isVirtualScene == true) {
+                                        currentTrack.endOffsetMs ?: (currentTrack.startOffsetMs + currentTrack.duration)
+                                    } else {
+                                        currentTrack?.duration ?: (effectivePos + 10000L)
+                                    }
+                                    val attachedPos = msg.attachedContext?.currentPositionMs?.let { rawAttached ->
+                                        if (currentTrack?.isVirtualScene == true && rawAttached < currentTrack.startOffsetMs) {
+                                            currentTrack.startOffsetMs + rawAttached
+                                        } else {
+                                            rawAttached
+                                        }
+                                    }
+                                    val start = attachedPos ?: maxOf(minStart, effectivePos - 5000L)
+                                    val end = (start + 10000L).coerceAtMost(maxOf(start + 1000L, maxEnd))
                                     onSaveToNotebookRequested(
                                         quote,
                                         explanation,

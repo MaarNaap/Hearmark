@@ -242,6 +242,7 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                     val q = QuizQuestion(
                         id = optLongSafe(obj, "id", defaultVal = 0L),
                         trackId = optNullableLongSafe(obj, "trackId", "track_id"),
+                        trackName = optStringSafe(obj, "trackName", "track_name", defaultVal = ""),
                         noteId = optNullableLongSafe(obj, "noteId", "note_id"),
                         questionType = optStringSafe(obj, "questionType", "question_type", defaultVal = "MCQ"),
                         category = optStringSafe(obj, "category", defaultVal = "COMPREHENSION"),

@@ -29,7 +29,12 @@ fun NoteLinkTrackRow(
                     currentPlayingTrack.duration
                 }
                 val newEnd = (currentPos + 5000L).coerceAtMost(maxLimit)
-                onLinkTrack(currentPlayingTrack.id, currentPos, newEnd)
+                val targetTrackId = if (currentPlayingTrack.isVirtualScene && currentPlayingTrack.parentTrackId != null) {
+                    currentPlayingTrack.parentTrackId
+                } else {
+                    currentPlayingTrack.id
+                }
+                onLinkTrack(targetTrackId, currentPos, newEnd)
             },
             shape = RoundedCornerShape(10.dp),
             modifier = Modifier.fillMaxWidth()

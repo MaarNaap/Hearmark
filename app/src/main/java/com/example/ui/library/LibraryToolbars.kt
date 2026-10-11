@@ -261,49 +261,43 @@ fun LibraryFoldersBulkToolbar(
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            icon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
-            },
-            title = {
-                Text(
-                    text = Loc.getText("delete_folders_bulk_confirm_title"),
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    text = Loc.getFormattedText("delete_folders_bulk_confirm_desc", selectedFolderIds.size),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showDeleteConfirm = false
-                        viewModel.deleteMultipleFolders(selectedFolderIds)
-                        onExitBulkMode()
-                        onSelectedFolderIdsChange(emptySet())
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    modifier = Modifier.testTag("confirm_bulk_delete_folders_btn")
-                ) {
-                    Text(Loc.getText("delete"))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showDeleteConfirm = false },
-                    modifier = Modifier.testTag("cancel_bulk_delete_folders_btn")
-                ) {
-                    Text(Loc.getText("cancel"))
-                }
+        var noteCount by remember { mutableIntStateOf(0) }
+        var compCount by remember { mutableIntStateOf(0) }
+        var vocabCount by remember { mutableIntStateOf(0) }
+
+        LaunchedEffect(selectedFolderIds) {
+            val allFolders = viewModel.folders.value
+            val allSubFolderIds = mutableSetOf<Long>()
+            for (fId in selectedFolderIds) {
+                allSubFolderIds.addAll(viewModel.repository.getAllSubfolderIds(fId, allFolders))
             }
+            val folderTrackIds = viewModel.tracks.value
+                .filter { it.parentFolderId in allSubFolderIds }
+                .map { it.id }
+                .toSet()
+            if (folderTrackIds.isNotEmpty()) {
+                noteCount = viewModel.repository.getNoteCountForTracks(folderTrackIds)
+                compCount = viewModel.repository.getComprehensionQuestionCountForTracks(folderTrackIds)
+                vocabCount = viewModel.repository.getVocabQuestionCountForTracks(folderTrackIds)
+            }
+        }
+
+        com.example.ui.dialogs.ConfirmDeleteTrackDialog(
+            title = Loc.getText("delete_folders_bulk_confirm_title"),
+            desc = Loc.getFormattedText("delete_folders_bulk_confirm_desc", selectedFolderIds.size),
+            isScene = false,
+            noteCount = noteCount,
+            comprehensionCount = compCount,
+            vocabCount = vocabCount,
+            confirmButtonTestTag = "confirm_bulk_delete_folders_btn",
+            dismissButtonTestTag = "cancel_bulk_delete_folders_btn",
+            onConfirmDelete = { options ->
+                showDeleteConfirm = false
+                viewModel.deleteMultipleFolders(selectedFolderIds, options)
+                onExitBulkMode()
+                onSelectedFolderIdsChange(emptySet())
+            },
+            onDismiss = { showDeleteConfirm = false }
         )
     }
 
