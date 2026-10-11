@@ -129,6 +129,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var headsetMultiClickAction by mutableStateOf("NEXT_PREV") // "NEXT_PREV" or "SKIP_SECONDS"
     var segmentSourceSetting by mutableStateOf("SILENCE") // "SILENCE" or "SUBTITLES"
     var practicePauseMultiplierSetting by mutableStateOf(1.0f) // 0.5 to 2.5
+    var practiceSegmentRepeatsSetting by mutableStateOf(1) // 1 to unlimited
     var silenceSensitivitySetting by mutableStateOf("MEDIUM") // "HIGH", "MEDIUM", "LOW"
     var silenceMinDurationSetting by mutableStateOf(500L) // 350L, 500L, 750L, 1000L
     var silencePaddingSetting by mutableStateOf(200L) // 100L, 200L, 300L, 400L
@@ -386,6 +387,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         Loc.currentLanguage = sharedPref.getString("language", "en") ?: "en"
         segmentSourceSetting = sharedPref.getString("segment_source", "SILENCE") ?: "SILENCE"
         practicePauseMultiplierSetting = sharedPref.getFloat("practice_pause_multiplier", 1.0f)
+        practiceSegmentRepeatsSetting = sharedPref.getInt("practice_segment_repeats", 1).coerceAtLeast(1)
         silenceSensitivitySetting = sharedPref.getString("silence_sensitivity", "MEDIUM") ?: "MEDIUM"
         silenceMinDurationSetting = sharedPref.getLong("silence_min_duration", 500L)
         silencePaddingSetting = sharedPref.getLong("silence_padding", 200L)
@@ -394,7 +396,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         AudioPlayerManager.setSettings(thresholdSetting, skipSecondsSetting)
         VoiceBoostController.setLevel(voiceBoostLevel)
         AudioPlayerManager.setHeadsetSettings(headsetControlsEnabled, headsetMultiClickAction)
-        AudioPlayerManager.setPracticeSettings(segmentSourceSetting, practicePauseMultiplierSetting)
+        AudioPlayerManager.setPracticeSettings(segmentSourceSetting, practicePauseMultiplierSetting, practiceSegmentRepeatsSetting)
         AudioPlayerManager.setSilenceSettings(silenceSensitivitySetting, silenceMinDurationSetting, silencePaddingSetting)
 
         viewModelScope.launch(Dispatchers.IO) {

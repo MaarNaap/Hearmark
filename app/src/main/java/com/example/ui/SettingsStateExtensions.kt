@@ -34,16 +34,18 @@ fun AppViewModel.updateHeadsetSettings(enabled: Boolean, action: String) {
     AudioPlayerManager.setHeadsetSettings(enabled, action)
 }
 
-fun AppViewModel.updatePracticeSettings(source: String, multiplier: Float) {
+fun AppViewModel.updatePracticeSettings(source: String, multiplier: Float, repeatCount: Int = practiceSegmentRepeatsSetting) {
     segmentSourceSetting = source
     practicePauseMultiplierSetting = multiplier
+    practiceSegmentRepeatsSetting = repeatCount.coerceAtLeast(1)
     val sharedPref = getApplication<Application>().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     with(sharedPref.edit()) {
         putString("segment_source", source)
         putFloat("practice_pause_multiplier", multiplier)
+        putInt("practice_segment_repeats", repeatCount.coerceAtLeast(1))
         apply()
     }
-    AudioPlayerManager.setPracticeSettings(source, multiplier)
+    AudioPlayerManager.setPracticeSettings(source, multiplier, repeatCount.coerceAtLeast(1))
 }
 
 fun AppViewModel.updateSilenceSettings(sensitivity: String, minDurationMs: Long, paddingMs: Long) {
@@ -68,9 +70,15 @@ fun AppViewModel.saveManualPracticeSegments(track: AudioTrack, boundaries: List<
     AudioPlayerManager.saveManualPracticeSegments(context, track, boundaries, autoEnable)
 }
 
-fun AppViewModel.startPracticeWithSource(track: AudioTrack, source: String, multiplier: Float, context: Context) {
-    updatePracticeSettings(source, multiplier)
-    AudioPlayerManager.applyPracticeSettingsAndStart(track, source, multiplier, context, repository)
+fun AppViewModel.startPracticeWithSource(
+    track: AudioTrack,
+    source: String,
+    multiplier: Float,
+    context: Context,
+    repeatCount: Int = practiceSegmentRepeatsSetting
+) {
+    updatePracticeSettings(source, multiplier, repeatCount)
+    AudioPlayerManager.applyPracticeSettingsAndStart(track, source, multiplier, context, repository, repeatCount)
 }
 
 fun AppViewModel.resetTrackSegments(track: AudioTrack) {

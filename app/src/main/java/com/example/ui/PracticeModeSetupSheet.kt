@@ -63,6 +63,7 @@ fun PracticeModeSetupSheet(
 
     var selectedSource by remember(activeTrack.id) { mutableStateOf(initialSource) }
     var pauseMultiplier by remember { mutableStateOf(viewModel.practicePauseMultiplierSetting) }
+    var repeatCount by remember { mutableStateOf(viewModel.practiceSegmentRepeatsSetting) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -296,6 +297,102 @@ fun PracticeModeSetupSheet(
                 }
             }
 
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            // SECTION 2B: SEGMENT REPEAT COUNT (Number of times to repeat before pausing)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = Loc.getText("segment_repeat_count_title"),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = Loc.getText("segment_repeat_count_desc"),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Stepper: Minus, Center Value Chip (Unlimited), Plus
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilledTonalIconButton(
+                        onClick = {
+                            if (repeatCount > 1) {
+                                repeatCount--
+                            }
+                        },
+                        enabled = repeatCount > 1,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .testTag("btn_setup_repeats_decrease")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Remove,
+                            contentDescription = "Decrease segment repeats",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        tonalElevation = 2.dp,
+                        modifier = Modifier
+                            .clickable { repeatCount = 1 }
+                            .testTag("chip_setup_repeats_value")
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "$repeatCount",
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 17.sp
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    FilledTonalIconButton(
+                        onClick = {
+                            repeatCount++
+                        },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .testTag("btn_setup_repeats_increase")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = "Increase segment repeats",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(6.dp))
 
             // SECTION 3: ACTION BUTTONS
@@ -338,7 +435,8 @@ fun PracticeModeSetupSheet(
                                 track = activeTrack,
                                 source = selectedSource,
                                 multiplier = pauseMultiplier,
-                                context = context
+                                context = context,
+                                repeatCount = repeatCount
                             )
                             onDismiss()
                         },

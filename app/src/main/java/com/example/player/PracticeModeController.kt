@@ -328,7 +328,8 @@ fun AudioPlayerManager.applyPracticeSettingsAndStart(
     source: String,
     multiplier: Float,
     context: Context,
-    repository: AppRepository
+    repository: AppRepository,
+    repeatCount: Int = practiceSegmentRepeatCount
 ) {
     val normalizedSource = when (source.uppercase()) {
         "MANUAL" -> "MANUAL"
@@ -339,6 +340,12 @@ fun AudioPlayerManager.applyPracticeSettingsAndStart(
     val coerced = multiplier.coerceIn(0.25f, 4.0f)
     practicePauseMultiplier = coerced
     _practicePauseMultiplierFlow.value = coerced
+
+    val coercedRepeats = repeatCount.coerceAtLeast(1)
+    practiceSegmentRepeatCount = coercedRepeats
+    _practiceSegmentRepeatsFlow.value = coercedRepeats
+    practiceCurrentSegmentPlayCount = 1
+    _practiceCurrentSegmentPlayCountFlow.value = 1
 
     // If manual and cuts exist, directly apply without reanalysis
     if (normalizedSource == "MANUAL" && track.practiceSegments?.startsWith("MAN:") == true) {
@@ -722,6 +729,10 @@ internal fun AudioPlayerManager.resetPracticeSegmentTracking(pos: Long) {
     practiceLastSegmentStartMs = if (practiceNextBoundaryIndex > 0) segments[practiceNextBoundaryIndex - 1] else 0L
     practiceLastPlayedSegmentStartMs = practiceLastSegmentStartMs
     practiceRepeatSegmentStartMs = practiceLastSegmentStartMs
+    if (!isInternalPracticeRepeating) {
+        practiceCurrentSegmentPlayCount = 1
+        _practiceCurrentSegmentPlayCountFlow.value = 1
+    }
 }
 
 fun AudioPlayerManager.onSeekInPracticeMode(targetMs: Long) {
@@ -765,6 +776,38 @@ internal fun AudioPlayerManager.handleEndOfTrackPracticePauseIfNeeded(): Boolean
 
     val boundary = if (hasUnpausedBoundary) segments.last() else effectiveDuration
     val endMs = maxOf(boundary, effectiveDuration)
+
+    // Check if the final segment needs to repeat before pausing
+    if (practiceCurrentSegmentPlayCount < practiceSegmentRepeatCount) {
+        practiceCurrentSegmentPlayCount++
+        _practiceCurrentSegmentPlayCountFlow.value = practiceCurrentSegmentPlayCount
+        val replayStart = practiceLastSegmentStartMs.coerceAtLeast(0L)
+        isInternalPracticeRepeating = true
+        try {
+            if (mediaPlayer != null) {
+                seekTo(replayStart)
+            } else {
+                _currentPosition.value = replayStart
+                onSeekInPracticeMode(replayStart)
+            }
+            coroutineScope.launch(Dispatchers.Main) {
+                try {
+                    mediaPlayer?.start()
+                    _isPlaying.value = true
+                    startProgressTracking()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Replay end segment error: ${e.message}")
+                }
+            }
+        } finally {
+            isInternalPracticeRepeating = false
+        }
+        return true
+    }
+
+    practiceCurrentSegmentPlayCount = 1
+    _practiceCurrentSegmentPlayCountFlow.value = 1
+
     val segmentLengthMs = if (segmentSource == "SUBTITLES") {
         val cues = _subtitlesCues.value
         val matchingCue = cues.find { cue ->
@@ -807,6 +850,63 @@ internal fun AudioPlayerManager.checkPracticeSegmentBoundary(currentPosMs: Long)
 
     val boundary = segments[practiceNextBoundaryIndex]
     if (currentPosMs >= boundary && currentPosMs <= boundary + 1500L) {
+        // Repeat segment if not yet played practiceSegmentRepeatCount times
+        if (practiceCurrentSegmentPlayCount < practiceSegmentRepeatCount) {
+            practiceCurrentSegmentPlayCount++
+            _practiceCurrentSegmentPlayCountFlow.value = practiceCurrentSegmentPlayCount
+
+            val replayStart = if (segmentSource == "SUBTITLES") {
+                val cues = _subtitlesCues.value
+                val matchingCue = cues.find { cue ->
+                    val cueEnd = if (currentTrackValue?.isVirtualScene == true) {
+                        cue.endMs - (currentTrackValue?.startOffsetMs ?: 0L)
+                    } else {
+                        cue.endMs
+                    }
+                    Math.abs(cueEnd - boundary) <= 500L
+                }
+                if (matchingCue != null) {
+                    val cueStart = if (currentTrackValue?.isVirtualScene == true) {
+                        (matchingCue.startMs - (currentTrackValue?.startOffsetMs ?: 0L)).coerceAtLeast(0L)
+                    } else {
+                        matchingCue.startMs.coerceAtLeast(0L)
+                    }
+                    cueStart
+                } else {
+                    practiceLastSegmentStartMs.coerceAtLeast(0L)
+                }
+            } else {
+                practiceLastSegmentStartMs.coerceAtLeast(0L)
+            }
+
+            isInternalPracticeRepeating = true
+            try {
+                if (mediaPlayer != null) {
+                    seekTo(replayStart)
+                } else {
+                    _currentPosition.value = replayStart
+                    onSeekInPracticeMode(replayStart)
+                }
+                coroutineScope.launch(Dispatchers.Main) {
+                    try {
+                        if (_isPlaying.value) {
+                            mediaPlayer?.start()
+                            startProgressTracking()
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Replay segment start error: ${e.message}")
+                    }
+                }
+            } finally {
+                isInternalPracticeRepeating = false
+            }
+            return
+        }
+
+        // All repetitions of this segment completed!
+        practiceCurrentSegmentPlayCount = 1
+        _practiceCurrentSegmentPlayCountFlow.value = 1
+
         val segmentLengthMs = if (segmentSource == "SUBTITLES") {
             val cues = _subtitlesCues.value
             val matchingCue = cues.find { cue ->
@@ -912,6 +1012,8 @@ fun AudioPlayerManager.resumeFromPracticePause() {
     practicePauseJob?.cancel()
     _isPracticePausing.value = false
     _practicePauseRemainingSeconds.value = 0f
+    practiceCurrentSegmentPlayCount = 1
+    _practiceCurrentSegmentPlayCountFlow.value = 1
     if (pendingEndOfTrackAfterPracticePause) {
         pendingEndOfTrackAfterPracticePause = false
         handlePhysicalEndOfTrack()
@@ -940,6 +1042,8 @@ fun AudioPlayerManager.repeatPracticeSegment() {
     pendingEndOfTrackAfterPracticePause = false
     _isPracticePausing.value = false
     _practicePauseRemainingSeconds.value = 0f
+    practiceCurrentSegmentPlayCount = 1
+    _practiceCurrentSegmentPlayCountFlow.value = 1
 
     val targetMs = practiceRepeatSegmentStartMs.coerceAtLeast(0L)
     seekTo(targetMs)

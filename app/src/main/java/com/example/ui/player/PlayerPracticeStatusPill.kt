@@ -37,6 +37,8 @@ fun PlayerPracticeStatusPill(
 ) {
     val practiceSegmentsList by AudioPlayerManager.currentPracticeSegments.collectAsStateWithLifecycle()
     val practiceMultiplierState by AudioPlayerManager.practicePauseMultiplierFlow.collectAsStateWithLifecycle()
+    val practiceRepeatsState by AudioPlayerManager.practiceSegmentRepeatsFlow.collectAsStateWithLifecycle()
+    val currentPlayCountState by AudioPlayerManager.practiceCurrentSegmentPlayCountFlow.collectAsStateWithLifecycle()
     val currentPlayingTrack by AudioPlayerManager.currentTrack.collectAsStateWithLifecycle()
     val activeTrack = currentPlayingTrack ?: track
     val activePracticeSource = AudioPlayerManager.getActivePracticeSourceForTrack(activeTrack)
@@ -225,8 +227,9 @@ fun PlayerPracticeStatusPill(
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(12.dp)
                             )
+                            val repeatsSuffix = if (practiceRepeatsState > 1) " • [${currentPlayCountState}/${practiceRepeatsState}]" else ""
                             Text(
-                                text = "$cutsCount ${Loc.getText("cuts_label")} • ${String.format(Locale.US, "%.2f", practiceMultiplierState)}x",
+                                text = "$cutsCount ${Loc.getText("cuts_label")} • ${String.format(Locale.US, "%.2f", practiceMultiplierState)}x$repeatsSuffix",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 lineHeight = 14.sp,

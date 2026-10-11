@@ -31,6 +31,7 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
     var headsetAction by remember { mutableStateOf(viewModel.headsetMultiClickAction) }
     var segmentSource by remember { mutableStateOf(viewModel.segmentSourceSetting) }
     var pauseMultiplier by remember { mutableStateOf(viewModel.practicePauseMultiplierSetting) }
+    var repeatCount by remember { mutableStateOf(viewModel.practiceSegmentRepeatsSetting) }
     var silenceSensitivity by remember { mutableStateOf(viewModel.silenceSensitivitySetting) }
     var silenceMinDuration by remember { mutableStateOf(viewModel.silenceMinDurationSetting) }
     var silencePadding by remember { mutableStateOf(viewModel.silencePaddingSetting) }
@@ -46,8 +47,8 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
         viewModel.updateHeadsetSettings(headsetEnabled, headsetAction)
     }
 
-    LaunchedEffect(segmentSource, pauseMultiplier) {
-        viewModel.updatePracticeSettings(segmentSource, pauseMultiplier)
+    LaunchedEffect(segmentSource, pauseMultiplier, repeatCount) {
+        viewModel.updatePracticeSettings(segmentSource, pauseMultiplier, repeatCount)
     }
 
     LaunchedEffect(silenceSensitivity, silenceMinDuration, silencePadding) {
@@ -106,6 +107,8 @@ fun SettingsView(viewModel: AppViewModel, onBack: () -> Unit) {
             onSegmentSourceChange = { segmentSource = it },
             pauseMultiplier = pauseMultiplier,
             onPauseMultiplierChange = { pauseMultiplier = it },
+            repeatCount = repeatCount,
+            onRepeatCountChange = { repeatCount = it },
             silencePadding = silencePadding,
             onSilencePaddingChange = { silencePadding = it },
             silenceMinDuration = silenceMinDuration,

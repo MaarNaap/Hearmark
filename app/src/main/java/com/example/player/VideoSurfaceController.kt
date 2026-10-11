@@ -92,7 +92,7 @@ internal object VideoSurfaceController {
         }
     }
 
-    fun setPracticeSettings(source: String, multiplier: Float) {
+    fun setPracticeSettings(source: String, multiplier: Float, repeatCount: Int = AudioPlayerManager.practiceSegmentRepeatCount) {
         with(AudioPlayerManager) {
             val oldSource = segmentSource
             segmentSource = when (source.uppercase()) {
@@ -103,6 +103,10 @@ internal object VideoSurfaceController {
             val coerced = multiplier.coerceIn(0.25f, 4.0f)
             practicePauseMultiplier = coerced
             _practicePauseMultiplierFlow.value = coerced
+
+            val coercedRepeats = repeatCount.coerceAtLeast(1)
+            practiceSegmentRepeatCount = coercedRepeats
+            _practiceSegmentRepeatsFlow.value = coercedRepeats
 
             if (!oldSource.equals(segmentSource, ignoreCase = true)) {
                 val track = currentTrackValue
@@ -116,6 +120,14 @@ internal object VideoSurfaceController {
                     }
                 }
             }
+        }
+    }
+
+    fun setPracticeRepeatCount(count: Int) {
+        with(AudioPlayerManager) {
+            val coerced = count.coerceAtLeast(1)
+            practiceSegmentRepeatCount = coerced
+            _practiceSegmentRepeatsFlow.value = coerced
         }
     }
 

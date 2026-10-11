@@ -26,6 +26,8 @@ fun PracticeSettingsCard(
     onSegmentSourceChange: (String) -> Unit,
     pauseMultiplier: Float,
     onPauseMultiplierChange: (Float) -> Unit,
+    repeatCount: Int,
+    onRepeatCountChange: (Int) -> Unit,
     silencePadding: Long,
     onSilencePaddingChange: (Long) -> Unit,
     silenceMinDuration: Long,
@@ -200,6 +202,89 @@ fun PracticeSettingsCard(
                     Icon(
                         imageVector = Icons.Filled.Add,
                         contentDescription = "Increase multiplier",
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f))
+
+            // Segment repeat count setting
+            Text(
+                text = Loc.getText("segment_repeat_count_title"),
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = Loc.getText("segment_repeat_count_desc"),
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            // Stepper: Minus button, center chip with number (unlimited), Plus button
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilledTonalIconButton(
+                    onClick = {
+                        if (repeatCount > 1) {
+                            onRepeatCountChange(repeatCount - 1)
+                        }
+                    },
+                    enabled = repeatCount > 1,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .testTag("btn_practice_repeats_decrease")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Remove,
+                        contentDescription = "Decrease repeats",
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    tonalElevation = 2.dp,
+                    modifier = Modifier
+                        .clickable { onRepeatCountChange(1) }
+                        .testTag("chip_practice_repeats_value")
+                ) {
+                    Box(
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "$repeatCount",
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                FilledTonalIconButton(
+                    onClick = {
+                        onRepeatCountChange(repeatCount + 1)
+                    },
+                    modifier = Modifier
+                        .size(42.dp)
+                        .testTag("btn_practice_repeats_increase")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = "Increase repeats",
                         modifier = Modifier.size(20.dp)
                     )
                 }

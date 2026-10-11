@@ -2,7 +2,7 @@ package com.example
 
 import com.example.data.AudioTrack
 import com.example.data.Task
-import com.example.player.SilenceDetector
+import com.example.player.*
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -269,6 +269,78 @@ class TaskAndSilenceDetectionTest {
         assertEquals(12000L, am.currentPosition.value)
 
         am.isFocusMode.value = false
+        am._currentPracticeSegments.value = emptyList()
+        am.currentTrackValue = null
+    }
+
+    @Test
+    fun practiceMode_segmentRepeatCount_repeatsConsecutivelyBeforePausing() {
+        val am = com.example.player.AudioPlayerManager
+        am.mediaPlayer = null
+        val track = AudioTrack(
+            id = 601L,
+            fileName = "Repeat Test Track",
+            filePath = "/tmp/repeat_track.mp3",
+            duration = 30000L,
+            practiceSegments = "SIL:3000,7000,12000"
+        )
+        am.currentTrackValue = track
+        am._duration.value = 30000L
+        am._currentPosition.value = 0L
+        am.segmentSource = "SILENCE"
+        am._currentPracticeSegments.value = listOf(3000L, 7000L, 12000L)
+        am._isPracticeMode.value = true
+        am._isPracticePausing.value = false
+        am.pendingEndOfTrackAfterPracticePause = false
+
+        // Set repeat count to 3
+        am.setPracticeRepeatCount(3)
+        assertEquals(3, am.practiceSegmentRepeatCount)
+        assertEquals(3, am.practiceSegmentRepeatsFlow.value)
+
+        // Reset tracking at start (0ms)
+        am.resetPracticeSegmentTracking(0L)
+        assertEquals(1, am.practiceCurrentSegmentPlayCountFlow.value)
+        assertEquals(0, am.practiceNextBoundaryIndex)
+
+        // Play segment 1: reaches first boundary (3000ms) for the 1st time
+        am.checkPracticeSegmentBoundary(3000L)
+        // Should NOT pause yet; should seek back to segment start (0ms) and increment play count to 2
+        assertFalse(am.isPracticePausing.value)
+        assertEquals(2, am.practiceCurrentSegmentPlayCountFlow.value)
+        assertEquals(0L, am.currentPosition.value)
+        assertEquals(0, am.practiceNextBoundaryIndex)
+
+        // Reaches boundary (3000ms) for the 2nd time
+        am.checkPracticeSegmentBoundary(3000L)
+        // Should NOT pause yet; should seek back to segment start (0ms) and increment play count to 3
+        assertFalse(am.isPracticePausing.value)
+        assertEquals(3, am.practiceCurrentSegmentPlayCountFlow.value)
+        assertEquals(0L, am.currentPosition.value)
+        assertEquals(0, am.practiceNextBoundaryIndex)
+
+        // Reaches boundary (3000ms) for the 3rd time (all repeats fulfilled)
+        am.checkPracticeSegmentBoundary(3000L)
+        // Now it MUST trigger practice pause!
+        assertTrue(am.isPracticePausing.value)
+        assertEquals(1, am.practiceCurrentSegmentPlayCountFlow.value)
+        assertEquals(1, am.practiceNextBoundaryIndex) // advanced to next boundary
+
+        // User resumes from practice pause (or pause timer finishes)
+        am.resumeFromPracticePause()
+        assertFalse(am.isPracticePausing.value)
+        assertEquals(1, am.practiceCurrentSegmentPlayCountFlow.value)
+
+        // Now playing segment 2 (from 3000ms to 7000ms): reaches boundary 7000ms for 1st time
+        am.checkPracticeSegmentBoundary(7000L)
+        assertFalse(am.isPracticePausing.value)
+        assertEquals(2, am.practiceCurrentSegmentPlayCountFlow.value)
+        assertEquals(3000L, am.currentPosition.value) // replayed from start of 2nd segment (3000ms)
+
+        // Cleanup
+        am._isPracticeMode.value = false
+        am._isPracticePausing.value = false
+        am.setPracticeRepeatCount(1)
         am._currentPracticeSegments.value = emptyList()
         am.currentTrackValue = null
     }

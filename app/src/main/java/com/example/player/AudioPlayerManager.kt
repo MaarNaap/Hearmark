@@ -79,6 +79,14 @@ object AudioPlayerManager {
     internal val _practicePauseMultiplierFlow = MutableStateFlow(1.0f)
     val practicePauseMultiplierFlow: StateFlow<Float> = _practicePauseMultiplierFlow.asStateFlow()
 
+    internal val _practiceSegmentRepeatsFlow = MutableStateFlow(1)
+    val practiceSegmentRepeatsFlow: StateFlow<Int> = _practiceSegmentRepeatsFlow.asStateFlow()
+
+    internal val _practiceCurrentSegmentPlayCountFlow = MutableStateFlow(1)
+    val practiceCurrentSegmentPlayCountFlow: StateFlow<Int> = _practiceCurrentSegmentPlayCountFlow.asStateFlow()
+    internal var practiceCurrentSegmentPlayCount: Int = 1
+    internal var isInternalPracticeRepeating: Boolean = false
+
     internal val _currentPracticeSegments = MutableStateFlow<List<Long>>(emptyList())
     val currentPracticeSegments: StateFlow<List<Long>> = _currentPracticeSegments.asStateFlow()
 
@@ -219,6 +227,10 @@ object AudioPlayerManager {
 
     // Multiplier for automatic pause duration after each segment
     var practicePauseMultiplier: Float = 1.0f
+        internal set
+
+    // Number of times each segment repeats consecutively before the pause duration
+    var practiceSegmentRepeatCount: Int = 1
         internal set
 
     // Silence detection tuning
@@ -872,7 +884,8 @@ object AudioPlayerManager {
     fun setInPipMode(inPip: Boolean) = VideoSurfaceController.setInPipMode(inPip)
     fun attachSurface(surface: android.view.Surface?) = VideoSurfaceController.attachSurface(surface)
     fun attachSurfaceHolder(holder: android.view.SurfaceHolder?) = VideoSurfaceController.attachSurfaceHolder(holder)
-    fun setPracticeSettings(source: String, multiplier: Float) = VideoSurfaceController.setPracticeSettings(source, multiplier)
+    fun setPracticeSettings(source: String, multiplier: Float, repeatCount: Int = practiceSegmentRepeatCount) = VideoSurfaceController.setPracticeSettings(source, multiplier, repeatCount)
+    fun setPracticeRepeatCount(count: Int) = VideoSurfaceController.setPracticeRepeatCount(count)
     fun setSilenceSettings(sensitivity: String, minDurationMs: Long, paddingMs: Long) = VideoSurfaceController.setSilenceSettings(sensitivity, minDurationMs, paddingMs)
 
     // --- Delegated System Integration (AudioFocus & WakeLock) Operations ---
