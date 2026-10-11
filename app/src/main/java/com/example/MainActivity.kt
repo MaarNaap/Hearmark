@@ -88,7 +88,12 @@ class MainActivity : ComponentActivity() {
       viewModel.setPendingOpenTaskId(openTaskId)
     }
     if (intent?.getBooleanExtra("OPEN_VOCAB_REVIEW", false) == true) {
-      viewModel.setPendingOpenVocabReview(true)
+      val autoStartSession = intent.getBooleanExtra("START_DUE_VOCAB_SESSION", false)
+      try {
+        val nm = getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        nm.cancel(com.example.receiver.AlarmReceiver.DAILY_VOCAB_NOTIFICATION_ID)
+      } catch (_: Exception) {}
+      viewModel.setPendingOpenVocabReview(true, autoStartSession)
     }
   }
 

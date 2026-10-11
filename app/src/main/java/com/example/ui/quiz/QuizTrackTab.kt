@@ -16,6 +16,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ai.QuizFocusMode
 import com.example.data.AudioTrack
 import com.example.ui.Loc
 
@@ -27,11 +28,12 @@ internal fun TrackQuizTabContent(
     isGenerating: Boolean,
     errorMessage: String?,
     onSelectTrack: (AudioTrack) -> Unit,
-    onGenerateQuiz: (Int) -> Unit,
+    onGenerateQuiz: (Int, QuizFocusMode) -> Unit,
     onStartPractice: () -> Unit
 ) {
     var isTrackMenuExpanded by remember { mutableStateOf(false) }
     var requestedTrackQuestionCount by remember { mutableIntStateOf(4) }
+    var selectedFocusMode by remember { mutableStateOf(QuizFocusMode.BOTH) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -168,6 +170,116 @@ internal fun TrackQuizTabContent(
             }
         }
 
+        // Question Focus selector (Both / Vocabulary Only / Comprehension Only)
+        item {
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                ),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = Loc.getText("quiz_focus_mode_title"),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FilterChip(
+                            selected = selectedFocusMode == QuizFocusMode.BOTH,
+                            onClick = { selectedFocusMode = QuizFocusMode.BOTH },
+                            label = {
+                                Text(
+                                    text = Loc.getText("quiz_focus_both"),
+                                    fontSize = 11.5.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            leadingIcon = if (selectedFocusMode == QuizFocusMode.BOTH) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Filled.DoneAll,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+                            } else null,
+                            modifier = Modifier.weight(1f).testTag("quiz_focus_both_chip")
+                        )
+
+                        FilterChip(
+                            selected = selectedFocusMode == QuizFocusMode.VOCABULARY_ONLY,
+                            onClick = { selectedFocusMode = QuizFocusMode.VOCABULARY_ONLY },
+                            label = {
+                                Text(
+                                    text = Loc.getText("quiz_focus_vocab_only"),
+                                    fontSize = 11.5.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            leadingIcon = if (selectedFocusMode == QuizFocusMode.VOCABULARY_ONLY) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Filled.Spellcheck,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+                            } else null,
+                            modifier = Modifier.weight(1f).testTag("quiz_focus_vocab_chip")
+                        )
+
+                        FilterChip(
+                            selected = selectedFocusMode == QuizFocusMode.COMPREHENSION_ONLY,
+                            onClick = { selectedFocusMode = QuizFocusMode.COMPREHENSION_ONLY },
+                            label = {
+                                Text(
+                                    text = Loc.getText("quiz_focus_comp_only"),
+                                    fontSize = 11.5.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            leadingIcon = if (selectedFocusMode == QuizFocusMode.COMPREHENSION_ONLY) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Filled.Psychology,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+                            } else null,
+                            modifier = Modifier.weight(1f).testTag("quiz_focus_comp_chip")
+                        )
+                    }
+
+                    Text(
+                        text = when (selectedFocusMode) {
+                            QuizFocusMode.BOTH -> Loc.getText("quiz_focus_both_desc")
+                            QuizFocusMode.VOCABULARY_ONLY -> Loc.getText("quiz_focus_vocab_desc")
+                            QuizFocusMode.COMPREHENSION_ONLY -> Loc.getText("quiz_focus_comp_desc")
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.5.sp
+                    )
+                }
+            }
+        }
+
         // Number of questions stepper
         item {
             Card(
@@ -250,7 +362,7 @@ internal fun TrackQuizTabContent(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
-                    onClick = { onGenerateQuiz(requestedTrackQuestionCount) },
+                    onClick = { onGenerateQuiz(requestedTrackQuestionCount, selectedFocusMode) },
                     enabled = targetTrack != null && !isGenerating,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().height(48.dp).testTag("generate_audio_quiz_btn")

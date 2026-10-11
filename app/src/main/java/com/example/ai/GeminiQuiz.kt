@@ -118,6 +118,8 @@ object GeminiQuiz {
 
             val rawCategory = qObj.optString("category", "").uppercase()
             val category = when {
+                source is QuizContentSource.Transcript && source.focusMode == QuizFocusMode.VOCABULARY_ONLY -> "VOCABULARY"
+                source is QuizContentSource.Transcript && source.focusMode == QuizFocusMode.COMPREHENSION_ONLY -> "COMPREHENSION"
                 rawCategory.contains("VOCAB") -> "VOCABULARY"
                 rawCategory.contains("COMPREHENSION") -> "COMPREHENSION"
                 source is QuizContentSource.NotebookNotes -> "VOCABULARY"
@@ -307,12 +309,14 @@ object GeminiQuiz {
         existingQuestions: List<String> = emptyList(),
         customApiKey: String? = null,
         language: String = "en",
-        modelName: String = GeminiModelHealth.DEFAULT_MODEL
+        modelName: String = GeminiModelHealth.DEFAULT_MODEL,
+        focusMode: QuizFocusMode = QuizFocusMode.BOTH
     ): Result<List<GeneratedQuizItem>> {
         val source = QuizContentSource.Transcript(
             mediaTitle = mediaTitle,
             cues = transcriptCues,
-            existingQuestions = existingQuestions
+            existingQuestions = existingQuestions,
+            focusMode = focusMode
         )
         return generateQuizUnified(source, customApiKey, language, modelName).map { list ->
             list.map { it.toGeneratedQuizItem() }

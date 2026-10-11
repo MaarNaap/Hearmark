@@ -208,4 +208,53 @@ class GeminiQuizAndHttpRetryTest {
         assertTrue(recordedHeaderKeys.all { it == "test-secret-key-123" })
         GeminiModelHealth.clearModelHealthStateForTesting()
     }
+
+    @Test
+    fun quizFocusMode_buildsCorrectPromptAndEnforcesCategory() {
+        val vocabOnlySource = dummyTranscriptSource.copy(questionCount = 4, focusMode = QuizFocusMode.VOCABULARY_ONLY)
+        val (_, vocabPrompt) = GeminiPrompts.buildUnifiedQuizPrompt(vocabOnlySource, "en")
+        assertTrue(vocabPrompt.contains("EXACTLY 4 KEY VOCABULARY questions"))
+        assertTrue(vocabPrompt.contains("ZERO comprehension questions"))
+
+        val compOnlySource = dummyTranscriptSource.copy(questionCount = 4, focusMode = QuizFocusMode.COMPREHENSION_ONLY)
+        val (_, compPrompt) = GeminiPrompts.buildUnifiedQuizPrompt(compOnlySource, "en")
+        assertTrue(compPrompt.contains("EXACTLY 4 LISTENING COMPREHENSION questions"))
+        assertTrue(compPrompt.contains("ZERO vocabulary questions"))
+
+        val bothSource = dummyTranscriptSource.copy(questionCount = 4, focusMode = QuizFocusMode.BOTH)
+        val (_, bothPrompt) = GeminiPrompts.buildUnifiedQuizPrompt(bothSource, "en")
+        assertTrue(bothPrompt.contains("EXACTLY 2 KEY VOCABULARY questions"))
+        assertTrue(bothPrompt.contains("EXACTLY 2 LISTENING COMPREHENSION questions"))
+
+        val rawResponse = wrapCandidateJson(
+            """
+            {
+              "questions": [
+                {
+                  "type": "MCQ",
+                  "question": "What does the word 'resilient' mean?",
+                  "options": ["Strong", "Weak", "Slow", "Fast"],
+                  "correctIndex": 0,
+                  "explanation": "Exp"
+                }
+              ]
+            }
+            """.trimIndent()
+        )
+
+        val parsedCompOnly = GeminiQuiz.parseQuizQuestionsFromResponse(
+            responseBody = rawResponse,
+            source = compOnlySource,
+            notesMap = emptyMap()
+        ).getOrThrow()
+        assertEquals("COMPREHENSION", parsedCompOnly[0].category)
+
+        val parsedVocabOnly = GeminiQuiz.parseQuizQuestionsFromResponse(
+            responseBody = rawResponse,
+            source = vocabOnlySource,
+            notesMap = emptyMap()
+        ).getOrThrow()
+        assertEquals("VOCABULARY", parsedVocabOnly[0].category)
+    }
 }
+

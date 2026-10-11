@@ -234,7 +234,11 @@ class QuizViewModel(
         }
     }
 
-    fun generateQuizForTrack(track: AudioTrack, count: Int = 4) {
+    fun generateQuizForTrack(
+        track: AudioTrack,
+        count: Int = 4,
+        focusMode: QuizFocusMode = QuizFocusMode.BOTH
+    ) {
         if (isGeneratingQuiz.value) return
 
         quizGenerationError.value = null
@@ -290,7 +294,8 @@ class QuizViewModel(
                     mediaTitle = track.getDisplayTitle(),
                     cues = cuesToUse,
                     existingQuestions = existingQuestionTexts,
-                    questionCount = count
+                    questionCount = count,
+                    focusMode = focusMode
                 )
 
                 val result = GeminiService.generateQuizUnified(

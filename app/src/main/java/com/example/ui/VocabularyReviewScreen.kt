@@ -36,6 +36,7 @@ fun VocabularyReviewScreen(
     val allVocabQuestions by viewModel.allVocabularyQuestions.collectAsStateWithLifecycle()
     val dueVocabQuestions by viewModel.dueVocabularyQuestions.collectAsStateWithLifecycle()
     val dueVocabCount by viewModel.dueVocabularyCount.collectAsStateWithLifecycle()
+    val pendingAutoStartDueVocab by viewModel.pendingAutoStartDueVocab.collectAsStateWithLifecycle()
     val allTracks by viewModel.tracks.collectAsStateWithLifecycle()
 
     // Map for quick track lookup
@@ -110,6 +111,14 @@ fun VocabularyReviewScreen(
             isSessionFinished = false
             isSessionActive = true
             selectedTab = 0
+        }
+    }
+
+    LaunchedEffect(pendingAutoStartDueVocab, dueVocabQuestions) {
+        if (pendingAutoStartDueVocab && dueVocabQuestions.isNotEmpty()) {
+            val dueBatch = dueVocabQuestions.take(com.example.util.SpacedRepetition.SESSION_CARD_CAP)
+            startSession(dueBatch)
+            viewModel.consumePendingAutoStartDueVocab()
         }
     }
 

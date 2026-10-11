@@ -135,8 +135,8 @@ fun UnifiedQuizSheet(
                             isGenerating = isGeneratingTrackQuiz,
                             errorMessage = trackQuizError,
                             onSelectTrack = { track -> quizViewModel.selectTrack(track) },
-                            onGenerateQuiz = { count ->
-                                targetTrack?.let { quizViewModel.generateQuizForTrack(it, count) }
+                            onGenerateQuiz = { count, focusMode ->
+                                targetTrack?.let { quizViewModel.generateQuizForTrack(it, count, focusMode) }
                             },
                             onStartPractice = {
                                 if (trackQuizBank.isNotEmpty()) {

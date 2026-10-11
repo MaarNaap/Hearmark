@@ -62,4 +62,41 @@ class AlarmScheduleComputationTest {
 
         AlarmReceiver.cancelAlarm(context, 777L)
     }
+
+    @Test
+    fun snoozeVocabReminder_andActionSnoozeVocabReminder_schedulesFutureAlarmAndCancelsNotification() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val shadowAlarmManager = shadowOf(alarmManager)
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val shadowNotificationManager = shadowOf(notificationManager)
+
+        // Post a dummy vocab notification first
+        val dummyNotif = androidx.core.app.NotificationCompat.Builder(context, AlarmReceiver.VOCAB_REMINDER_CHANNEL_ID)
+            .setSmallIcon(com.example.R.drawable.ic_logo)
+            .setContentTitle("Vocabulary Review Due")
+            .setContentText("3 items due")
+            .build()
+        notificationManager.notify(AlarmReceiver.DAILY_VOCAB_NOTIFICATION_ID, dummyNotif)
+        assertNotNull(shadowNotificationManager.getNotification(AlarmReceiver.DAILY_VOCAB_NOTIFICATION_ID))
+
+        val beforeMs = System.currentTimeMillis()
+        val snoozeIntent = android.content.Intent(context, AlarmReceiver::class.java).apply {
+            action = AlarmReceiver.ACTION_SNOOZE_VOCAB_REMINDER
+            putExtra("REMINDER_TIME", "09:00 AM")
+        }
+        AlarmReceiver().onReceive(context, snoozeIntent)
+
+        // Notification should be cancelled
+        assertNull(shadowNotificationManager.getNotification(AlarmReceiver.DAILY_VOCAB_NOTIFICATION_ID))
+
+        // Snoozed alarm should be scheduled ~60 minutes from now
+        val scheduled = shadowAlarmManager.scheduledAlarms.lastOrNull()
+        assertNotNull(scheduled)
+        val expectedMinTrigger = beforeMs + 59 * 60 * 1000L
+        val expectedMaxTrigger = beforeMs + 61 * 60 * 1000L
+        assertTrue(scheduled!!.triggerAtTime in expectedMinTrigger..expectedMaxTrigger)
+
+        AlarmReceiver.cancelDailyVocabReminder(context)
+    }
 }

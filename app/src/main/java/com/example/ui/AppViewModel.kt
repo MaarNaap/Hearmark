@@ -93,13 +93,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val pendingOpenTaskId = MutableStateFlow<Long?>(null)
 
     val pendingOpenVocabReview = MutableStateFlow(false)
+    val pendingAutoStartDueVocab = MutableStateFlow(false)
 
-    fun setPendingOpenVocabReview(open: Boolean) {
+    fun setPendingOpenVocabReview(open: Boolean, autoStartDueSession: Boolean = false) {
         pendingOpenVocabReview.value = open
+        if (autoStartDueSession) {
+            pendingAutoStartDueVocab.value = true
+        }
     }
 
     fun consumePendingOpenVocabReview() {
         pendingOpenVocabReview.value = false
+    }
+
+    fun consumePendingAutoStartDueVocab() {
+        pendingAutoStartDueVocab.value = false
     }
 
     fun setPendingOpenTaskId(taskId: Long) {
@@ -192,7 +200,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun closeQuizSheet() = quizViewModel.closeQuizSheet()
     fun clearQuizGenerationFeedback() = quizViewModel.clearQuizGenerationFeedback()
     fun loadQuizQuestionsForTrack(trackId: Long) = quizViewModel.loadQuizQuestionsForTrack(trackId)
-    fun generateQuizForTrack(track: AudioTrack, count: Int = 4) = quizViewModel.generateQuizForTrack(track, count)
+    fun generateQuizForTrack(
+        track: AudioTrack,
+        count: Int = 4,
+        focusMode: com.example.ai.QuizFocusMode = com.example.ai.QuizFocusMode.BOTH
+    ) = quizViewModel.generateQuizForTrack(track, count, focusMode)
     fun recordQuizAnswer(question: QuizQuestion, isCorrect: Boolean) = quizViewModel.recordQuizAnswer(question, isCorrect)
     fun clearQuizBankForTrack(trackId: Long) = quizViewModel.clearQuizBankForTrack(trackId)
     fun deleteQuizQuestion(questionId: Long) = quizViewModel.deleteQuizQuestion(questionId)

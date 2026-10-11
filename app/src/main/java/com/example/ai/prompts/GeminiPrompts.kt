@@ -232,20 +232,38 @@ Take for granted: To fail to properly appreciate someone or something, especiall
         return when (source) {
             is QuizContentSource.Transcript -> {
                 val totalCount = source.questionCount.coerceIn(1, 20)
-                val vocabCount = (totalCount + 1) / 2
-                val compCount = totalCount - vocabCount
+                val (vocabCount, compCount) = when (source.focusMode) {
+                    com.example.ai.QuizFocusMode.VOCABULARY_ONLY -> Pair(totalCount, 0)
+                    com.example.ai.QuizFocusMode.COMPREHENSION_ONLY -> Pair(0, totalCount)
+                    com.example.ai.QuizFocusMode.BOTH -> {
+                        val v = (totalCount + 1) / 2
+                        Pair(v, totalCount - v)
+                    }
+                }
+
+                val mixSummary = when (source.focusMode) {
+                    com.example.ai.QuizFocusMode.VOCABULARY_ONLY -> "$totalCount key vocabulary questions ONLY (no comprehension questions)"
+                    com.example.ai.QuizFocusMode.COMPREHENSION_ONLY -> "$totalCount listening comprehension questions ONLY (no vocabulary definition questions)"
+                    com.example.ai.QuizFocusMode.BOTH -> "$totalCount questions ($vocabCount key vocabulary and $compCount listening comprehension)"
+                }
 
                 val systemInstruction = if (source.existingQuestions.isNotEmpty()) {
-                    "You are an expert audio & language learning quiz creator. You generate interactive micro-quizzes of $totalCount questions ($vocabCount key vocabulary and $compCount listening comprehension) from dialogue transcripts. You must strictly avoid repeating, rephrasing, or duplicating any of the existing questions provided and craft completely new questions. Output strict valid JSON only matching the schema."
+                    "You are an expert audio & language learning quiz creator. You generate interactive micro-quizzes of $mixSummary from dialogue transcripts. You must strictly avoid repeating, rephrasing, or duplicating any of the existing questions provided and craft completely new questions. Output strict valid JSON only matching the schema."
                 } else {
-                    "You are an expert audio & language learning quiz creator. You generate interactive micro-quizzes of $totalCount questions ($vocabCount key vocabulary and $compCount listening comprehension) from dialogue transcripts. Output strict valid JSON only matching the schema."
+                    "You are an expert audio & language learning quiz creator. You generate interactive micro-quizzes of $mixSummary from dialogue transcripts. Output strict valid JSON only matching the schema."
                 }
 
                 val prompt = buildString {
                     append("Media Title: \"${source.mediaTitle}\"\n\n")
 
+                    val taskMixDesc = when (source.focusMode) {
+                        com.example.ai.QuizFocusMode.VOCABULARY_ONLY -> "exactly $totalCount KEY VOCABULARY questions ONLY (do NOT generate any comprehension questions)"
+                        com.example.ai.QuizFocusMode.COMPREHENSION_ONLY -> "exactly $totalCount LISTENING COMPREHENSION questions ONLY (do NOT generate any vocabulary questions)"
+                        com.example.ai.QuizFocusMode.BOTH -> "exactly $vocabCount KEY VOCABULARY questions and $compCount LISTENING COMPREHENSION questions"
+                    }
+
                     if (source.existingQuestions.isNotEmpty()) {
-                        append("TASK: Generate $totalCount BRAND-NEW quiz questions: exactly $vocabCount KEY VOCABULARY questions and $compCount LISTENING COMPREHENSION questions. The learner already has existing questions for this audio. You MUST NOT duplicate, repeat, or closely rephrase any of the existing questions.\n\n")
+                        append("TASK: Generate $totalCount BRAND-NEW quiz questions: $taskMixDesc. The learner already has existing questions for this audio. You MUST NOT duplicate, repeat, or closely rephrase any of the existing questions.\n\n")
                         append("====================================================\n")
                         append("EXISTING QUESTIONS (DO NOT DUPLICATE OR REPHRASE):\n")
                         source.existingQuestions.take(50).forEachIndexed { index, existingQ ->
@@ -254,14 +272,20 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                         append("====================================================\n\n")
                         append("CRITICAL MANDATE: Carefully inspect the EXISTING QUESTIONS above. Make sure your newly generated questions cover completely DIFFERENT parts of the transcript, novel vocabulary items, other speakers, untouched dialogue lines, or different key events.\n\n")
                     } else {
-                        append("Based on the provided dialogue/audio transcript, generate a well-rounded quiz consisting of exactly $totalCount questions: $vocabCount KEY VOCABULARY questions and $compCount LISTENING COMPREHENSION questions from the audio.\n\n")
+                        append("Based on the provided dialogue/audio transcript, generate a quiz consisting of $taskMixDesc from the audio.\n\n")
                     }
 
                     append("QUIZ COMPOSITION REQUIREMENTS:\n")
-                    append("1. Balanced Question Mix (Total exactly $totalCount questions):\n")
-                    append("   - EXACTLY $vocabCount KEY VOCABULARY questions (set \"category\": \"VOCABULARY\"): test important words, idioms, phrases, or collocations found in the audio transcript (e.g. \"What is the meaning of '[word]' in this context?\", \"In the sentence '...', the word '[word]' means:\", or \"Which word in the dialogue means ...?\").\n")
+                    append("1. Question Mix (Total exactly $totalCount questions):\n")
+                    if (vocabCount > 0) {
+                        append("   - EXACTLY $vocabCount KEY VOCABULARY questions (set \"category\": \"VOCABULARY\"): test important words, idioms, phrases, or collocations found in the audio transcript (e.g. \"What is the meaning of '[word]' in this context?\", \"In the sentence '...', the word '[word]' means:\", or \"Which word in the dialogue means ...?\").\n")
+                    } else {
+                        append("   - ZERO vocabulary questions: Do NOT ask word-meaning or vocabulary definition questions.\n")
+                    }
                     if (compCount > 0) {
                         append("   - EXACTLY $compCount LISTENING COMPREHENSION questions (set \"category\": \"COMPREHENSION\"): test main ideas, speaker intentions, key events, cause/effect, or specific details from the dialogue.\n")
+                    } else {
+                        append("   - ZERO comprehension questions: Every single question MUST be a vocabulary question (\"category\": \"VOCABULARY\").\n")
                     }
                     append("   - Question Formats: Use Multiple Choice Questions (type: \"MCQ\") and True/False Questions (type: \"TRUE_FALSE\"). Total questions must be exactly $totalCount.\n")
                     if (source.existingQuestions.isNotEmpty()) {

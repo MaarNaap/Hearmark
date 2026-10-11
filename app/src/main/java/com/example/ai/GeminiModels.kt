@@ -38,12 +38,19 @@ data class GeneratedQuizItem(
     val contextSentence: String? = null
 )
 
+enum class QuizFocusMode {
+    BOTH,
+    VOCABULARY_ONLY,
+    COMPREHENSION_ONLY
+}
+
 sealed class QuizContentSource {
     data class Transcript(
         val mediaTitle: String,
         val cues: List<SubtitleCue>,
         val existingQuestions: List<String> = emptyList(),
-        val questionCount: Int = 4
+        val questionCount: Int = 4,
+        val focusMode: QuizFocusMode = QuizFocusMode.BOTH
     ) : QuizContentSource()
 
     data class NotebookNotes(

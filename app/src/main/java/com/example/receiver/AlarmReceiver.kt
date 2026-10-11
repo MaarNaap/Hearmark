@@ -63,19 +63,28 @@ class AlarmReceiver : BroadcastReceiver() {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             try {
                                 notificationManager.deleteNotificationChannel(LEGACY_VOCAB_REMINDER_CHANNEL_ID)
+                                notificationManager.deleteNotificationChannel(LEGACY_VOCAB_REMINDER_DEFAULT_CHANNEL_ID)
                             } catch (_: Exception) {}
                             val channel = NotificationChannel(
                                 channelId,
                                 Loc.getText("vocab_daily_reminder_title"),
-                                NotificationManager.IMPORTANCE_DEFAULT
+                                NotificationManager.IMPORTANCE_HIGH
                             ).apply {
                                 description = Loc.getText("vocab_daily_reminder_desc")
+                                enableVibration(true)
+                                setShowBadge(true)
                             }
                             notificationManager.createNotificationChannel(channel)
                         }
 
+                        val totalVocabCount = db.appDao().getAllVocabularyQuestionsDirect().size
+                        val completedVocabCount = (totalVocabCount - dueCount).coerceAtLeast(0)
+                        val progressPercent = if (totalVocabCount > 0) {
+                            ((completedVocabCount.toFloat() / totalVocabCount.toFloat()) * 100).toInt().coerceIn(0, 100)
+                        } else 0
+
                         val openIntent = Intent(appContext, com.example.MainActivity::class.java).apply {
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                             putExtra("OPEN_VOCAB_REVIEW", true)
                         }
                         val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -90,8 +99,35 @@ class AlarmReceiver : BroadcastReceiver() {
                             flags
                         )
 
+                        // Action 1: Start Review action intent
+                        val startReviewIntent = Intent(appContext, com.example.MainActivity::class.java).apply {
+                            this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                            putExtra("OPEN_VOCAB_REVIEW", true)
+                            putExtra("START_DUE_VOCAB_SESSION", true)
+                        }
+                        val startReviewPendingIntent = PendingIntent.getActivity(
+                            appContext,
+                            DAILY_VOCAB_REQUEST_CODE + 1,
+                            startReviewIntent,
+                            flags
+                        )
+
+                        // Action 2: Snooze 1h action intent
+                        val snoozeVocabIntent = Intent(appContext, AlarmReceiver::class.java).apply {
+                            this.action = ACTION_SNOOZE_VOCAB_REMINDER
+                            putExtra("REMINDER_TIME", storedTime)
+                        }
+                        val snoozeVocabPendingIntent = PendingIntent.getBroadcast(
+                            appContext,
+                            DAILY_VOCAB_REQUEST_CODE + 2,
+                            snoozeVocabIntent,
+                            flags
+                        )
+
                         val title = Loc.getText("vocab_notification_due_title")
                         val message = Loc.getFormattedText("vocab_notification_due_message", dueCount)
+                        val progressText = Loc.getFormattedText("task_progress_format", progressPercent)
+                        val bigTextContent = "$message\n$progressText"
 
                         val isDark = try {
                             val themeSetting = sharedPref.getString("theme", "dark") ?: "dark"
@@ -105,21 +141,36 @@ class AlarmReceiver : BroadcastReceiver() {
                             }
                         } catch (_: Exception) { true }
 
+                        val notifBgColor = if (isDark) 0xFF1E1A22.toInt() else 0xFFF4EEF8.toInt()
                         val largeIcon = getLargeIconBitmap(appContext, isDark)
+
+                        val bigTextStyle = NotificationCompat.BigTextStyle()
+                            .setBigContentTitle(title)
+                            .bigText(bigTextContent)
+                            .setSummaryText(Loc.getText("vocab_review_title"))
+
+                        val reviewActionLabel = Loc.getText("vocab_notification_due_action")
+                        val snoozeActionLabel = Loc.getText("snooze_1h_action")
 
                         val notification = NotificationCompat.Builder(appContext, channelId)
                             .setSmallIcon(com.example.R.drawable.ic_logo)
                             .setContentTitle(title)
                             .setContentText(message)
-                            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-                            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                            .setAutoCancel(true)
-                            .setContentIntent(pendingIntent)
+                            .setStyle(bigTextStyle)
+                            .setProgress(100, progressPercent, false)
+                            .setColor(notifBgColor)
+                            .setColorized(true)
                             .apply {
                                 if (largeIcon != null) {
                                     setLargeIcon(largeIcon)
                                 }
                             }
+                            .setPriority(NotificationCompat.PRIORITY_HIGH)
+                            .setDefaults(NotificationCompat.DEFAULT_ALL)
+                            .setAutoCancel(true)
+                            .setContentIntent(pendingIntent)
+                            .addAction(android.R.drawable.ic_media_play, "▶ $reviewActionLabel", startReviewPendingIntent)
+                            .addAction(android.R.drawable.ic_lock_idle_alarm, "⏱ $snoozeActionLabel", snoozeVocabPendingIntent)
                             .build()
 
                         notificationManager.notify(DAILY_VOCAB_NOTIFICATION_ID, notification)
@@ -130,6 +181,13 @@ class AlarmReceiver : BroadcastReceiver() {
                     pendingResult.finish()
                 }
             }
+            return
+        }
+
+        if (action == ACTION_SNOOZE_VOCAB_REMINDER) {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.cancel(DAILY_VOCAB_NOTIFICATION_ID)
+            snoozeVocabReminder(context, reminderTime, 60)
             return
         }
 
@@ -421,8 +479,10 @@ class AlarmReceiver : BroadcastReceiver() {
         const val ACTION_PLAY_TASK_TRACK = "com.example.ACTION_PLAY_TASK_TRACK"
         const val ACTION_SNOOZE_TASK = "com.example.ACTION_SNOOZE_TASK"
         const val ACTION_DAILY_VOCAB_REMINDER = "com.example.ACTION_DAILY_VOCAB_REMINDER"
+        const val ACTION_SNOOZE_VOCAB_REMINDER = "com.example.ACTION_SNOOZE_VOCAB_REMINDER"
         const val LEGACY_VOCAB_REMINDER_CHANNEL_ID = "vocab_reminder_channel"
-        const val VOCAB_REMINDER_CHANNEL_ID = "vocab_reminder_default_channel"
+        const val LEGACY_VOCAB_REMINDER_DEFAULT_CHANNEL_ID = "vocab_reminder_default_channel"
+        const val VOCAB_REMINDER_CHANNEL_ID = "vocab_reminders_high"
         const val DAILY_VOCAB_NOTIFICATION_ID = 88888
         const val DAILY_VOCAB_REQUEST_CODE = 9999
 
@@ -685,6 +745,35 @@ class AlarmReceiver : BroadcastReceiver() {
                 alarmManager.cancel(pendingIntent)
                 pendingIntent.cancel()
             }
+        }
+
+        fun snoozeVocabReminder(
+            context: Context,
+            reminderTime: String = "09:00 AM",
+            minutes: Int = 60
+        ) {
+            val normalizedTime = normalizeReminderTime(reminderTime)
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+            val intent = Intent(context, AlarmReceiver::class.java).apply {
+                action = ACTION_DAILY_VOCAB_REMINDER
+                putExtra("REMINDER_TIME", normalizedTime)
+            }
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                DAILY_VOCAB_REQUEST_CODE,
+                intent,
+                flags
+            )
+            val triggerTime = System.currentTimeMillis() + (minutes * 60 * 1000L)
+            setExactAlarmSafely(alarmManager, triggerTime, pendingIntent)
+            try {
+                Log.d("AlarmReceiver", "Snoozed daily vocab reminder by $minutes minutes")
+            } catch (_: Throwable) {}
         }
 
         fun rescheduleDailyVocabReminderIfNeeded(context: Context) {
