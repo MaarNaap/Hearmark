@@ -21,7 +21,8 @@ import com.example.player.AudioPlayerManager
 fun PlayerTransportControls(
     isPlayingState: Boolean,
     arePlaybackButtonsActive: Boolean,
-    skipSecondsSetting: Int
+    skipSecondsSetting: Int,
+    isPracticeMode: Boolean = false
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -53,13 +54,15 @@ fun PlayerTransportControls(
                     modifier = Modifier.size(32.dp)
                 )
             }
-            Text(
-                text = "$skipSecondsSetting",
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.offset(y = 12.dp)
-            )
+            if (!isPracticeMode) {
+                Text(
+                    text = "$skipSecondsSetting",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.offset(y = 12.dp)
+                )
+            }
         }
 
         IconButton(
@@ -91,13 +94,15 @@ fun PlayerTransportControls(
                     modifier = Modifier.size(32.dp)
                 )
             }
-            Text(
-                text = "$skipSecondsSetting",
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.offset(y = 12.dp)
-            )
+            if (!isPracticeMode) {
+                Text(
+                    text = "$skipSecondsSetting",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.offset(y = 12.dp)
+                )
+            }
         }
 
         IconButton(

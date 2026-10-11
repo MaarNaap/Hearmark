@@ -469,6 +469,248 @@ fun AudioPlayerManager.togglePracticeMode(context: Context? = null, repository: 
     }
 }
 
+private data class VirtualSubtitleCue(
+    val rawCue: SubtitleCue,
+    val startVirtualMs: Long,
+    val endVirtualMs: Long
+)
+
+private fun AudioPlayerManager.resolveEffectivePracticeDuration(track: AudioTrack): Long {
+    return if (track.isVirtualScene) {
+        track.duration.takeIf { it > 0L } ?: _duration.value
+    } else {
+        val mpDur = try { mediaPlayer?.duration?.toLong() ?: 0L } catch (e: Exception) { 0L }
+        if (mpDur > 0L) mpDur else (track.duration.takeIf { it > 0L } ?: _duration.value)
+    }
+}
+
+private fun AudioPlayerManager.resolveCurrentVirtualPos(track: AudioTrack): Long {
+    if (track.isVirtualScene || isSeeking || _isPracticePausing.value || !_isPlaying.value) {
+        return _currentPosition.value
+    }
+    val mpPos = try { mediaPlayer?.currentPosition?.toLong() } catch (e: Exception) { null }
+    return mpPos ?: _currentPosition.value
+}
+
+private fun AudioPlayerManager.resolveVirtualTimedCues(track: AudioTrack, effectiveDuration: Long): List<VirtualSubtitleCue> {
+    val rawCues = if (_subtitlesCues.value.isNotEmpty()) _subtitlesCues.value else getOrParseCuesForTrack(track)
+    if (rawCues.isEmpty()) return emptyList()
+    return if (track.isVirtualScene) {
+        val sceneStart = track.startOffsetMs
+        val sceneEnd = track.endOffsetMs ?: (track.startOffsetMs + effectiveDuration)
+        rawCues
+            .filter {
+                it.isTimed && it.startMs >= 0L &&
+                    (if (it.endMs > it.startMs) it.endMs else it.startMs + 3000L) > sceneStart &&
+                    it.startMs < sceneEnd
+            }
+            .sortedBy { it.startMs }
+            .map { cue ->
+                val rawEnd = if (cue.endMs > cue.startMs) cue.endMs else cue.startMs + 3000L
+                val vStart = (cue.startMs - sceneStart).coerceAtLeast(0L)
+                val vEnd = (rawEnd - sceneStart).let {
+                    if (effectiveDuration > 0L) it.coerceIn(vStart, effectiveDuration) else it.coerceAtLeast(vStart)
+                }
+                VirtualSubtitleCue(cue, vStart, vEnd)
+            }
+    } else {
+        rawCues
+            .filter { it.isTimed && it.startMs >= 0L }
+            .sortedBy { it.startMs }
+            .map { cue ->
+                val rawEnd = if (cue.endMs > cue.startMs) cue.endMs else cue.startMs + 3000L
+                val vStart = cue.startMs.coerceAtLeast(0L)
+                val vEnd = if (effectiveDuration > 0L) rawEnd.coerceIn(vStart, effectiveDuration) else rawEnd.coerceAtLeast(vStart)
+                VirtualSubtitleCue(cue, vStart, vEnd)
+            }
+    }
+}
+
+private fun AudioPlayerManager.seekPracticeTarget(
+    targetVirtualMs: Long,
+    effectiveDuration: Long,
+    targetSubtitleCue: VirtualSubtitleCue? = null
+) {
+    val clamped = if (effectiveDuration > 0L) {
+        targetVirtualMs.coerceIn(0L, effectiveDuration)
+    } else {
+        targetVirtualMs.coerceAtLeast(0L)
+    }
+    val track = currentTrackValue
+    val physTarget = if (track != null && track.isVirtualScene) track.startOffsetMs + clamped else clamped
+    if (mediaPlayer != null) {
+        seekTo(clamped, isPhysicalTimestamp = false)
+    } else {
+        _currentPosition.value = clamped
+        setLastTrackedPosition(physTarget)
+        onSeekInPracticeMode(clamped)
+    }
+
+    if (targetSubtitleCue != null) {
+        if (isSubtitlesEnabled.value) {
+            _activeSubtitleCue.value = targetSubtitleCue.rawCue
+        }
+        val segments = _currentPracticeSegments.value
+        if (segments.isNotEmpty()) {
+            val matchingBoundaryIdx = segments.indexOfFirst {
+                it >= targetSubtitleCue.endVirtualMs - 250L && it > targetSubtitleCue.startVirtualMs + 150L
+            }.takeIf { it != -1 } ?: segments.indexOfFirst { it > clamped + 150L }
+            practiceNextBoundaryIndex = if (matchingBoundaryIdx == -1) segments.size else matchingBoundaryIdx
+        }
+        practiceLastSegmentStartMs = clamped
+        practiceLastPlayedSegmentStartMs = clamped
+        practiceRepeatSegmentStartMs = clamped
+    } else {
+        updateActiveSubtitleCue(physTarget)
+    }
+}
+
+private fun AudioPlayerManager.resolvePausedSubtitleCueIndex(
+    timedCues: List<VirtualSubtitleCue>,
+    currentVirtualPos: Long
+): Int {
+    val activeId = _activeSubtitleCue.value?.id
+    if (activeId != null) {
+        val byActive = timedCues.indexOfFirst { it.rawCue.id == activeId }
+        if (byActive != -1) return byActive
+    }
+    val closestEndIdx = timedCues.indices.minByOrNull { idx ->
+        Math.abs(timedCues[idx].endVirtualMs - currentVirtualPos)
+    }
+    if (closestEndIdx != null && Math.abs(timedCues[closestEndIdx].endVirtualMs - currentVirtualPos) <= 600L) {
+        return closestEndIdx
+    }
+    val byRepeat = timedCues.indexOfFirst { Math.abs(it.startVirtualMs - practiceRepeatSegmentStartMs) <= 300L }
+    if (byRepeat != -1) return byRepeat
+    return timedCues.indexOfLast { it.startVirtualMs < currentVirtualPos - 100L }.coerceAtLeast(0)
+}
+
+fun AudioPlayerManager.skipForwardInPracticeMode(): Boolean {
+    if (!_isPracticeMode.value) return false
+    val track = currentTrackValue ?: return false
+    val effectiveDuration = resolveEffectivePracticeDuration(track)
+    val currentVirtualPos = resolveCurrentVirtualPos(track)
+    val activeSource = getActivePracticeSourceForTrack(track)
+    val useSubtitleCues = (activeSource == "SUBTITLES" || (segmentSource == "SUBTITLES" && activeSource != "MANUAL"))
+
+    if (useSubtitleCues) {
+        val timedCues = resolveVirtualTimedCues(track, effectiveDuration)
+        if (timedCues.isNotEmpty()) {
+            val nextCueIdx = if (_isPracticePausing.value) {
+                resolvePausedSubtitleCueIndex(timedCues, currentVirtualPos) + 1
+            } else {
+                val currentIdx = timedCues.indexOfLast { it.startVirtualMs <= currentVirtualPos + 150L }
+                currentIdx + 1
+            }
+            if (nextCueIdx in timedCues.indices) {
+                val targetCue = timedCues[nextCueIdx]
+                seekPracticeTarget(targetCue.startVirtualMs, effectiveDuration, targetCue)
+            } else {
+                val endTarget = if (effectiveDuration > 0L) effectiveDuration else timedCues.last().endVirtualMs
+                seekPracticeTarget(endTarget, effectiveDuration)
+            }
+            return true
+        }
+    }
+
+    val boundaries = if (_currentPracticeSegments.value.isNotEmpty()) {
+        _currentPracticeSegments.value
+    } else {
+        track.getPracticeSegmentsList()
+    }
+    if (boundaries.isEmpty()) return false
+
+    val cutStarts = buildList {
+        add(0L)
+        for (b in boundaries) {
+            if (b > 0L && (effectiveDuration <= 0L || b < effectiveDuration - 200L)) {
+                if (b - last() > 100L) {
+                    add(b)
+                }
+            }
+        }
+    }
+
+    val currentCutIdx = if (_isPracticePausing.value) {
+        cutStarts.indexOfLast { it <= practiceLastPlayedSegmentStartMs + 150L }.coerceAtLeast(0)
+    } else {
+        cutStarts.indexOfLast { it <= currentVirtualPos + 150L }.coerceAtLeast(0)
+    }
+
+    val nextCutIdx = currentCutIdx + 1
+    if (nextCutIdx in cutStarts.indices) {
+        seekPracticeTarget(cutStarts[nextCutIdx], effectiveDuration)
+    } else {
+        val endTarget = if (effectiveDuration > 0L) effectiveDuration else boundaries.last()
+        seekPracticeTarget(endTarget, effectiveDuration)
+    }
+    return true
+}
+
+fun AudioPlayerManager.skipBackwardInPracticeMode(): Boolean {
+    if (!_isPracticeMode.value) return false
+    val track = currentTrackValue ?: return false
+    val effectiveDuration = resolveEffectivePracticeDuration(track)
+    val currentVirtualPos = resolveCurrentVirtualPos(track)
+    val activeSource = getActivePracticeSourceForTrack(track)
+    val useSubtitleCues = (activeSource == "SUBTITLES" || (segmentSource == "SUBTITLES" && activeSource != "MANUAL"))
+
+    if (useSubtitleCues) {
+        val timedCues = resolveVirtualTimedCues(track, effectiveDuration)
+        if (timedCues.isNotEmpty()) {
+            val prevCueIdx = if (_isPracticePausing.value) {
+                (resolvePausedSubtitleCueIndex(timedCues, currentVirtualPos) - 1).coerceAtLeast(0)
+            } else {
+                val currentIdx = timedCues.indexOfLast { it.startVirtualMs <= currentVirtualPos + 150L }
+                when {
+                    currentIdx < 0 -> -1
+                    currentIdx == 0 -> {
+                        if (currentVirtualPos > timedCues[0].endVirtualMs + 400L) 0 else 0
+                    }
+                    else -> {
+                        if (currentVirtualPos > timedCues[currentIdx].endVirtualMs + 400L) currentIdx else currentIdx - 1
+                    }
+                }
+            }
+            if (prevCueIdx in timedCues.indices) {
+                val targetCue = timedCues[prevCueIdx]
+                seekPracticeTarget(targetCue.startVirtualMs, effectiveDuration, targetCue)
+            } else {
+                seekPracticeTarget(0L, effectiveDuration)
+            }
+            return true
+        }
+    }
+
+    val boundaries = if (_currentPracticeSegments.value.isNotEmpty()) {
+        _currentPracticeSegments.value
+    } else {
+        track.getPracticeSegmentsList()
+    }
+    if (boundaries.isEmpty()) return false
+
+    val cutStarts = buildList {
+        add(0L)
+        for (b in boundaries) {
+            if (b > 0L && (effectiveDuration <= 0L || b < effectiveDuration - 200L)) {
+                if (b - last() > 100L) {
+                    add(b)
+                }
+            }
+        }
+    }
+
+    val currentCutIdx = if (_isPracticePausing.value) {
+        cutStarts.indexOfLast { it <= practiceLastPlayedSegmentStartMs + 150L }.coerceAtLeast(0)
+    } else {
+        cutStarts.indexOfLast { it <= currentVirtualPos + 150L }.coerceAtLeast(0)
+    }
+
+    val prevCutIdx = (currentCutIdx - 1).coerceAtLeast(0)
+    seekPracticeTarget(cutStarts[prevCutIdx], effectiveDuration)
+    return true
+}
+
 // =========================================================================
 // @LOCKED: Shadowing / Practice Mode Boundary & Pause State Machine - STRICT FREEZE
 // DO NOT MODIFY OR REFACTOR THIS BLOCK WITHOUT EXPLICIT PERMISSION IN PROMPT

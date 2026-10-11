@@ -134,7 +134,7 @@ object AudioPlayerManager {
     val headsetMultiClickAction = MutableStateFlow("NEXT_PREV") // "NEXT_PREV" or "SKIP_SECONDS"
 
     internal var headsetClickCount = 0
-    internal val headsetClickHandler = Handler(Looper.getMainLooper())
+    internal val headsetClickHandler by lazy { Handler(Looper.getMainLooper()) }
     internal val headsetClickRunnable: Runnable
         get() = PlaybackSystemController.headsetClickRunnable
 
@@ -727,18 +727,35 @@ object AudioPlayerManager {
     // =========================================================================
 
     fun skipForward() {
+        if (_isPracticeMode.value && skipForwardInPracticeMode()) {
+            return
+        }
         val track = currentTrackValue
         try {
-            mediaPlayer?.let { mp ->
-                if (track != null && track.isVirtualScene) {
-                    val currentVirtual = _currentPosition.value
-                    val targetVirtual = (currentVirtual + (skipTimeSeconds * 1000)).coerceAtMost(track.duration)
+            val mp = mediaPlayer
+            if (track != null && track.isVirtualScene) {
+                val currentVirtual = _currentPosition.value
+                val targetVirtual = (currentVirtual + (skipTimeSeconds * 1000)).coerceAtMost(track.duration)
+                if (mp != null) {
                     seekTo(targetVirtual, isPhysicalTimestamp = false)
                 } else {
-                    val cur = try { mp.currentPosition } catch (e: Exception) { _currentPosition.value.toInt() }
-                    val dur = try { if (mp.duration > 0) mp.duration else (track?.duration?.toInt() ?: 0) } catch (e: Exception) { (track?.duration?.toInt() ?: 0) }
-                    val target = (cur + (skipTimeSeconds * 1000)).coerceAtMost(if (dur > 0) dur else Int.MAX_VALUE)
+                    _currentPosition.value = targetVirtual
+                    updateActiveSubtitleCue(track.startOffsetMs + targetVirtual)
+                }
+            } else {
+                val cur = try { mp?.currentPosition ?: _currentPosition.value.toInt() } catch (e: Exception) { _currentPosition.value.toInt() }
+                val dur = try {
+                    val mpDur = mp?.duration ?: 0
+                    if (mpDur > 0) mpDur else (track?.duration?.toInt() ?: _duration.value.toInt())
+                } catch (e: Exception) {
+                    track?.duration?.toInt() ?: _duration.value.toInt()
+                }
+                val target = (cur + (skipTimeSeconds * 1000)).coerceAtMost(if (dur > 0) dur else Int.MAX_VALUE)
+                if (mp != null) {
                     seekTo(target.toLong(), isPhysicalTimestamp = false)
+                } else {
+                    _currentPosition.value = target.toLong()
+                    updateActiveSubtitleCue(target.toLong())
                 }
             }
         } catch (e: Exception) {
@@ -747,17 +764,29 @@ object AudioPlayerManager {
     }
 
     fun skipBackward() {
+        if (_isPracticeMode.value && skipBackwardInPracticeMode()) {
+            return
+        }
         val track = currentTrackValue
         try {
-            mediaPlayer?.let { mp ->
-                if (track != null && track.isVirtualScene) {
-                    val currentVirtual = _currentPosition.value
-                    val targetVirtual = (currentVirtual - (skipTimeSeconds * 1000)).coerceAtLeast(0L)
+            val mp = mediaPlayer
+            if (track != null && track.isVirtualScene) {
+                val currentVirtual = _currentPosition.value
+                val targetVirtual = (currentVirtual - (skipTimeSeconds * 1000)).coerceAtLeast(0L)
+                if (mp != null) {
                     seekTo(targetVirtual, isPhysicalTimestamp = false)
                 } else {
-                    val cur = try { mp.currentPosition } catch (e: Exception) { _currentPosition.value.toInt() }
-                    val target = (cur - (skipTimeSeconds * 1000)).coerceAtLeast(0)
+                    _currentPosition.value = targetVirtual
+                    updateActiveSubtitleCue(track.startOffsetMs + targetVirtual)
+                }
+            } else {
+                val cur = try { mp?.currentPosition ?: _currentPosition.value.toInt() } catch (e: Exception) { _currentPosition.value.toInt() }
+                val target = (cur - (skipTimeSeconds * 1000)).coerceAtLeast(0)
+                if (mp != null) {
                     seekTo(target.toLong(), isPhysicalTimestamp = false)
+                } else {
+                    _currentPosition.value = target.toLong()
+                    updateActiveSubtitleCue(target.toLong())
                 }
             }
         } catch (e: Exception) {

@@ -51,6 +51,7 @@ fun FullScreenVideoOverlay(
     durationState: Long,
     playPositionState: Long,
     isPlayingState: Boolean,
+    isPracticeMode: Boolean = false,
     onToggleControlsVisibility: () -> Unit,
     onExitFullScreen: () -> Unit,
     onOpenNotes: (List<Note>) -> Unit,
@@ -364,7 +365,11 @@ fun FullScreenVideoOverlay(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             IconButton(onClick = { AudioPlayerManager.skipBackward() }) {
-                                Icon(Icons.Filled.Replay10, contentDescription = "Rewind", tint = Color.White)
+                                Icon(
+                                    imageVector = if (isPracticeMode) Icons.Filled.FastRewind else Icons.Filled.Replay10,
+                                    contentDescription = "Rewind",
+                                    tint = Color.White
+                                )
                             }
                             IconButton(onClick = {
                                 if (isPlayingState) AudioPlayerManager.pause() else AudioPlayerManager.resume()
@@ -377,7 +382,11 @@ fun FullScreenVideoOverlay(
                                 )
                             }
                             IconButton(onClick = { AudioPlayerManager.skipForward() }) {
-                                Icon(Icons.Filled.Forward10, contentDescription = "Forward", tint = Color.White)
+                                Icon(
+                                    imageVector = if (isPracticeMode) Icons.Filled.FastForward else Icons.Filled.Forward10,
+                                    contentDescription = "Forward",
+                                    tint = Color.White
+                                )
                             }
                         }
 

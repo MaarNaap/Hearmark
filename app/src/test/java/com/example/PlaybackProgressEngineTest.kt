@@ -223,4 +223,140 @@ class PlaybackProgressEngineTest {
         AudioPlayerManager._isPracticePausing.value = false
         AudioPlayerManager.pendingEndOfTrackAfterPracticePause = false
     }
+
+    @Test
+    fun practiceMode_skipForwardAndBackward_navigatesByManualOrAutoCuts() {
+        val durationMs = 30_000L
+        val track = AudioTrack(
+            id = 60L,
+            filePath = "/a/cuts_practice.mp3",
+            fileName = "cuts_practice.mp3",
+            duration = durationMs,
+            practiceSegments = "SIL:5000,12000,20000"
+        )
+
+        AudioPlayerManager.mediaPlayer = null
+        AudioPlayerManager.currentTrackValue = track
+        AudioPlayerManager._currentTrack.value = track
+        AudioPlayerManager._duration.value = durationMs
+        AudioPlayerManager._currentPosition.value = 2_000L
+        AudioPlayerManager._isPracticeMode.value = true
+        AudioPlayerManager._isPracticePausing.value = false
+        AudioPlayerManager._currentPracticeSegments.value = listOf(5000L, 12000L, 20000L)
+        AudioPlayerManager.segmentSource = "SILENCE"
+        AudioPlayerManager.setSettings(threshold = 90, skipTime = 10)
+
+        // From Cut 0 (0..5000) at 2000ms -> Seek Forward goes to Cut 1 start (5000ms)
+        AudioPlayerManager.skipForward()
+        assertEquals(5_000L, AudioPlayerManager.currentPosition.value)
+
+        // From Cut 1 (5000..12000) -> Seek Forward goes to Cut 2 start (12000ms)
+        AudioPlayerManager.skipForward()
+        assertEquals(12_000L, AudioPlayerManager.currentPosition.value)
+
+        // Advance slightly inside Cut 2 (e.g. 15000ms) -> Rewind Back goes to start of previous cut (Cut 1 at 5000ms)
+        AudioPlayerManager._currentPosition.value = 15_000L
+        AudioPlayerManager.skipBackward()
+        assertEquals(5_000L, AudioPlayerManager.currentPosition.value)
+
+        // Rewind Back again from Cut 1 -> goes to start of Cut 0 (0ms)
+        AudioPlayerManager.skipBackward()
+        assertEquals(0L, AudioPlayerManager.currentPosition.value)
+
+        AudioPlayerManager._isPracticeMode.value = false
+    }
+
+    @Test
+    fun practiceMode_withSubtitlesSource_skipForwardAndBackward_navigatesBySubtitleLines() {
+        val durationMs = 25_000L
+        val srt = """
+            1
+            00:00:01,500 --> 00:00:04,000
+            First subtitle line
+
+            2
+            00:00:06,000 --> 00:00:09,500
+            Second subtitle line
+
+            3
+            00:00:12,000 --> 00:00:16,000
+            Third subtitle line
+        """.trimIndent()
+        val track = AudioTrack(
+            id = 61L,
+            filePath = "/a/sub_practice.mp4",
+            fileName = "sub_practice.mp4",
+            duration = durationMs,
+            subtitleContent = srt,
+            practiceSegments = "SUB:4000,9500,16000"
+        )
+        val parsedCues = com.example.player.SubtitleParser.parseContent(srt)
+
+        AudioPlayerManager.mediaPlayer = null
+        AudioPlayerManager.currentTrackValue = track
+        AudioPlayerManager._currentTrack.value = track
+        AudioPlayerManager._duration.value = durationMs
+        AudioPlayerManager._subtitlesCues.value = parsedCues
+        AudioPlayerManager._currentPracticeSegments.value = listOf(4000L, 9500L, 16000L)
+        AudioPlayerManager.segmentSource = "SUBTITLES"
+        AudioPlayerManager._isPracticeMode.value = true
+        AudioPlayerManager._isPracticePausing.value = false
+        AudioPlayerManager._currentPosition.value = 2_000L // On Subtitle 1 (1500..4000)
+
+        // Seek Forward from Subtitle 1 -> goes to Subtitle 2 (6000ms)
+        AudioPlayerManager.skipForward()
+        assertEquals(6_000L, AudioPlayerManager.currentPosition.value)
+        assertEquals("Second subtitle line", AudioPlayerManager.activeSubtitleCue.value?.text)
+
+        // Seek Forward from Subtitle 2 -> goes to Subtitle 3 (12000ms)
+        AudioPlayerManager.skipForward()
+        assertEquals(12_000L, AudioPlayerManager.currentPosition.value)
+        assertEquals("Third subtitle line", AudioPlayerManager.activeSubtitleCue.value?.text)
+
+        // Rewind Back from Subtitle 3 -> goes to Subtitle 2 (6000ms)
+        AudioPlayerManager.skipBackward()
+        assertEquals(6_000L, AudioPlayerManager.currentPosition.value)
+        assertEquals("Second subtitle line", AudioPlayerManager.activeSubtitleCue.value?.text)
+
+        // Rewind Back from Subtitle 2 -> goes to Subtitle 1 (1500ms)
+        AudioPlayerManager.skipBackward()
+        assertEquals(1_500L, AudioPlayerManager.currentPosition.value)
+        assertEquals("First subtitle line", AudioPlayerManager.activeSubtitleCue.value?.text)
+
+        AudioPlayerManager._isPracticeMode.value = false
+        AudioPlayerManager._subtitlesCues.value = emptyList()
+    }
+
+    @Test
+    fun videoFocusMode_withoutPracticeMode_skipForwardAndBackward_usesSeconds() {
+        val durationMs = 60_000L
+        val track = AudioTrack(
+            id = 62L,
+            filePath = "/a/video_focus.mp4",
+            fileName = "video_focus.mp4",
+            duration = durationMs,
+            practiceSegments = "SIL:5000,12000,20000"
+        )
+
+        AudioPlayerManager.mediaPlayer = null
+        AudioPlayerManager.currentTrackValue = track
+        AudioPlayerManager._currentTrack.value = track
+        AudioPlayerManager._duration.value = durationMs
+        AudioPlayerManager._currentPosition.value = 15_000L
+        AudioPlayerManager._currentPracticeSegments.value = listOf(5000L, 12000L, 20000L)
+        // Focus mode on video is active, but Practice Mode is OFF
+        AudioPlayerManager.isFocusMode.value = true
+        AudioPlayerManager._isPracticeMode.value = false
+        AudioPlayerManager.setSettings(threshold = 90, skipTime = 10)
+
+        // Seek Forward in Video Focus Mode -> +10s (25_000ms), NOT cut at 20_000ms
+        AudioPlayerManager.skipForward()
+        assertEquals(25_000L, AudioPlayerManager.currentPosition.value)
+
+        // Rewind Back in Video Focus Mode -> -10s (15_000ms), NOT cut at 12_000ms
+        AudioPlayerManager.skipBackward()
+        assertEquals(15_000L, AudioPlayerManager.currentPosition.value)
+
+        AudioPlayerManager.isFocusMode.value = false
+    }
 }

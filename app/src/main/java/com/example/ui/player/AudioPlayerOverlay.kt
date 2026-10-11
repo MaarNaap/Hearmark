@@ -266,6 +266,7 @@ fun AudioPlayerOverlay(
                 durationState = durationState,
                 playPositionState = playPositionState,
                 isPlayingState = isPlayingState,
+                isPracticeMode = isPracticeMode,
                 onToggleControlsVisibility = { areFullScreenControlsVisible = !areFullScreenControlsVisible },
                 onExitFullScreen = { isFullScreenVideo = false },
                 onOpenNotes = onOpenNotes,
@@ -456,7 +457,8 @@ fun AudioPlayerOverlay(
                             PlayerTransportControls(
                                 isPlayingState = isPlayingState,
                                 arePlaybackButtonsActive = arePlaybackButtonsActive,
-                                skipSecondsSetting = viewModel.skipSecondsSetting
+                                skipSecondsSetting = viewModel.skipSecondsSetting,
+                                isPracticeMode = isPracticeMode
                             )
                         }
 
