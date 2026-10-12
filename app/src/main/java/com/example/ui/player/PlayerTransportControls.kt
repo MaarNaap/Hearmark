@@ -52,7 +52,7 @@ fun PlayerTransportControls(
                 )
             }
         } else {
-            // Practice Mode Far Left: Speed Button (transparent background, main font color)
+            // Practice Mode Far Left: Speed Button (transparent background, primary color matching prev/next)
             Box {
                 IconButton(
                     onClick = { showSpeedMenu = true },
@@ -66,12 +66,12 @@ fun PlayerTransportControls(
                         Icon(
                             imageVector = Icons.Filled.Speed,
                             contentDescription = "Playback Speed",
-                            tint = MaterialTheme.colorScheme.onSurface,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
                             text = formatPlaybackSpeed(currentSpeed),
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = MaterialTheme.colorScheme.primary,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -275,7 +275,7 @@ fun PlayerTransportControls(
                 )
             }
         } else {
-            // Practice Mode Far Right: Repeat Segment Button (transparent background, main font color, presets 1x, 3x, 5x, 10x)
+            // Practice Mode Far Right: Repeat Segment Button (transparent background, primary color matching prev/next, presets 1x, 3x, 5x, 10x)
             Box {
                 IconButton(
                     onClick = { showRepeatsMenu = true },
@@ -289,12 +289,12 @@ fun PlayerTransportControls(
                         Icon(
                             imageVector = Icons.Filled.Repeat,
                             contentDescription = "Repeats",
-                            tint = MaterialTheme.colorScheme.onSurface,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
                             text = "${currentRepeats}x",
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = MaterialTheme.colorScheme.primary,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
