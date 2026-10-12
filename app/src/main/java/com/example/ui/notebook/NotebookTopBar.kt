@@ -17,14 +17,19 @@ import androidx.compose.ui.unit.sp
 fun NotebookTopBar(
     searchQuery: String,
     isSearchExpanded: Boolean,
-    selectedFolderCount: Int,
+    selectedFilterCount: Int = 0,
     selectedTagCount: Int,
     onSearchQueryChange: (String) -> Unit,
     onSearchExpandedChange: (Boolean) -> Unit,
-    onOpenFolderFilter: () -> Unit,
+    onOpenFilter: () -> Unit = {},
     onOpenTagFilter: () -> Unit,
-    onAddNoteClicked: () -> Unit
+    onAddNoteClicked: () -> Unit,
+    selectedFolderCount: Int = selectedFilterCount,
+    onOpenFolderFilter: () -> Unit = onOpenFilter
 ) {
+    val totalFilterCount = if (selectedFilterCount > 0) selectedFilterCount else selectedFolderCount
+    val handleOpenFilter = if (onOpenFilter != {}) onOpenFilter else onOpenFolderFilter
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -66,27 +71,27 @@ fun NotebookTopBar(
 
             Spacer(modifier = Modifier.width(4.dp))
 
-            // Folder Filter Button
+            // Folder & File Filter Button
             IconButton(
-                onClick = onOpenFolderFilter,
+                onClick = handleOpenFilter,
                 modifier = Modifier.testTag("filter_folders_btn")
             ) {
                 BadgedBox(
                     badge = {
-                        if (selectedFolderCount > 0) {
+                        if (totalFilterCount > 0) {
                             Badge(
                                 containerColor = MaterialTheme.colorScheme.primary,
                                 contentColor = MaterialTheme.colorScheme.onPrimary
                             ) {
-                                Text(selectedFolderCount.toString(), fontSize = 10.sp)
+                                Text(totalFilterCount.toString(), fontSize = 10.sp)
                             }
                         }
                     }
                 ) {
                     Icon(
                         imageVector = Icons.Filled.FilterList,
-                        contentDescription = Loc.getText("filter_folders_dialog_title"),
-                        tint = if (selectedFolderCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        contentDescription = Loc.getText("filter_folder_file_dialog_title"),
+                        tint = if (totalFilterCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -116,7 +121,7 @@ fun NotebookTopBar(
                 }
             }
         } else {
-            // Top Action Icons (Search, Filter Folders, Filter Tags, Add Note Icon)
+            // Top Action Icons (Search, Filter Folders & Files, Filter Tags, Add Note Icon)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -133,27 +138,27 @@ fun NotebookTopBar(
                     )
                 }
 
-                // Filter by Folders Icon Button
+                // Filter by Folders and Files Icon Button
                 IconButton(
-                    onClick = onOpenFolderFilter,
+                    onClick = handleOpenFilter,
                     modifier = Modifier.testTag("filter_folders_btn")
                 ) {
                     BadgedBox(
                         badge = {
-                            if (selectedFolderCount > 0) {
+                            if (totalFilterCount > 0) {
                                 Badge(
                                     containerColor = MaterialTheme.colorScheme.primary,
                                     contentColor = MaterialTheme.colorScheme.onPrimary
                                 ) {
-                                    Text(selectedFolderCount.toString(), fontSize = 10.sp)
+                                    Text(totalFilterCount.toString(), fontSize = 10.sp)
                                 }
                             }
                         }
                     ) {
                         Icon(
                             imageVector = Icons.Filled.FilterList,
-                            contentDescription = Loc.getText("filter_folders_dialog_title"),
-                            tint = if (selectedFolderCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            contentDescription = Loc.getText("filter_folder_file_dialog_title"),
+                            tint = if (totalFilterCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }

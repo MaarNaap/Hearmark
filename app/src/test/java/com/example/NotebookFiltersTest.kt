@@ -81,6 +81,50 @@ class NotebookFiltersTest {
     }
 
     @Test
+    fun filterNotes_trackFilterMatchesIndividualTrack() {
+        val byTrack10 = filterNotes(
+            notes = sampleNotes,
+            searchQuery = "",
+            selectedFolderIds = emptySet(),
+            selectedTags = emptySet(),
+            selectedTrackId = null,
+            folders = sampleFolders,
+            tracks = sampleTracks,
+            selectedTrackIds = setOf(10L)
+        )
+        // Matches note 101 (linked to track 10) and note 103 (fallback trackName ep1.mp3)
+        assertEquals(listOf(101L, 103L), byTrack10.map { it.id })
+
+        val byTrack20 = filterNotes(
+            notes = sampleNotes,
+            searchQuery = "",
+            selectedFolderIds = emptySet(),
+            selectedTags = emptySet(),
+            selectedTrackId = null,
+            folders = sampleFolders,
+            tracks = sampleTracks,
+            selectedTrackIds = setOf(20L)
+        )
+        assertEquals(listOf(102L), byTrack20.map { it.id })
+    }
+
+    @Test
+    fun filterNotes_mixedFolderAndTrackFilterMatchesBoth() {
+        // Folder 2 (contains note 102) + individual track 10 from Folder 1 (contains notes 101 and 103)
+        val mixed = filterNotes(
+            notes = sampleNotes,
+            searchQuery = "",
+            selectedFolderIds = setOf(2L),
+            selectedTags = emptySet(),
+            selectedTrackId = null,
+            folders = sampleFolders,
+            tracks = sampleTracks,
+            selectedTrackIds = setOf(10L)
+        )
+        assertEquals(listOf(101L, 102L, 103L), mixed.map { it.id })
+    }
+
+    @Test
     fun extractAllNotebookTags_deduplicatesCaseInsensitivelyAndSorts() {
         val tags = extractAllNotebookTags(sampleNotes)
         assertEquals(listOf("favorite", "grammar", "review", "vocab"), tags.map { it.lowercase() })

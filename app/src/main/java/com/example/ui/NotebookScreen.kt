@@ -36,7 +36,8 @@ fun NotebookScreen(
     var searchQuery by remember { mutableStateOf("") }
     var isSearchExpanded by remember { mutableStateOf(false) }
     var selectedFolderIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
-    var showFolderFilterDialog by remember { mutableStateOf(false) }
+    var selectedTrackIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var showFilterDialog by remember { mutableStateOf(false) }
     var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showTagFilterDialog by remember { mutableStateOf(false) }
     var selectedTrackId by remember { mutableStateOf<Long?>(null) }
@@ -46,7 +47,7 @@ fun NotebookScreen(
 
     val context = LocalContext.current
 
-    val filteredNotes = remember(notes, searchQuery, selectedFolderIds, selectedTags, selectedTrackId, folders, tracks) {
+    val filteredNotes = remember(notes, searchQuery, selectedFolderIds, selectedTrackIds, selectedTags, selectedTrackId, folders, tracks) {
         filterNotes(
             notes = notes,
             searchQuery = searchQuery,
@@ -54,7 +55,8 @@ fun NotebookScreen(
             selectedTags = selectedTags,
             selectedTrackId = selectedTrackId,
             folders = folders,
-            tracks = tracks
+            tracks = tracks,
+            selectedTrackIds = selectedTrackIds
         )
     }
 
@@ -74,20 +76,24 @@ fun NotebookScreen(
             NotebookTopBar(
                 searchQuery = searchQuery,
                 isSearchExpanded = isSearchExpanded,
-                selectedFolderCount = selectedFolderIds.size,
+                selectedFilterCount = selectedFolderIds.size + selectedTrackIds.size,
                 selectedTagCount = selectedTags.size,
                 onSearchQueryChange = { searchQuery = it },
                 onSearchExpandedChange = { isSearchExpanded = it },
-                onOpenFolderFilter = { showFolderFilterDialog = true },
+                onOpenFilter = { showFilterDialog = true },
                 onOpenTagFilter = { showTagFilterDialog = true },
                 onAddNoteClicked = onAddNoteClicked
             )
 
             NotebookFilterChips(
                 selectedFolderCount = selectedFolderIds.size,
+                selectedTrackCount = selectedTrackIds.size,
                 selectedTagCount = selectedTags.size,
-                onOpenFolderFilter = { showFolderFilterDialog = true },
-                onClearFolderFilter = { selectedFolderIds = emptySet() },
+                onOpenFilter = { showFilterDialog = true },
+                onClearFolderTrackFilter = {
+                    selectedFolderIds = emptySet()
+                    selectedTrackIds = emptySet()
+                },
                 onOpenTagFilter = { showTagFilterDialog = true },
                 onClearTagFilter = { selectedTags = emptySet() }
             )
@@ -153,16 +159,19 @@ fun NotebookScreen(
         )
     }
 
-    if (showFolderFilterDialog) {
-        NotebookFolderFilterDialog(
-            folders = folders,
-            notes = notes,
-            selectedFolderIds = selectedFolderIds,
-            onApplyFilter = {
-                selectedFolderIds = it
-                showFolderFilterDialog = false
-            },
-            onDismiss = { showFolderFilterDialog = false }
+    if (showFilterDialog) {
+        FolderFileTreeFilterDialog(
+            allFolders = folders,
+            allTracks = tracks,
+            initialSelectedFolderIds = selectedFolderIds,
+            initialSelectedTrackIds = selectedTrackIds,
+            defaultExpanded = false,
+            onDismiss = { showFilterDialog = false },
+            onApply = { newFolders, newTracks ->
+                selectedFolderIds = newFolders
+                selectedTrackIds = newTracks
+                showFilterDialog = false
+            }
         )
     }
 

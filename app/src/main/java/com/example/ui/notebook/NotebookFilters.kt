@@ -7,18 +7,34 @@ import com.example.data.Note
 fun filterNotes(
     notes: List<Note>,
     searchQuery: String,
-    selectedFolderIds: Set<Long>,
-    selectedTags: Set<String>,
-    selectedTrackId: Long?,
-    folders: List<Folder>,
-    tracks: List<AudioTrack>
+    selectedFolderIds: Set<Long> = emptySet(),
+    selectedTags: Set<String> = emptySet(),
+    selectedTrackId: Long? = null,
+    folders: List<Folder> = emptyList(),
+    tracks: List<AudioTrack> = emptyList(),
+    selectedTrackIds: Set<Long> = emptySet()
 ): List<Note> {
+    val effectiveSelectedTrackIds = if (selectedTrackId != null) {
+        selectedTrackIds + selectedTrackId
+    } else {
+        selectedTrackIds
+    }
+
+    val allSelectedFolderSubIds = if (selectedFolderIds.isEmpty()) {
+        emptySet()
+    } else {
+        selectedFolderIds.flatMap { getAllSubfolderIds(it, folders) }.toSet()
+    }
+
     val selectedFolderNames = folders
-        .filter { selectedFolderIds.contains(it.id) }
+        .filter { allSelectedFolderSubIds.contains(it.id) }
         .map { it.folderName.trim().lowercase() }
         .toSet()
-    val selectedTrack = selectedTrackId?.let { tid -> tracks.find { it.id == tid } }
-    val selectedTrackName = selectedTrack?.fileName?.trim()?.lowercase()
+
+    val selectedTracks = tracks.filter { effectiveSelectedTrackIds.contains(it.id) }
+    val selectedTrackFileNames = selectedTracks.map { it.fileName.trim().lowercase() }.toSet()
+    val selectedScenes = selectedTracks.filter { it.isVirtualScene }
+    val trackById = tracks.associateBy { it.id }
 
     return notes.filter { note ->
         val matchesSearch = if (searchQuery.isBlank()) true else {
@@ -30,9 +46,26 @@ fun filterNotes(
             (note.folderName?.lowercase()?.contains(q) == true)
         }
 
-        val matchesFolder = if (selectedFolderIds.isEmpty()) true else {
-            (note.folderId != null && selectedFolderIds.contains(note.folderId)) ||
-            (note.folderName != null && selectedFolderNames.contains(note.folderName.trim().lowercase()))
+        val hasFolderOrTrackFilter = selectedFolderIds.isNotEmpty() || effectiveSelectedTrackIds.isNotEmpty()
+
+        val matchesFolderOrTrack = if (!hasFolderOrTrackFilter) {
+            true
+        } else {
+            val noteTrack = note.trackId?.let { trackById[it] }
+
+            val matchesFolder = if (selectedFolderIds.isEmpty()) false else {
+                (note.folderId != null && allSelectedFolderSubIds.contains(note.folderId)) ||
+                (note.folderName != null && selectedFolderNames.contains(note.folderName.trim().lowercase())) ||
+                (noteTrack?.parentFolderId != null && allSelectedFolderSubIds.contains(noteTrack.parentFolderId))
+            }
+
+            val matchesTrack = if (effectiveSelectedTrackIds.isEmpty()) false else {
+                (note.trackId != null && effectiveSelectedTrackIds.contains(note.trackId)) ||
+                (note.trackName != null && selectedTrackFileNames.contains(note.trackName.trim().lowercase())) ||
+                selectedScenes.any { scene -> belongsToScene(note, scene, tracks) }
+            }
+
+            matchesFolder || matchesTrack
         }
 
         val matchesTag = if (selectedTags.isEmpty()) true else {
@@ -42,16 +75,7 @@ fun filterNotes(
             }
         }
 
-        val matchesTrack = if (selectedTrackId == null) true else {
-            if (selectedTrack?.isVirtualScene == true) {
-                belongsToScene(note, selectedTrack, tracks)
-            } else {
-                note.trackId == selectedTrackId ||
-                (selectedTrackName != null && note.trackName?.trim()?.lowercase() == selectedTrackName)
-            }
-        }
-
-        matchesSearch && matchesFolder && matchesTag && matchesTrack
+        matchesSearch && matchesFolderOrTrack && matchesTag
     }
 }
 

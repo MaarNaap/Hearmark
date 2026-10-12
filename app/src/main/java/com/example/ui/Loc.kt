@@ -659,6 +659,8 @@ object Loc {
         "deselect_all" to mapOf("en" to "Clear Selection", "ar" to "إلغاء التحديد"),
         "apply_filter" to mapOf("en" to "Apply", "ar" to "تطبيق"),
         "selected_folders_label" to mapOf("en" to "folders selected", "ar" to "مجلدات محددة"),
+        "selected_files_label" to mapOf("en" to "files selected", "ar" to "ملفات محددة"),
+        "selected_folders_files_label" to mapOf("en" to "folders & files selected", "ar" to "مجلدات وملفات محددة"),
         "filter_tags_dialog_title" to mapOf("en" to "Filter by Tags", "ar" to "فلترة حسب الوسوم"),
         "selected_tags_label" to mapOf("en" to "tags selected", "ar" to "وسوم محددة"),
         "favorite" to mapOf("en" to "Favorite", "ar" to "المفضلة"),

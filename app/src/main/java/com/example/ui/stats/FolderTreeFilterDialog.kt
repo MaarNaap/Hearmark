@@ -28,6 +28,8 @@ fun FolderFileTreeFilterDialog(
     allTracks: List<AudioTrack>,
     initialSelectedFolderIds: Set<Long>,
     initialSelectedTrackIds: Set<Long>,
+    defaultExpanded: Boolean = false,
+    title: String = Loc.getText("filter_folder_file_dialog_title"),
     onDismiss: () -> Unit,
     onApply: (selectedFolderIds: Set<Long>, selectedTrackIds: Set<Long>) -> Unit
 ) {
@@ -39,11 +41,10 @@ fun FolderFileTreeFilterDialog(
         buildFolderTree(allFolders)
     }
 
-    var expandedFolderIds by remember(allFolders) {
-        val parentIds = allFolders.map { it.id }.toSet()
-        mutableStateOf(parentIds)
+    var expandedFolderIds by remember(allFolders, defaultExpanded) {
+        mutableStateOf(if (defaultExpanded) allFolders.map { it.id }.toSet() else emptySet())
     }
-    var independentTracksExpanded by remember { mutableStateOf(true) }
+    var independentTracksExpanded by remember(defaultExpanded) { mutableStateOf(defaultExpanded) }
 
     val flattenedItems = remember(
         folderTree,
@@ -100,7 +101,7 @@ fun FolderFileTreeFilterDialog(
                         )
                         Column {
                             Text(
-                                text = Loc.getText("filter_folder_file_dialog_title"),
+                                text = title,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
                                 color = MaterialTheme.colorScheme.onSurface
