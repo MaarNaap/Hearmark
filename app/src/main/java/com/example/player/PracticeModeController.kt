@@ -945,7 +945,7 @@ internal fun AudioPlayerManager.checkPracticeSegmentBoundary(currentPosMs: Long)
 
 internal fun AudioPlayerManager.triggerPracticePause(segmentLengthMs: Long, boundaryMs: Long = 0L) {
     val multiplier = practicePauseMultiplier.coerceIn(0.25f, 10.0f)
-    val pauseDurationMs = (segmentLengthMs * multiplier).toLong().coerceIn(1000L, 30000L)
+    val pauseDurationMs = (segmentLengthMs * multiplier).toLong().coerceIn(1000L, 250000L)
     _isPracticePausing.value = true
     val totalSec = pauseDurationMs / 1000f
     _practicePauseTotalSeconds.value = totalSec

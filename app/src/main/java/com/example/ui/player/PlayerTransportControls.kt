@@ -52,7 +52,7 @@ fun PlayerTransportControls(
                 )
             }
         } else {
-            // Practice Mode Far Left: Speed Button (transparent background, primary color)
+            // Practice Mode Far Left: Speed Button (transparent background, main font color)
             Box {
                 IconButton(
                     onClick = { showSpeedMenu = true },
@@ -66,12 +66,12 @@ fun PlayerTransportControls(
                         Icon(
                             imageVector = Icons.Filled.Speed,
                             contentDescription = "Playback Speed",
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
                             text = formatPlaybackSpeed(currentSpeed),
-                            color = MaterialTheme.colorScheme.primary,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -275,7 +275,7 @@ fun PlayerTransportControls(
                 )
             }
         } else {
-            // Practice Mode Far Right: Repeat Segment Button (transparent background, primary color, presets 1x, 3x, 5x, 10x)
+            // Practice Mode Far Right: Repeat Segment Button (transparent background, main font color, presets 1x, 3x, 5x, 10x)
             Box {
                 IconButton(
                     onClick = { showRepeatsMenu = true },
@@ -289,12 +289,12 @@ fun PlayerTransportControls(
                         Icon(
                             imageVector = Icons.Filled.Repeat,
                             contentDescription = "Repeats",
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
                             text = "${currentRepeats}x",
-                            color = MaterialTheme.colorScheme.primary,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -317,7 +317,11 @@ fun PlayerTransportControls(
                             onClick = {
                                 val next = (currentRepeats - 1).coerceAtLeast(1)
                                 AudioPlayerManager.setPracticeRepeatCount(next)
-                                viewModel?.practiceSegmentRepeatsSetting = next
+                                viewModel?.updatePracticeSettings(
+                                    viewModel.segmentSourceSetting,
+                                    viewModel.practicePauseMultiplierSetting,
+                                    next
+                                )
                             },
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                             modifier = Modifier.height(34.dp)
@@ -337,7 +341,11 @@ fun PlayerTransportControls(
                             onClick = {
                                 val next = (currentRepeats + 1).coerceAtMost(99)
                                 AudioPlayerManager.setPracticeRepeatCount(next)
-                                viewModel?.practiceSegmentRepeatsSetting = next
+                                viewModel?.updatePracticeSettings(
+                                    viewModel.segmentSourceSetting,
+                                    viewModel.practicePauseMultiplierSetting,
+                                    next
+                                )
                             },
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                             modifier = Modifier.height(34.dp)
@@ -375,7 +383,11 @@ fun PlayerTransportControls(
                             },
                             onClick = {
                                 AudioPlayerManager.setPracticeRepeatCount(count)
-                                viewModel?.practiceSegmentRepeatsSetting = count
+                                viewModel?.updatePracticeSettings(
+                                    viewModel.segmentSourceSetting,
+                                    viewModel.practicePauseMultiplierSetting,
+                                    count
+                                )
                                 showRepeatsMenu = false
                             }
                         )

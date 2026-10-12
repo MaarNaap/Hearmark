@@ -366,7 +366,7 @@ fun PracticeModeSetupSheet(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "$repeatCount",
+                                text = "${repeatCount}x",
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 17.sp

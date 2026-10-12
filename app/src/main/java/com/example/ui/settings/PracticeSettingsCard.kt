@@ -264,7 +264,7 @@ fun PracticeSettingsCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "$repeatCount",
+                            text = "${repeatCount}x",
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
