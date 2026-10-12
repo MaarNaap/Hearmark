@@ -458,7 +458,8 @@ fun AudioPlayerOverlay(
                                 isPlayingState = isPlayingState,
                                 arePlaybackButtonsActive = arePlaybackButtonsActive,
                                 skipSecondsSetting = viewModel.skipSecondsSetting,
-                                isPracticeMode = isPracticeMode
+                                isPracticeMode = isPracticeMode,
+                                viewModel = viewModel
                             )
                         }
 

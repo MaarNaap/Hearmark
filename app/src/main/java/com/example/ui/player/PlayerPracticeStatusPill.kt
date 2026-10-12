@@ -264,24 +264,6 @@ fun PlayerPracticeStatusPill(
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
-
-                    // Exit button
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
-                            .clickable { AudioPlayerManager.setFocusMode(false) }
-                            .padding(horizontal = 5.dp, vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "Exit Practice Mode",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(13.dp)
-                        )
-                    }
                 }
             }
         }
