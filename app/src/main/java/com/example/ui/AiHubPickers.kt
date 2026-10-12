@@ -12,6 +12,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -281,6 +282,8 @@ fun FileTrackRowItem(
 fun NotebookNotesPicker(
     allNotes: List<Note>,
     selectedNotes: List<Note>,
+    allFolders: List<com.example.data.Folder> = emptyList(),
+    allTracks: List<com.example.data.AudioTrack> = emptyList(),
     onSelectionChanged: (List<Note>) -> Unit
 ) {
     val selectedIds = remember(selectedNotes) { selectedNotes.map { it.id }.toSet() }
@@ -290,15 +293,20 @@ fun NotebookNotesPicker(
     var searchQuery by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
 
-    val filteredNotes = remember(allNotes, searchQuery) {
-        if (searchQuery.isBlank()) {
-            allNotes
-        } else {
-            allNotes.filter {
-                it.text.contains(searchQuery, ignoreCase = true) ||
-                it.comment.contains(searchQuery, ignoreCase = true)
-            }
-        }
+    // Folder and File filter state
+    var selectedFolderIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var selectedTrackIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var showFolderFileFilterDialog by remember { mutableStateOf(false) }
+
+    val filteredNotes = remember(allNotes, allFolders, allTracks, selectedFolderIds, selectedTrackIds, searchQuery) {
+        filterNotes(
+            notes = allNotes,
+            searchQuery = searchQuery,
+            selectedFolderIds = selectedFolderIds,
+            selectedTrackIds = selectedTrackIds,
+            folders = allFolders,
+            tracks = allTracks
+        )
     }
 
     LaunchedEffect(isSearchExpanded) {
@@ -429,6 +437,35 @@ fun NotebookNotesPicker(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
+                            val totalFilterCount = selectedFolderIds.size + selectedTrackIds.size
+                            // Filter by Folders and Files Icon Button
+                            IconButton(
+                                onClick = { showFolderFileFilterDialog = true },
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .testTag("ai_hub_notes_filter_btn")
+                            ) {
+                                BadgedBox(
+                                    badge = {
+                                        if (totalFilterCount > 0) {
+                                            Badge(
+                                                containerColor = MaterialTheme.colorScheme.primary,
+                                                contentColor = MaterialTheme.colorScheme.onPrimary
+                                            ) {
+                                                Text(totalFilterCount.toString(), fontSize = 9.sp)
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.FilterList,
+                                        contentDescription = Loc.getText("filter_folder_file_dialog_title"),
+                                        tint = if (totalFilterCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+
                             // Expandable search icon button
                             IconButton(
                                 onClick = { isSearchExpanded = true },
@@ -455,6 +492,49 @@ fun NotebookNotesPicker(
                                 Text(Loc.getText("deselect_all"), fontSize = 11.sp)
                             }
                         }
+                    }
+                }
+
+                val totalFilterCount = selectedFolderIds.size + selectedTrackIds.size
+                if (totalFilterCount > 0) {
+                    val labelText = when {
+                        selectedFolderIds.isNotEmpty() && selectedTrackIds.isEmpty() ->
+                            "${selectedFolderIds.size} ${Loc.getText("selected_folders_label")}"
+                        selectedFolderIds.isEmpty() && selectedTrackIds.isNotEmpty() ->
+                            "${selectedTrackIds.size} ${Loc.getText("selected_files_label")}"
+                        else ->
+                            "$totalFilterCount ${Loc.getText("selected_folders_files_label")}"
+                    }
+                    val leadingIconVector = when {
+                        selectedFolderIds.isNotEmpty() && selectedTrackIds.isEmpty() -> Icons.Filled.Folder
+                        selectedFolderIds.isEmpty() && selectedTrackIds.isNotEmpty() -> Icons.AutoMirrored.Filled.InsertDriveFile
+                        else -> Icons.Filled.FilterList
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 2.dp)
+                    ) {
+                        FilterChip(
+                            selected = true,
+                            onClick = { showFolderFileFilterDialog = true },
+                            label = { Text(labelText, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold) },
+                            leadingIcon = {
+                                Icon(leadingIconVector, contentDescription = null, modifier = Modifier.size(13.dp))
+                            },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = {
+                                        selectedFolderIds = emptySet()
+                                        selectedTrackIds = emptySet()
+                                    },
+                                    modifier = Modifier.size(16.dp)
+                                ) {
+                                    Icon(Icons.Filled.Close, contentDescription = "Clear", modifier = Modifier.size(12.dp))
+                                }
+                            }
+                        )
                     }
                 }
 
@@ -529,6 +609,22 @@ fun NotebookNotesPicker(
                 }
             }
         }
+    }
+
+    if (showFolderFileFilterDialog) {
+        FolderFileTreeFilterDialog(
+            allFolders = allFolders,
+            allTracks = allTracks,
+            initialSelectedFolderIds = selectedFolderIds,
+            initialSelectedTrackIds = selectedTrackIds,
+            defaultExpanded = false,
+            onDismiss = { showFolderFileFilterDialog = false },
+            onApply = { newFolders, newTracks ->
+                selectedFolderIds = newFolders
+                selectedTrackIds = newTracks
+                showFolderFileFilterDialog = false
+            }
+        )
     }
 }
 

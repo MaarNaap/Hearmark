@@ -21,6 +21,7 @@ fun UnifiedQuizSheet(
     quizViewModel: QuizViewModel,
     allNotes: List<Note>,
     allTracks: List<AudioTrack>,
+    allFolders: List<com.example.data.Folder> = emptyList(),
     onDismiss: () -> Unit,
     onOpenVocabularyReview: (() -> Unit)? = null,
     onPlayTrackInMainPlayer: ((AudioTrack, Long) -> Unit)? = null
@@ -149,6 +150,8 @@ fun UnifiedQuizSheet(
                     QuizTabMode.NOTEBOOK -> {
                         NotebookQuizTabContent(
                             allNotes = allNotes,
+                            allTracks = allTracks,
+                            allFolders = allFolders,
                             initialNotes = initialNotes,
                             isGenerating = isGeneratingNotebookQuiz,
                             errorMessage = notebookQuizError,

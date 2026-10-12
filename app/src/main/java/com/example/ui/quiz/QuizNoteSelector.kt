@@ -8,9 +8,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,14 +27,20 @@ internal fun LazyListScope.quizNoteSelectorItems(
     filteredNotes: List<Note>,
     allTags: List<String>,
     selectedNoteIds: Set<Long>,
+    selectedFolderIds: Set<Long> = emptySet(),
+    selectedTrackIds: Set<Long> = emptySet(),
     selectedTagFilter: String?,
     isNotesExpanded: Boolean,
     onToggleExpanded: () -> Unit,
+    onOpenFolderFileFilter: () -> Unit = {},
+    onClearFolderFileFilter: () -> Unit = {},
     onSelectAll: () -> Unit,
     onDeselectAll: () -> Unit,
     onSelectTagFilter: (String?) -> Unit,
     onToggleNoteSelection: (Long, Boolean) -> Unit
 ) {
+    val totalFilterCount = selectedFolderIds.size + selectedTrackIds.size
+
     // Note selection list header & toggle
     item {
         Card(
@@ -72,8 +78,13 @@ internal fun LazyListScope.quizNoteSelectorItems(
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.SemiBold
                         )
+                        val subtitleText = if (totalFilterCount > 0 || selectedTagFilter != null) {
+                            "${selectedNoteIds.size}/${allNotes.size} ${Loc.getText("selected")} • ${filteredNotes.size} ${Loc.getText("active_days_count")?.let { "" } ?: ""}${Loc.getText("matches") ?: "matched"}"
+                        } else {
+                            "${selectedNoteIds.size}/${allNotes.size} ${Loc.getText("selected")}"
+                        }
                         Text(
-                            text = "${selectedNoteIds.size}/${allNotes.size} ${Loc.getText("selected")}",
+                            text = subtitleText,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 11.5.sp
@@ -85,6 +96,34 @@ internal fun LazyListScope.quizNoteSelectorItems(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
+                    // Filter icon button for folders and files
+                    IconButton(
+                        onClick = onOpenFolderFileFilter,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .testTag("quiz_notes_filter_btn")
+                    ) {
+                        BadgedBox(
+                            badge = {
+                                if (totalFilterCount > 0) {
+                                    Badge(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    ) {
+                                        Text(totalFilterCount.toString(), fontSize = 10.sp)
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.FilterList,
+                                contentDescription = Loc.getText("filter_folder_file_dialog_title"),
+                                tint = if (totalFilterCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
                     if (isNotesExpanded) {
                         TextButton(
                             onClick = onSelectAll,
@@ -114,15 +153,59 @@ internal fun LazyListScope.quizNoteSelectorItems(
         }
     }
 
-    // Expandable notes content (tag chips and full list of notes)
+    // Expandable notes content (folder/file filter chip, tag chips and full list of notes)
     if (isNotesExpanded) {
-        // Tag filter chips
-        if (allTags.isNotEmpty()) {
+        // Active Filter Chips & Tag Chips
+        if (totalFilterCount > 0 || allTags.isNotEmpty()) {
             item {
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
+                    // Active Folder and/or File Filter Chip
+                    if (totalFilterCount > 0) {
+                        item {
+                            val labelText = when {
+                                selectedFolderIds.isNotEmpty() && selectedTrackIds.isEmpty() ->
+                                    "${selectedFolderIds.size} ${Loc.getText("selected_folders_label")}"
+                                selectedFolderIds.isEmpty() && selectedTrackIds.isNotEmpty() ->
+                                    "${selectedTrackIds.size} ${Loc.getText("selected_files_label")}"
+                                else ->
+                                    "$totalFilterCount ${Loc.getText("selected_folders_files_label")}"
+                            }
+
+                            val leadingIconVector = when {
+                                selectedFolderIds.isNotEmpty() && selectedTrackIds.isEmpty() -> Icons.Filled.Folder
+                                selectedFolderIds.isEmpty() && selectedTrackIds.isNotEmpty() -> Icons.AutoMirrored.Filled.InsertDriveFile
+                                else -> Icons.Filled.FilterList
+                            }
+
+                            FilterChip(
+                                selected = true,
+                                onClick = onOpenFolderFileFilter,
+                                label = {
+                                    Text(
+                                        text = labelText,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(leadingIconVector, contentDescription = null, modifier = Modifier.size(13.dp))
+                                },
+                                trailingIcon = {
+                                    IconButton(
+                                        onClick = onClearFolderFileFilter,
+                                        modifier = Modifier.size(16.dp)
+                                    ) {
+                                        Icon(Icons.Filled.Close, contentDescription = "Clear", modifier = Modifier.size(12.dp))
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    // All Tags chip
                     item {
                         FilterChip(
                             selected = selectedTagFilter == null,

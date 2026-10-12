@@ -15,12 +15,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.AudioTrack
+import com.example.data.Folder
 import com.example.data.Note
+import com.example.ui.FolderFileTreeFilterDialog
 import com.example.ui.Loc
+import com.example.ui.filterNotes
 
 @Composable
 internal fun NotebookQuizTabContent(
     allNotes: List<Note>,
+    allTracks: List<AudioTrack> = emptyList(),
+    allFolders: List<Folder> = emptyList(),
     initialNotes: List<Note>?,
     isGenerating: Boolean,
     errorMessage: String?,
@@ -35,6 +41,9 @@ internal fun NotebookQuizTabContent(
             else allNotes.map { it.id }.toSet()
         )
     }
+    var selectedFolderIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var selectedTrackIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var showFolderFileFilterDialog by remember { mutableStateOf(false) }
     var selectedTagFilter by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var requestedCount by remember { mutableIntStateOf(4) }
@@ -44,12 +53,16 @@ internal fun NotebookQuizTabContent(
         allNotes.flatMap { it.getTagsList() }.map { it.trim() }.filter { it.isNotEmpty() }.distinct().sorted()
     }
 
-    val filteredNotes = remember(allNotes, selectedTagFilter, searchQuery) {
-        allNotes.filter { note ->
-            val matchTag = selectedTagFilter == null || note.getTagsList().any { it.equals(selectedTagFilter, ignoreCase = true) }
-            val matchSearch = searchQuery.isBlank() || note.text.contains(searchQuery, ignoreCase = true) || note.comment.contains(searchQuery, ignoreCase = true)
-            matchTag && matchSearch
-        }
+    val filteredNotes = remember(allNotes, allFolders, allTracks, selectedFolderIds, selectedTrackIds, selectedTagFilter, searchQuery) {
+        filterNotes(
+            notes = allNotes,
+            searchQuery = searchQuery,
+            selectedFolderIds = selectedFolderIds,
+            selectedTrackIds = selectedTrackIds,
+            selectedTags = if (selectedTagFilter != null) setOf(selectedTagFilter!!) else emptySet(),
+            folders = allFolders,
+            tracks = allTracks
+        )
     }
 
     LazyColumn(
@@ -176,11 +189,22 @@ internal fun NotebookQuizTabContent(
             filteredNotes = filteredNotes,
             allTags = allTags,
             selectedNoteIds = selectedNoteIds,
+            selectedFolderIds = selectedFolderIds,
+            selectedTrackIds = selectedTrackIds,
             selectedTagFilter = selectedTagFilter,
             isNotesExpanded = isNotesExpanded,
             onToggleExpanded = { isNotesExpanded = !isNotesExpanded },
-            onSelectAll = { selectedNoteIds = allNotes.map { it.id }.toSet() },
-            onDeselectAll = { selectedNoteIds = emptySet() },
+            onOpenFolderFileFilter = { showFolderFileFilterDialog = true },
+            onClearFolderFileFilter = {
+                selectedFolderIds = emptySet()
+                selectedTrackIds = emptySet()
+            },
+            onSelectAll = {
+                selectedNoteIds = selectedNoteIds + filteredNotes.map { it.id }.toSet()
+            },
+            onDeselectAll = {
+                selectedNoteIds = selectedNoteIds - filteredNotes.map { it.id }.toSet()
+            },
             onSelectTagFilter = { tag -> selectedTagFilter = tag },
             onToggleNoteSelection = { noteId, checked ->
                 selectedNoteIds = if (checked) selectedNoteIds + noteId else selectedNoteIds - noteId
@@ -211,5 +235,24 @@ internal fun NotebookQuizTabContent(
                 }
             }
         }
+    }
+
+    if (showFolderFileFilterDialog) {
+        FolderFileTreeFilterDialog(
+            allFolders = allFolders,
+            allTracks = allTracks,
+            initialSelectedFolderIds = selectedFolderIds,
+            initialSelectedTrackIds = selectedTrackIds,
+            defaultExpanded = false,
+            onDismiss = { showFolderFileFilterDialog = false },
+            onApply = { newFolders, newTracks ->
+                selectedFolderIds = newFolders
+                selectedTrackIds = newTracks
+                if (newFolders.isNotEmpty() || newTracks.isNotEmpty()) {
+                    isNotesExpanded = true
+                }
+                showFolderFileFilterDialog = false
+            }
+        )
     }
 }

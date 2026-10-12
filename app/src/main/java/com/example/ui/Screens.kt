@@ -797,10 +797,12 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                 if (isQuizSheetOpen) {
                     val allNotes by viewModel.notes.collectAsStateWithLifecycle()
                     val allTracks by viewModel.tracks.collectAsStateWithLifecycle()
+                    val allFolders by viewModel.folders.collectAsStateWithLifecycle()
                     UnifiedQuizSheet(
                         quizViewModel = viewModel.quizViewModel,
                         allNotes = allNotes,
                         allTracks = allTracks,
+                        allFolders = allFolders,
                         onDismiss = { viewModel.closeQuizSheet() },
                         onOpenVocabularyReview = {
                             viewModel.closeQuizSheet()

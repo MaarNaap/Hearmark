@@ -595,10 +595,12 @@ fun UnifiedAiHubSheet(
                     }
 
                     AiContextType.NOTEBOOK -> {
-                        // Rich Notebook Notes Preview with Expandable Search Icon
+                        // Rich Notebook Notes Preview with Expandable Search Icon & Folder/File filter
                         NotebookNotesPicker(
                             allNotes = allNotes,
                             selectedNotes = selectedNotesList,
+                            allFolders = allFolders,
+                            allTracks = allTracks,
                             onSelectionChanged = { selectedNotesList = it }
                         )
                     }
