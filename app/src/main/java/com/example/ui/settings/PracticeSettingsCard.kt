@@ -148,7 +148,7 @@ fun PracticeSettingsCard(
             ) {
                 FilledTonalIconButton(
                     onClick = {
-                        val next = (Math.round((pauseMultiplier - 0.25f) * 4f) / 4f).coerceIn(0.25f, 4.0f)
+                        val next = (Math.round((pauseMultiplier - 0.25f) * 4f) / 4f).coerceIn(0.25f, 10.0f)
                         onPauseMultiplierChange(next)
                     },
                     enabled = pauseMultiplier > 0.25f,
@@ -179,7 +179,7 @@ fun PracticeSettingsCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = String.format(java.util.Locale.US, "%.2f", pauseMultiplier) + "x",
+                            text = formatMultiplier(pauseMultiplier),
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
@@ -191,10 +191,10 @@ fun PracticeSettingsCard(
 
                 FilledTonalIconButton(
                     onClick = {
-                        val next = (Math.round((pauseMultiplier + 0.25f) * 4f) / 4f).coerceIn(0.25f, 4.0f)
+                        val next = (Math.round((pauseMultiplier + 0.25f) * 4f) / 4f).coerceIn(0.25f, 10.0f)
                         onPauseMultiplierChange(next)
                     },
-                    enabled = pauseMultiplier < 4.0f,
+                    enabled = pauseMultiplier < 10.0f,
                     modifier = Modifier
                         .size(42.dp)
                         .testTag("btn_pause_multiplier_increase")

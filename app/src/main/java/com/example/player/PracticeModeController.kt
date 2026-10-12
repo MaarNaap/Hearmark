@@ -337,7 +337,7 @@ fun AudioPlayerManager.applyPracticeSettingsAndStart(
         else -> "SILENCE"
     }
     segmentSource = normalizedSource
-    val coerced = multiplier.coerceIn(0.25f, 4.0f)
+    val coerced = multiplier.coerceIn(0.25f, 10.0f)
     practicePauseMultiplier = coerced
     _practicePauseMultiplierFlow.value = coerced
 
@@ -944,7 +944,7 @@ internal fun AudioPlayerManager.checkPracticeSegmentBoundary(currentPosMs: Long)
 }
 
 internal fun AudioPlayerManager.triggerPracticePause(segmentLengthMs: Long, boundaryMs: Long = 0L) {
-    val multiplier = practicePauseMultiplier.coerceIn(0.25f, 4.0f)
+    val multiplier = practicePauseMultiplier.coerceIn(0.25f, 10.0f)
     val pauseDurationMs = (segmentLengthMs * multiplier).toLong().coerceIn(1000L, 30000L)
     _isPracticePausing.value = true
     val totalSec = pauseDurationMs / 1000f

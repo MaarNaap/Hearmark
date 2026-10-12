@@ -237,7 +237,7 @@ fun PracticeModeSetupSheet(
                 ) {
                     FilledTonalIconButton(
                         onClick = {
-                            val next = (Math.round((pauseMultiplier - 0.25f) * 4f) / 4f).coerceIn(0.25f, 4.0f)
+                            val next = (Math.round((pauseMultiplier - 0.25f) * 4f) / 4f).coerceIn(0.25f, 10.0f)
                             pauseMultiplier = next
                         },
                         enabled = pauseMultiplier > 0.25f,
@@ -268,7 +268,7 @@ fun PracticeModeSetupSheet(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = String.format(Locale.US, "%.2f", pauseMultiplier) + "x",
+                                text = formatMultiplier(pauseMultiplier),
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 17.sp
@@ -280,10 +280,10 @@ fun PracticeModeSetupSheet(
 
                     FilledTonalIconButton(
                         onClick = {
-                            val next = (Math.round((pauseMultiplier + 0.25f) * 4f) / 4f).coerceIn(0.25f, 4.0f)
+                            val next = (Math.round((pauseMultiplier + 0.25f) * 4f) / 4f).coerceIn(0.25f, 10.0f)
                             pauseMultiplier = next
                         },
-                        enabled = pauseMultiplier < 4.0f,
+                        enabled = pauseMultiplier < 10.0f,
                         modifier = Modifier
                             .size(44.dp)
                             .testTag("btn_setup_pause_increase")

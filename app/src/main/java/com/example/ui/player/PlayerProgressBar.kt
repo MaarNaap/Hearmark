@@ -87,7 +87,7 @@ fun PlayerSegmentedProgressBar(
                     .fillMaxWidth()
                     .height(5.dp)
                     .clip(RoundedCornerShape(2.5.dp))
-                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f))
             ) {
                 val segmentsColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
                 val noteMarkerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)

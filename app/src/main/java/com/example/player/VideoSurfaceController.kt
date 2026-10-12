@@ -100,7 +100,7 @@ internal object VideoSurfaceController {
                 "MANUAL" -> "MANUAL"
                 else -> "SILENCE"
             }
-            val coerced = multiplier.coerceIn(0.25f, 4.0f)
+            val coerced = multiplier.coerceIn(0.25f, 10.0f)
             practicePauseMultiplier = coerced
             _practicePauseMultiplierFlow.value = coerced
 

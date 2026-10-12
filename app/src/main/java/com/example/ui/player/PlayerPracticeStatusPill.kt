@@ -78,37 +78,12 @@ fun PlayerPracticeStatusPill(
                         )
                     }
                     Text(
-                        text = Loc.getText("practice_your_turn"),
+                        text = "${Loc.getText("practice_your_turn")} • ${String.format(Locale.US, "%.1f", practicePauseRemaining)}s",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         lineHeight = 14.sp,
                         color = MaterialTheme.colorScheme.primary
                     )
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
-                        border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.50f))
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp),
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Timer,
-                                contentDescription = "Stopwatch",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Text(
-                                text = "${String.format(Locale.US, "%.1f", practicePauseRemaining)}s",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                lineHeight = 14.sp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
                 }
 
                 Row(
@@ -199,41 +174,16 @@ fun PlayerPracticeStatusPill(
                         )
                     }
                     Text(
-                        text = when (activePracticeSource) {
+                        text = "${when (activePracticeSource) {
                             "MANUAL" -> Loc.getText("practice_source_manual_short")
                             "SUBTITLES" -> Loc.getText("practice_source_subtitles_short")
                             else -> Loc.getText("practice_source_silence_short")
-                        },
+                        }} • $cutsCount ${Loc.getText("cuts_label")} • ${formatMultiplier(practiceMultiplierState)}",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         lineHeight = 14.sp,
                         color = MaterialTheme.colorScheme.primary
                     )
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
-                        border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.50f))
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp),
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.ContentCut,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Text(
-                                text = "$cutsCount ${Loc.getText("cuts_label")} • ${String.format(Locale.US, "%.2f", practiceMultiplierState)}x",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                lineHeight = 14.sp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
                 }
 
                 Row(

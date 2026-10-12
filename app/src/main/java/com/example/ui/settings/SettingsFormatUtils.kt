@@ -13,6 +13,18 @@ fun formatPlaybackSpeed(speed: Float): String {
     return formatted.toWesternDigits()
 }
 
+// --- UTILITY FORMAT FOR PAUSE MULTIPLIER (e.g. 3x if integer, 1.5x if decimal) ---
+fun formatMultiplier(value: Float): String {
+    val rounded = (Math.round(value * 100f) / 100f)
+    val formatted = if (Math.abs(rounded - rounded.toInt()) < 0.001f) {
+        "${rounded.toInt()}x"
+    } else {
+        val s = String.format(Locale.US, "%.2f", rounded).trimEnd('0').trimEnd('.')
+        "${s}x"
+    }
+    return formatted.toWesternDigits()
+}
+
 // --- UTILITY FORMATS FOR MILLISECONDS DURATION ---
 fun formatDuration(ms: Long): String {
     val totalSeconds = ms / 1000

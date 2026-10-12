@@ -52,44 +52,27 @@ fun PlayerTransportControls(
                 )
             }
         } else {
-            // Practice Mode Far Left: Speed Button (with learning presets and steppers)
-            val isSpeedModified = Math.abs(currentSpeed - 1.0f) > 0.01f
-            val speedContainerColor = if (isSpeedModified) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-            }
-            val speedContentColor = if (isSpeedModified) {
-                MaterialTheme.colorScheme.onPrimaryContainer
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            }
-
+            // Practice Mode Far Left: Speed Button (transparent background, primary color)
             Box {
-                Surface(
+                IconButton(
                     onClick = { showSpeedMenu = true },
                     enabled = arePlaybackButtonsActive,
-                    shape = RoundedCornerShape(12.dp),
-                    color = speedContainerColor,
-                    modifier = Modifier
-                        .height(44.dp)
-                        .widthIn(min = 52.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Speed,
                             contentDescription = "Playback Speed",
-                            tint = speedContentColor,
-                            modifier = Modifier.size(16.dp)
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
                         )
                         Text(
                             text = formatPlaybackSpeed(currentSpeed),
-                            color = speedContentColor,
-                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -130,7 +113,7 @@ fun PlayerTransportControls(
                             text = formatPlaybackSpeed(currentSpeed),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = if (isSpeedModified) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(horizontal = 6.dp)
                         )
 
@@ -206,38 +189,18 @@ fun PlayerTransportControls(
                 )
             }
         } else {
-            // Practice Mode Inner Left: Previous Cut / Segment Button
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable(enabled = arePlaybackButtonsActive) { AudioPlayerManager.skipBackward() }
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                contentAlignment = Alignment.Center
+            // Practice Mode Inner Left: Previous Cut (clear, primary color, no badge)
+            IconButton(
+                onClick = { AudioPlayerManager.skipBackward() },
+                enabled = arePlaybackButtonsActive,
+                modifier = Modifier.size(48.dp)
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.SkipPrevious,
-                        contentDescription = "Previous Cut",
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(27.dp)
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                    ) {
-                        Text(
-                            text = "CUT",
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = 0.5.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                        )
-                    }
-                }
+                Icon(
+                    imageVector = Icons.Filled.SkipPrevious,
+                    contentDescription = "Previous Cut",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
+                )
             }
         }
 
@@ -282,38 +245,18 @@ fun PlayerTransportControls(
                 )
             }
         } else {
-            // Practice Mode Inner Right: Next Cut / Segment Button
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable(enabled = arePlaybackButtonsActive) { AudioPlayerManager.skipForward() }
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                contentAlignment = Alignment.Center
+            // Practice Mode Inner Right: Next Cut (clear, primary color, no badge)
+            IconButton(
+                onClick = { AudioPlayerManager.skipForward() },
+                enabled = arePlaybackButtonsActive,
+                modifier = Modifier.size(48.dp)
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.SkipNext,
-                        contentDescription = "Next Cut",
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(27.dp)
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                    ) {
-                        Text(
-                            text = "CUT",
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = 0.5.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                        )
-                    }
-                }
+                Icon(
+                    imageVector = Icons.Filled.SkipNext,
+                    contentDescription = "Next Cut",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
+                )
             }
         }
 
@@ -332,44 +275,27 @@ fun PlayerTransportControls(
                 )
             }
         } else {
-            // Practice Mode Far Right: Repeat Count Shortcut (with presets 1x, 2x, 3x, 5x, Loop, and steppers)
-            val isRepeatActive = currentRepeats > 1
-            val repeatContainerColor = if (isRepeatActive) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-            }
-            val repeatContentColor = if (isRepeatActive) {
-                MaterialTheme.colorScheme.onPrimaryContainer
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            }
-
+            // Practice Mode Far Right: Repeat Segment Button (transparent background, primary color, presets 1x, 3x, 5x, 10x)
             Box {
-                Surface(
+                IconButton(
                     onClick = { showRepeatsMenu = true },
                     enabled = arePlaybackButtonsActive,
-                    shape = RoundedCornerShape(12.dp),
-                    color = repeatContainerColor,
-                    modifier = Modifier
-                        .height(44.dp)
-                        .widthIn(min = 52.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Repeat,
-                            contentDescription = "Segment Repeats",
-                            tint = repeatContentColor,
-                            modifier = Modifier.size(16.dp)
+                            contentDescription = "Repeats",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
                         )
                         Text(
-                            text = if (currentRepeats >= 99) "Loop" else "${currentRepeats}x",
-                            color = repeatContentColor,
-                            fontSize = 11.5.sp,
+                            text = "${currentRepeats}x",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -379,14 +305,6 @@ fun PlayerTransportControls(
                     expanded = showRepeatsMenu,
                     onDismissRequest = { showRepeatsMenu = false }
                 ) {
-                    Text(
-                        text = "Segment Repeats",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
-                    )
-
                     // Fine-tuning stepper buttons (-1 and +1)
                     Row(
                         modifier = Modifier
@@ -408,16 +326,16 @@ fun PlayerTransportControls(
                         }
 
                         Text(
-                            text = if (currentRepeats >= 99) "Loop (∞)" else "${currentRepeats}x",
+                            text = "${currentRepeats}x",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = if (isRepeatActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(horizontal = 6.dp)
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 8.dp)
                         )
 
                         FilledTonalButton(
                             onClick = {
-                                val next = if (currentRepeats >= 99) 99 else (currentRepeats + 1).coerceAtMost(99)
+                                val next = (currentRepeats + 1).coerceAtMost(99)
                                 AudioPlayerManager.setPracticeRepeatCount(next)
                                 viewModel?.practiceSegmentRepeatsSetting = next
                             },
@@ -430,16 +348,10 @@ fun PlayerTransportControls(
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-                    // Presets: 1x (No repeat), 2x, 3x, 5x, Loop (∞)
-                    val repeatPresets = listOf(
-                        1 to "1x (No repeat)",
-                        2 to "2x Repeats",
-                        3 to "3x Repeats",
-                        5 to "5x Repeats",
-                        99 to "Loop (Continuous)"
-                    )
-                    repeatPresets.forEach { (count, label) ->
-                        val isSelected = if (count == 99) currentRepeats >= 99 else currentRepeats == count
+                    // Presets: 1x, 3x, 5x, 10x
+                    val repeatPresets = listOf(1, 3, 5, 10)
+                    repeatPresets.forEach { count ->
+                        val isSelected = currentRepeats == count
                         DropdownMenuItem(
                             text = {
                                 Row(
@@ -448,7 +360,7 @@ fun PlayerTransportControls(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = label,
+                                        text = "${count}x",
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                         color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                     )
