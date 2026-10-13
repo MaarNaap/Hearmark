@@ -8,7 +8,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
@@ -167,23 +166,12 @@ fun AddEditNoteModal(
     var currentStartCueIndex by remember(selectedTrackId) { mutableStateOf<Int?>(null) }
     var currentEndCueIndex by remember(selectedTrackId) { mutableStateOf<Int?>(null) }
 
+    val initialAnchorStartMs = remember(initialNote, prefilledStartMs) {
+        initialNote?.originStartMs ?: if (prefilledStartMs > 0) prefilledStartMs else null
+    }
     var originStartMs by remember(initialNote, prefilledStartMs) {
-        mutableStateOf<Long?>(
-            initialNote?.originStartMs ?: if (prefilledStartMs > 0) prefilledStartMs else null
-        )
+        mutableStateOf<Long?>(initialAnchorStartMs)
     }
-
-    val spannedCues = remember(trackCues, startMs, endMs) {
-        if (trackCues.isEmpty()) emptyList()
-        else {
-            trackCues.filter { cue ->
-                val cueEnd = if (cue.endMs > cue.startMs) cue.endMs else cue.startMs + 4000L
-                cue.startMs < endMs && cueEnd > startMs
-            }
-        }
-    }
-
-    var cueHistory by remember { mutableStateOf(listOf<CueSnapshot>()) }
 
     LaunchedEffect(trackCues, startMs, endMs, prefilledText) {
         if (currentStartCueIndex == null && trackCues.isNotEmpty()) {
@@ -213,13 +201,13 @@ fun AddEditNoteModal(
         }
     }
 
-    LaunchedEffect(spannedCues) {
-        if (originStartMs == null && spannedCues.isNotEmpty()) {
+    LaunchedEffect(trackCues) {
+        if (originStartMs == null && trackCues.isNotEmpty()) {
             val dedicated = SubtitleParser.findDedicatedCueForNote(
                 initialNote ?: Note(text = "", startTimestampMs = startMs, endTimestampMs = endMs),
                 trackCues
             )
-            originStartMs = dedicated?.startMs ?: spannedCues[0].startMs
+            originStartMs = dedicated?.startMs ?: trackCues[0].startMs
         }
     }
 
@@ -255,14 +243,6 @@ fun AddEditNoteModal(
             maxBound = maxBound
         )
         if (merged != null) {
-            cueHistory = cueHistory + CueSnapshot(
-                startCueIndex = currentStartCueIndex,
-                endCueIndex = currentEndCueIndex,
-                startMs = startMs,
-                endMs = endMs,
-                noteText = noteText,
-                originStartMs = originStartMs
-            )
             currentStartCueIndex = merged.newStartCueIndex
             currentEndCueIndex = merged.newEndCueIndex
             startMs = merged.newStartMs
@@ -284,63 +264,12 @@ fun AddEditNoteModal(
             maxBound = maxBound
         )
         if (merged != null) {
-            cueHistory = cueHistory + CueSnapshot(
-                startCueIndex = currentStartCueIndex,
-                endCueIndex = currentEndCueIndex,
-                startMs = startMs,
-                endMs = endMs,
-                noteText = noteText,
-                originStartMs = originStartMs
-            )
             currentStartCueIndex = merged.newStartCueIndex
             currentEndCueIndex = merged.newEndCueIndex
             startMs = merged.newStartMs
             endMs = merged.newEndMs
             noteText = merged.newNoteText
             Toast.makeText(context, Loc.getText("added_next_cue"), Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    val handleUndoCueChange: () -> Unit = {
-        if (cueHistory.isNotEmpty()) {
-            val lastSnapshot = cueHistory.last()
-            cueHistory = cueHistory.dropLast(1)
-            currentStartCueIndex = lastSnapshot.startCueIndex
-            currentEndCueIndex = lastSnapshot.endCueIndex
-            startMs = lastSnapshot.startMs
-            endMs = lastSnapshot.endMs
-            noteText = lastSnapshot.noteText
-            originStartMs = lastSnapshot.originStartMs
-            Toast.makeText(context, Loc.getText("undo_cue_change"), Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    val handleRemoveCue: (SubtitleCue) -> Unit = { cueToRemove ->
-        cueHistory = cueHistory + CueSnapshot(
-            startCueIndex = currentStartCueIndex,
-            endCueIndex = currentEndCueIndex,
-            startMs = startMs,
-            endMs = endMs,
-            noteText = noteText,
-            originStartMs = originStartMs
-        )
-        val result = removeCue(
-            cueToRemove = cueToRemove,
-            spannedCues = spannedCues,
-            trackCues = trackCues,
-            noteText = noteText,
-            originStartMs = originStartMs,
-            minBound = minBound,
-            maxBound = maxBound
-        )
-        if (result != null) {
-            currentStartCueIndex = result.newStartCueIndex
-            currentEndCueIndex = result.newEndCueIndex
-            startMs = result.newStartMs
-            endMs = result.newEndMs
-            noteText = result.newNoteText
-            originStartMs = result.newOriginStartMs
-            Toast.makeText(context, Loc.getText("cue_removed"), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -439,32 +368,6 @@ fun AddEditNoteModal(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        if (cueHistory.isNotEmpty()) {
-                            OutlinedButton(
-                                onClick = handleUndoCueChange,
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .height(30.dp)
-                                    .testTag("undo_cue_change_button"),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.secondary
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Undo,
-                                    contentDescription = Loc.getText("undo_cue_change"),
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = Loc.getText("undo_cue_change"),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
                         OutlinedButton(
                             onClick = handleAddPreviousCue,
                             enabled = canAddPrevious,
@@ -532,13 +435,6 @@ fun AddEditNoteModal(
                 shape = RoundedCornerShape(12.dp)
             )
 
-            NoteCueSelector(
-                spannedCues = spannedCues,
-                originStartMs = originStartMs,
-                onSelectCueStart = { originStartMs = it },
-                onRemoveCue = handleRemoveCue
-            )
-
             Spacer(modifier = Modifier.height(12.dp))
 
             NoteExplanationSection(
@@ -604,7 +500,7 @@ fun AddEditNoteModal(
                         trackId = selectedTrackId,
                         startTimestampMs = startMs,
                         endTimestampMs = endMs,
-                        originStartMs = originStartMs ?: startMs,
+                        originStartMs = originStartMs ?: initialAnchorStartMs ?: startMs,
                         tags = selectedTags.toList(),
                         onSuccess = onDismiss
                     )

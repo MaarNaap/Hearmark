@@ -42,7 +42,7 @@ class NoteCueEditingTest {
         assertEquals(1, result.newEndCueIndex)
         assertEquals(1000L, result.newStartMs)
         assertEquals(6000L, result.newEndMs)
-        assertEquals("First line Second line", result.newNoteText)
+        assertEquals("First line\nSecond line", result.newNoteText)
     }
 
     @Test
@@ -62,69 +62,6 @@ class NoteCueEditingTest {
         assertEquals(2, result.newEndCueIndex)
         assertEquals(3500L, result.newStartMs)
         assertEquals(9000L, result.newEndMs)
-        assertEquals("Second line Third line", result.newNoteText)
-    }
-
-    @Test
-    fun stripCueText_removesPrefixSuffixAndExactMatch() {
-        assertEquals("Second line", com.example.ui.stripCueText("First line Second line", "First line"))
-        assertEquals("First line", com.example.ui.stripCueText("First line Second line", "Second line"))
-        assertEquals("", com.example.ui.stripCueText("First line", "First line"))
-        assertEquals("First line Third line", com.example.ui.stripCueText("First line Second line Third line", "Second line"))
-    }
-
-    @Test
-    fun removeCue_removesPrependedCue_restoresOriginalRangeAndText() {
-        val spanned = listOf(cues[0], cues[1]) // First line, Second line
-        val result = com.example.ui.removeCue(
-            cueToRemove = cues[0],
-            spannedCues = spanned,
-            trackCues = cues,
-            noteText = "First line Second line",
-            originStartMs = 3500L
-        )
-        assertNotNull(result)
-        assertEquals(1, result!!.newStartCueIndex)
-        assertEquals(1, result.newEndCueIndex)
-        assertEquals(3500L, result.newStartMs)
-        assertEquals(6000L, result.newEndMs)
-        assertEquals("Second line", result.newNoteText)
-        assertEquals(3500L, result.newOriginStartMs)
-    }
-
-    @Test
-    fun removeCue_removesAppendedCue_restoresOriginalRangeAndText() {
-        val spanned = listOf(cues[1], cues[2]) // Second line, Third line
-        val result = com.example.ui.removeCue(
-            cueToRemove = cues[2],
-            spannedCues = spanned,
-            trackCues = cues,
-            noteText = "Second line Third line",
-            originStartMs = 3500L
-        )
-        assertNotNull(result)
-        assertEquals(1, result!!.newStartCueIndex)
-        assertEquals(1, result.newEndCueIndex)
-        assertEquals(3500L, result.newStartMs)
-        assertEquals(6000L, result.newEndMs)
-        assertEquals("Second line", result.newNoteText)
-        assertEquals(3500L, result.newOriginStartMs)
-    }
-
-    @Test
-    fun removeCue_fallsBackOriginStartMs_whenRemovedCueWasDedicated() {
-        val spanned = listOf(cues[0], cues[1])
-        // Dedicated cue was cue 0 (1000L)
-        val result = com.example.ui.removeCue(
-            cueToRemove = cues[0],
-            spannedCues = spanned,
-            trackCues = cues,
-            noteText = "First line Second line",
-            originStartMs = 1000L
-        )
-        assertNotNull(result)
-        // Should fall back to cue 1 (3500L)
-        assertEquals(3500L, result!!.newOriginStartMs)
+        assertEquals("Second line\nThird line", result.newNoteText)
     }
 }
-

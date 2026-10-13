@@ -223,22 +223,23 @@ fun AudioPlayerOverlay(
         } else null
 
         trackNotes.filter { note ->
-            val cueMatch = if (currentActiveCue != null && subtitlesCuesState.isNotEmpty()) {
-                SubtitleParser.findDedicatedCueForNote(note, subtitlesCuesState) == currentActiveCue
-            } else false
-
-            val rawS = note.originStartMs ?: note.startTimestampMs
-            val rawE = if (note.endTimestampMs > rawS) note.endTimestampMs else rawS + 4000L
-
-            val timeMatch = if (track.isVirtualScene) {
-                (effectivePhysPos in rawS..rawE) ||
-                (playPositionState in rawS..rawE) ||
-                (rawS >= track.startOffsetMs && playPositionState in (rawS - track.startOffsetMs)..(rawE - track.startOffsetMs))
+            if (subtitlesCuesState.isNotEmpty()) {
+                val dedicatedCue = SubtitleParser.findDedicatedCueForNote(note, subtitlesCuesState)
+                if (dedicatedCue != null) {
+                    val cueEnd = if (dedicatedCue.endMs > dedicatedCue.startMs) dedicatedCue.endMs else dedicatedCue.startMs + 4000L
+                    (currentActiveCue == dedicatedCue) || (effectivePhysPos in dedicatedCue.startMs..cueEnd)
+                } else false
             } else {
-                (effectivePhysPos in rawS..rawE) || (playPositionState in rawS..rawE)
+                val rawS = note.originStartMs ?: note.startTimestampMs
+                val rawE = if (note.endTimestampMs > rawS) note.endTimestampMs else rawS + 4000L
+                if (track.isVirtualScene) {
+                    (effectivePhysPos in rawS..rawE) ||
+                    (playPositionState in rawS..rawE) ||
+                    (rawS >= track.startOffsetMs && playPositionState in (rawS - track.startOffsetMs)..(rawE - track.startOffsetMs))
+                } else {
+                    (effectivePhysPos in rawS..rawE) || (playPositionState in rawS..rawE)
+                }
             }
-
-            cueMatch || timeMatch
         }
     }
 
