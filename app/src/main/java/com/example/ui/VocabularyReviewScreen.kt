@@ -1,9 +1,11 @@
 package com.example.ui
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Spellcheck
@@ -27,10 +29,52 @@ import com.example.ui.vocab.VocabReviewSessionResults
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+fun VocabularyReviewSheet(
+    viewModel: AppViewModel,
+    onDismiss: () -> Unit,
+    onNavigateToLibrary: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        modifier = Modifier.fillMaxHeight(0.96f)
+    ) {
+        VocabularyReviewContent(
+            viewModel = viewModel,
+            onClose = onDismiss,
+            onNavigateToLibrary = {
+                onDismiss()
+                onNavigateToLibrary()
+            },
+            isOverlay = true
+        )
+    }
+}
+
+@Composable
 fun VocabularyReviewScreen(
     viewModel: AppViewModel,
     onBack: () -> Unit,
     onNavigateToLibrary: () -> Unit
+) {
+    VocabularyReviewContent(
+        viewModel = viewModel,
+        onClose = onBack,
+        onNavigateToLibrary = onNavigateToLibrary,
+        isOverlay = false
+    )
+}
+
+@Composable
+fun VocabularyReviewContent(
+    viewModel: AppViewModel,
+    onClose: () -> Unit,
+    onNavigateToLibrary: () -> Unit,
+    isOverlay: Boolean = false
 ) {
     val context = LocalContext.current
     val allVocabQuestions by viewModel.allVocabularyQuestions.collectAsStateWithLifecycle()
@@ -54,6 +98,12 @@ fun VocabularyReviewScreen(
     var currentQuestionIndex by remember { mutableIntStateOf(0) }
     var sessionAnswers by remember { mutableStateOf<Map<Int, Int>>(emptyMap()) } // questionIndex -> selectedOptionIndex
     var isSessionFinished by remember { mutableStateOf(false) }
+
+    // Handle back button when in active session: cleanly exit session back to hub first
+    BackHandler(enabled = isSessionActive) {
+        isSessionActive = false
+        isSessionFinished = false
+    }
 
     // Bank Search & Filter
     var bankSearchQuery by remember { mutableStateOf("") }
@@ -122,10 +172,102 @@ fun VocabularyReviewScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .navigationBarsPadding()
+    ) {
+        if (isSessionActive) {
+            if (isSessionFinished) {
+                // Session Results Summary
+                VocabReviewSessionResults(
+                    questions = activeSessionQuestions,
+                    userAnswers = sessionAnswers,
+                    trackMap = trackMap,
+                    onRetake = { startSession(activeSessionQuestions) },
+                    onPracticeMistakes = {
+                        val mistakes = activeSessionQuestions.filterIndexed { index, q ->
+                            sessionAnswers[index] != q.correctIndex
+                        }
+                        if (mistakes.isNotEmpty()) {
+                            startSession(mistakes)
+                        } else {
+                            isSessionActive = false
+                        }
+                    },
+                    onBackToHub = {
+                        isSessionActive = false
+                        isSessionFinished = false
+                    },
+                    onPlaySnippet = playTrackSnippet,
+                    currentlyPlayingTs = currentlyPlayingTs,
+                    isPlayingAudio = isPlayingAudio
+                )
+            } else {
+                // Active Question View - takes FULL HEIGHT, with no redundant headers on top!
+                val currentQuestion = activeSessionQuestions.getOrNull(currentQuestionIndex)
+                if (currentQuestion != null) {
+                    VocabActiveQuestionView(
+                        question = currentQuestion,
+                        questionIndex = currentQuestionIndex,
+                        totalQuestions = activeSessionQuestions.size,
+                        selectedOptionIndex = sessionAnswers[currentQuestionIndex],
+                        sourceTrackTitle = trackMap[currentQuestion.trackId]?.getDisplayTitle(),
+                        onSelectOption = { chosenIdx ->
+                            if (sessionAnswers[currentQuestionIndex] == null) {
+                                sessionAnswers = sessionAnswers + (currentQuestionIndex to chosenIdx)
+                                val isCorrect = chosenIdx == currentQuestion.correctIndex
+                                viewModel.recordQuizAnswer(currentQuestion, isCorrect)
+                            }
+                        },
+                        onNext = {
+                            if (currentQuestionIndex < activeSessionQuestions.size - 1) {
+                                currentQuestionIndex++
+                            } else {
+                                isSessionFinished = true
+                            }
+                        },
+                        onPrevious = {
+                            if (currentQuestionIndex > 0) {
+                                currentQuestionIndex--
+                            }
+                        },
+                        onExitSession = {
+                            isSessionActive = false
+                            isSessionFinished = false
+                        },
+                        onPlaySnippet = {
+                            currentQuestion.trackId?.let { tid ->
+                                playTrackSnippet(tid, currentQuestion.timestampMs)
+                            }
+                        },
+                        isPlayingAudio = isPlayingAudio && currentlyPlayingTs == currentQuestion.timestampMs
+                    )
+                }
+            }
+        } else {
+            // Header Bar (Hub & Bank Mode)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.testTag("vocab_review_back")
+                    ) {
+                        Icon(
+                            imageVector = if (isOverlay) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Close"
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
                     Column {
                         Text(
                             text = Loc.getText("vocab_review_title"),
@@ -138,45 +280,28 @@ fun VocabularyReviewScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("vocab_review_back")) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
-                        )
-                    }
-                },
-                actions = {
-                    // Shuffle Toggle Button
-                    IconButton(
-                        onClick = {
-                            isShuffleActive = !isShuffleActive
-                            val msg = if (isShuffleActive) "Shuffle ON" else "Shuffle OFF"
-                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.testTag("vocab_review_shuffle_btn")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Shuffle,
-                            contentDescription = Loc.getText("vocab_review_shuffle"),
-                            tint = if (isShuffleActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            // Tab Row (only shown when not in active question test session)
-            if (!isSessionActive) {
+                }
+
+                // Shuffle Toggle Button
+                IconButton(
+                    onClick = {
+                        isShuffleActive = !isShuffleActive
+                        val msg = if (isShuffleActive) "Shuffle ON" else "Shuffle OFF"
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.testTag("vocab_review_shuffle_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Shuffle,
+                        contentDescription = Loc.getText("vocab_review_shuffle"),
+                        tint = if (isShuffleActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (allVocabQuestions.isEmpty()) {
+                VocabReviewEmptyState(onNavigateToLibrary = onNavigateToLibrary)
+            } else {
                 TabRow(
                     selectedTabIndex = selectedTab,
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -216,123 +341,49 @@ fun VocabularyReviewScreen(
                         }
                     )
                 }
-            }
 
-            // MAIN CONTENT
-            if (allVocabQuestions.isEmpty()) {
-                // Empty state across all lessons
-                VocabReviewEmptyState(onNavigateToLibrary = onNavigateToLibrary)
-            } else if (isSessionActive) {
-                if (isSessionFinished) {
-                    // Session Results Summary
-                    VocabReviewSessionResults(
-                        questions = activeSessionQuestions,
-                        userAnswers = sessionAnswers,
-                        trackMap = trackMap,
-                        onRetake = { startSession(activeSessionQuestions) },
-                        onPracticeMistakes = {
-                            val mistakes = activeSessionQuestions.filterIndexed { index, q ->
-                                sessionAnswers[index] != q.correctIndex
-                            }
-                            if (mistakes.isNotEmpty()) {
-                                startSession(mistakes)
-                            } else {
-                                isSessionActive = false
-                            }
-                        },
-                        onBackToHub = {
-                            isSessionActive = false
-                            isSessionFinished = false
-                        },
-                        onPlaySnippet = playTrackSnippet,
-                        currentlyPlayingTs = currentlyPlayingTs,
-                        isPlayingAudio = isPlayingAudio
-                    )
-                } else {
-                    // Active Question Card
-                    val currentQuestion = activeSessionQuestions.getOrNull(currentQuestionIndex)
-                    if (currentQuestion != null) {
-                        VocabActiveQuestionView(
-                            question = currentQuestion,
-                            questionIndex = currentQuestionIndex,
-                            totalQuestions = activeSessionQuestions.size,
-                            selectedOptionIndex = sessionAnswers[currentQuestionIndex],
-                            sourceTrackTitle = trackMap[currentQuestion.trackId]?.getDisplayTitle(),
-                            onSelectOption = { chosenIdx ->
-                                if (sessionAnswers[currentQuestionIndex] == null) {
-                                    sessionAnswers = sessionAnswers + (currentQuestionIndex to chosenIdx)
-                                    val isCorrect = chosenIdx == currentQuestion.correctIndex
-                                    viewModel.recordQuizAnswer(currentQuestion, isCorrect)
+                Box(modifier = Modifier.weight(1f)) {
+                    when (selectedTab) {
+                        0 -> {
+                            VocabReviewHubView(
+                                dueQuestions = dueVocabQuestions,
+                                dueCount = dueVocabCount,
+                                totalCount = totalCount,
+                                masteredCount = masteredCount,
+                                needsPracticeCount = needsPracticeCount,
+                                untestedCount = untestedCount,
+                                allQuestions = allVocabQuestions,
+                                onStartDueToday = {
+                                    val dueBatch = dueVocabQuestions.take(com.example.util.SpacedRepetition.SESSION_CARD_CAP)
+                                    startSession(dueBatch)
+                                },
+                                onStartTestAll = { startSession(allVocabQuestions) },
+                                onStartPracticeWeak = {
+                                    val weakOrUntested = allVocabQuestions.filter { q ->
+                                        q.timesAnswered == 0 || (q.timesCorrect.toFloat() / q.timesAnswered) < 0.75f
+                                    }
+                                    startSession(weakOrUntested)
+                                },
+                                onStartQuickQuiz = {
+                                    val sample = allVocabQuestions.shuffled().take(10)
+                                    startSession(sample)
                                 }
-                            },
-                            onNext = {
-                                if (currentQuestionIndex < activeSessionQuestions.size - 1) {
-                                    currentQuestionIndex++
-                                } else {
-                                    isSessionFinished = true
-                                }
-                            },
-                            onPrevious = {
-                                if (currentQuestionIndex > 0) {
-                                    currentQuestionIndex--
-                                }
-                            },
-                            onExitSession = {
-                                isSessionActive = false
-                                isSessionFinished = false
-                            },
-                            onPlaySnippet = {
-                                currentQuestion.trackId?.let { tid ->
-                                    playTrackSnippet(tid, currentQuestion.timestampMs)
-                                }
-                            },
-                            isPlayingAudio = isPlayingAudio && currentlyPlayingTs == currentQuestion.timestampMs
-                        )
-                    }
-                }
-            } else {
-                when (selectedTab) {
-                    0 -> {
-                        // Overview Hub & Session Launchpad
-                        VocabReviewHubView(
-                            dueQuestions = dueVocabQuestions,
-                            dueCount = dueVocabCount,
-                            totalCount = totalCount,
-                            masteredCount = masteredCount,
-                            needsPracticeCount = needsPracticeCount,
-                            untestedCount = untestedCount,
-                            allQuestions = allVocabQuestions,
-                            onStartDueToday = {
-                                val dueBatch = dueVocabQuestions.take(com.example.util.SpacedRepetition.SESSION_CARD_CAP)
-                                startSession(dueBatch)
-                            },
-                            onStartTestAll = { startSession(allVocabQuestions) },
-                            onStartPracticeWeak = {
-                                val weakOrUntested = allVocabQuestions.filter { q ->
-                                    q.timesAnswered == 0 || (q.timesCorrect.toFloat() / q.timesAnswered) < 0.75f
-                                }
-                                startSession(weakOrUntested)
-                            },
-                            onStartQuickQuiz = {
-                                val sample = allVocabQuestions.shuffled().take(10)
-                                startSession(sample)
-                            }
-                        )
-                    }
-                    1 -> {
-                        // Word Bank Browser
-                        VocabBankBrowserView(
-                            allQuestions = allVocabQuestions,
-                            trackMap = trackMap,
-                            searchQuery = bankSearchQuery,
-                            onSearchQueryChange = { bankSearchQuery = it },
-                            filterMode = bankFilterMode,
-                            onFilterModeChange = { bankFilterMode = it },
-                            onDeleteQuestion = { questionToDelete = it },
-                            onPlaySnippet = playTrackSnippet,
-                            currentlyPlayingTs = currentlyPlayingTs,
-                            isPlayingAudio = isPlayingAudio
-                        )
+                            )
+                        }
+                        1 -> {
+                            VocabBankBrowserView(
+                                allQuestions = allVocabQuestions,
+                                trackMap = trackMap,
+                                searchQuery = bankSearchQuery,
+                                onSearchQueryChange = { bankSearchQuery = it },
+                                filterMode = bankFilterMode,
+                                onFilterModeChange = { bankFilterMode = it },
+                                onDeleteQuestion = { questionToDelete = it },
+                                onPlaySnippet = playTrackSnippet,
+                                currentlyPlayingTs = currentlyPlayingTs,
+                                isPlayingAudio = isPlayingAudio
+                            )
+                        }
                     }
                 }
             }

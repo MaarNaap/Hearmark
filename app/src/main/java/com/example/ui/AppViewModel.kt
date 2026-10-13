@@ -94,11 +94,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     val pendingOpenVocabReview = MutableStateFlow(false)
     val pendingAutoStartDueVocab = MutableStateFlow(false)
+    val isVocabReviewOpen = MutableStateFlow(false)
+
+    fun openVocabularyReview(autoStartDueSession: Boolean = false) {
+        isVocabReviewOpen.value = true
+        if (autoStartDueSession) {
+            pendingAutoStartDueVocab.value = true
+        }
+    }
+
+    fun closeVocabularyReview() {
+        isVocabReviewOpen.value = false
+    }
 
     fun setPendingOpenVocabReview(open: Boolean, autoStartDueSession: Boolean = false) {
         pendingOpenVocabReview.value = open
-        if (autoStartDueSession) {
-            pendingAutoStartDueVocab.value = true
+        if (open) {
+            openVocabularyReview(autoStartDueSession)
+        } else {
+            closeVocabularyReview()
         }
     }
 

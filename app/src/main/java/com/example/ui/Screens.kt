@@ -159,10 +159,11 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
     val snippetPosition by com.example.player.NoteAudioPlayer.currentPosition.collectAsStateWithLifecycle()
     val pendingOpenTaskId by viewModel.pendingOpenTaskId.collectAsStateWithLifecycle()
     val pendingOpenVocabReview by viewModel.pendingOpenVocabReview.collectAsStateWithLifecycle()
+    val isVocabReviewOpen by viewModel.isVocabReviewOpen.collectAsStateWithLifecycle()
 
     LaunchedEffect(pendingOpenVocabReview) {
         if (pendingOpenVocabReview) {
-            currentScreen = "vocab_review"
+            viewModel.openVocabularyReview()
             viewModel.consumePendingOpenVocabReview()
         }
     }
@@ -231,7 +232,7 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                 .fillMaxSize()
                 .testTag("app_scaffold"),
             bottomBar = {
-                if (!isFullPlayerExpanded) {
+                if (!isFullPlayerExpanded && !isVocabReviewOpen) {
                     Column {
                         // PERSISTENT MINI-PLAYER BAR (Spotify style)
                         val miniPlayerTrack = currentTrackState
@@ -445,6 +446,8 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                 // Back handlers for hierarchical screen/detail navigation
                 if (isFullPlayerExpanded) {
                     BackHandler { isFullPlayerExpanded = false }
+                } else if (isVocabReviewOpen) {
+                    BackHandler { viewModel.closeVocabularyReview() }
                 } else if (editingTaskTarget != null) {
                     BackHandler { editingTaskTarget = null }
                 } else if (isCreatingTask) {
@@ -540,7 +543,7 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                                 onCreateTask = { isCreatingTask = true },
                                 onTaskDetailsRequested = { activeTaskForDetails = it },
                                 onSettingsClicked = { currentScreen = "settings" },
-                                onVocabularyReviewClicked = { currentScreen = "vocab_review" }
+                                onVocabularyReviewClicked = { viewModel.openVocabularyReview() }
                             )
                         }
                         screen == "library" -> {
@@ -597,7 +600,7 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                                         AudioPlayerManager.seekTo(startMs, isPhysicalTimestamp = true)
                                     }
                                 },
-                                onOpenVocabularyReview = { currentScreen = "vocab_review" }
+                                onOpenVocabularyReview = { viewModel.openVocabularyReview() }
                             )
                         }
                         screen == "stats" -> {
@@ -610,11 +613,11 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                             )
                         }
                         screen == "vocab_review" -> {
-                            VocabularyReviewScreen(
-                                viewModel = viewModel,
-                                onBack = { currentScreen = "home" },
-                                onNavigateToLibrary = { currentScreen = "library" }
-                            )
+                            LaunchedEffect(Unit) {
+                                viewModel.openVocabularyReview()
+                                currentScreen = "home"
+                            }
+                            Box(modifier = Modifier.fillMaxSize())
                         }
                     }
                 }
@@ -806,12 +809,24 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                         onDismiss = { viewModel.closeQuizSheet() },
                         onOpenVocabularyReview = {
                             viewModel.closeQuizSheet()
-                            currentScreen = "vocab_review"
+                            viewModel.openVocabularyReview()
                         },
                         onPlayTrackInMainPlayer = { track, ts ->
                             AudioPlayerManager.playTrack(track)
                             AudioPlayerManager.seekTo(ts)
                             AudioPlayerManager.resume()
+                        }
+                    )
+                }
+
+                // VOCABULARY REVIEW MODAL OVERLAY
+                if (isVocabReviewOpen) {
+                    VocabularyReviewSheet(
+                        viewModel = viewModel,
+                        onDismiss = { viewModel.closeVocabularyReview() },
+                        onNavigateToLibrary = {
+                            viewModel.closeVocabularyReview()
+                            currentScreen = "library"
                         }
                     )
                 }
