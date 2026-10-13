@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
@@ -182,6 +183,8 @@ fun AddEditNoteModal(
         }
     }
 
+    var cueHistory by remember { mutableStateOf(listOf<CueSnapshot>()) }
+
     LaunchedEffect(trackCues, startMs, endMs, prefilledText) {
         if (currentStartCueIndex == null && trackCues.isNotEmpty()) {
             val trimmedNote = noteText.trim()
@@ -201,8 +204,9 @@ fun AddEditNoteModal(
                     if (idx >= 0) idx else 0
                 }
             }
+            val initialEndIdx = trackCues.indexOfLast { it.startMs <= endMs }.takeIf { it >= initialIdx } ?: initialIdx
             currentStartCueIndex = initialIdx
-            currentEndCueIndex = initialIdx
+            currentEndCueIndex = initialEndIdx
             if (originStartMs == null && initialIdx in trackCues.indices) {
                 originStartMs = trackCues[initialIdx].startMs
             }
@@ -251,6 +255,14 @@ fun AddEditNoteModal(
             maxBound = maxBound
         )
         if (merged != null) {
+            cueHistory = cueHistory + CueSnapshot(
+                startCueIndex = currentStartCueIndex,
+                endCueIndex = currentEndCueIndex,
+                startMs = startMs,
+                endMs = endMs,
+                noteText = noteText,
+                originStartMs = originStartMs
+            )
             currentStartCueIndex = merged.newStartCueIndex
             currentEndCueIndex = merged.newEndCueIndex
             startMs = merged.newStartMs
@@ -272,12 +284,63 @@ fun AddEditNoteModal(
             maxBound = maxBound
         )
         if (merged != null) {
+            cueHistory = cueHistory + CueSnapshot(
+                startCueIndex = currentStartCueIndex,
+                endCueIndex = currentEndCueIndex,
+                startMs = startMs,
+                endMs = endMs,
+                noteText = noteText,
+                originStartMs = originStartMs
+            )
             currentStartCueIndex = merged.newStartCueIndex
             currentEndCueIndex = merged.newEndCueIndex
             startMs = merged.newStartMs
             endMs = merged.newEndMs
             noteText = merged.newNoteText
             Toast.makeText(context, Loc.getText("added_next_cue"), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val handleUndoCueChange: () -> Unit = {
+        if (cueHistory.isNotEmpty()) {
+            val lastSnapshot = cueHistory.last()
+            cueHistory = cueHistory.dropLast(1)
+            currentStartCueIndex = lastSnapshot.startCueIndex
+            currentEndCueIndex = lastSnapshot.endCueIndex
+            startMs = lastSnapshot.startMs
+            endMs = lastSnapshot.endMs
+            noteText = lastSnapshot.noteText
+            originStartMs = lastSnapshot.originStartMs
+            Toast.makeText(context, Loc.getText("undo_cue_change"), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val handleRemoveCue: (SubtitleCue) -> Unit = { cueToRemove ->
+        cueHistory = cueHistory + CueSnapshot(
+            startCueIndex = currentStartCueIndex,
+            endCueIndex = currentEndCueIndex,
+            startMs = startMs,
+            endMs = endMs,
+            noteText = noteText,
+            originStartMs = originStartMs
+        )
+        val result = removeCue(
+            cueToRemove = cueToRemove,
+            spannedCues = spannedCues,
+            trackCues = trackCues,
+            noteText = noteText,
+            originStartMs = originStartMs,
+            minBound = minBound,
+            maxBound = maxBound
+        )
+        if (result != null) {
+            currentStartCueIndex = result.newStartCueIndex
+            currentEndCueIndex = result.newEndCueIndex
+            startMs = result.newStartMs
+            endMs = result.newEndMs
+            noteText = result.newNoteText
+            originStartMs = result.newOriginStartMs
+            Toast.makeText(context, Loc.getText("cue_removed"), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -376,6 +439,32 @@ fun AddEditNoteModal(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        if (cueHistory.isNotEmpty()) {
+                            OutlinedButton(
+                                onClick = handleUndoCueChange,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .height(30.dp)
+                                    .testTag("undo_cue_change_button"),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.secondary
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Undo,
+                                    contentDescription = Loc.getText("undo_cue_change"),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = Loc.getText("undo_cue_change"),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
                         OutlinedButton(
                             onClick = handleAddPreviousCue,
                             enabled = canAddPrevious,
@@ -446,7 +535,8 @@ fun AddEditNoteModal(
             NoteCueSelector(
                 spannedCues = spannedCues,
                 originStartMs = originStartMs,
-                onSelectCueStart = { originStartMs = it }
+                onSelectCueStart = { originStartMs = it },
+                onRemoveCue = handleRemoveCue
             )
 
             Spacer(modifier = Modifier.height(12.dp))

@@ -6,10 +6,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -19,7 +21,8 @@ import com.example.player.SubtitleCue
 fun NoteCueSelector(
     spannedCues: List<SubtitleCue>,
     originStartMs: Long?,
-    onSelectCueStart: (Long) -> Unit
+    onSelectCueStart: (Long) -> Unit,
+    onRemoveCue: ((SubtitleCue) -> Unit)? = null
 ) {
     if (spannedCues.size > 1) {
         Spacer(modifier = Modifier.height(10.dp))
@@ -76,6 +79,22 @@ fun NoteCueSelector(
                                     contentDescription = null,
                                     modifier = Modifier.size(14.dp)
                                 )
+                            }
+                        } else null,
+                        trailingIcon = if (onRemoveCue != null) {
+                            {
+                                IconButton(
+                                    onClick = { onRemoveCue(cue) },
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .testTag("remove_cue_${cue.startMs}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Close,
+                                        contentDescription = Loc.getText("remove_cue"),
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
                             }
                         } else null
                     )
