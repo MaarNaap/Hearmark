@@ -155,9 +155,30 @@ object GeminiQuiz {
                     ?: explanation.takeIf { it.isNotBlank() }
             }
 
+            val sanitizedQuestion = if (category == "VOCABULARY") {
+                QuizSanitizer.sanitizeVocabularyQuestion(questionText, targetWord, contextSentence)
+            } else {
+                questionText
+            }
+
             if (category == "VOCABULARY" && contextSentence == null) {
-                contextSentence = sourceNote?.contextSentence?.takeIf { it.isNotBlank() }
+                val extractedFromQuestion = Regex(
+                    """(?:in the sentence:\s*|في الجملة:\s*)["'“]([^"'”]+)["'”]""",
+                    RegexOption.IGNORE_CASE
+                ).find(sanitizedQuestion)?.groupValues?.get(1)?.trim()
+                    ?: Regex(
+                        """(?:in the sentence:\s*|في الجملة:\s*)["'“]([^"'”]+)["'”]""",
+                        RegexOption.IGNORE_CASE
+                    ).find(questionText)?.groupValues?.get(1)?.trim()
+                contextSentence = extractedFromQuestion?.takeIf { it.isNotBlank() }
+                    ?: sourceNote?.contextSentence?.takeIf { it.isNotBlank() }
                     ?: sourceNote?.text?.trim()
+            }
+
+            val sanitizedExplanation = if (category == "VOCABULARY") {
+                QuizSanitizer.sanitizeExplanation(explanation)
+            } else {
+                explanation
             }
 
             val finalTimestamp = rawTimestamp ?: sourceNote?.startTimestampMs?.takeIf { it > 0 }
@@ -167,10 +188,10 @@ object GeminiQuiz {
                 UnifiedQuizItem(
                     questionType = qType,
                     category = category,
-                    question = questionText,
+                    question = sanitizedQuestion,
                     options = optionsList,
                     correctIndex = correctIdx,
-                    explanation = explanation,
+                    explanation = sanitizedExplanation,
                     timestampMs = finalTimestamp,
                     sourceNoteId = sourceNoteId,
                     trackId = trackId,
@@ -340,3 +361,140 @@ object GeminiQuiz {
         }
     }
 }
+
+object QuizSanitizer {
+    private val DIALOGUE_PREFIX_REGEX = Regex(
+        """^(?:in this (?:dialogue|conversation|audio|episode|recording|transcript|lesson|clip|interview|text|article)|in the (?:dialogue|conversation|audio|episode|recording|transcript|lesson|clip|interview)|according to the (?:speaker|audio|dialogue|recording|transcript|lesson)|based on the (?:audio|dialogue|recording|transcript|lesson)|as mentioned in the (?:audio|dialogue|recording|lesson|website)|as stated by the speaker)[,\s]+""",
+        RegexOption.IGNORE_CASE
+    )
+
+    private val ARABIC_DIALOGUE_PREFIX_REGEX = Regex(
+        """^(?:في هذا (?:الحوار|المقطع|التسجيل|الدرس|المحادثة|المحتوى)|في هذه (?:المحادثة|الحلقة)|وفقاً للمتحدث|بحسب المتحدث|في النص المسموع|بناءً على الحوار|في الموقع المذكور)[،,\s]+"""
+    )
+
+    private val DIALOGUE_PHRASE_REGEX = Regex(
+        """\b(?:in this (?:dialogue|conversation|audio|episode|recording|transcript|lesson|clip)|in the (?:dialogue|conversation|audio|episode|recording|transcript|clip)|according to the speaker|as used by the speaker|as mentioned on the website|in the website mentioned)\b""",
+        RegexOption.IGNORE_CASE
+    )
+
+    private val ARABIC_DIALOGUE_PHRASE_REGEX = Regex(
+        """(?:في هذا (?:الحوار|المقطع|التسجيل|الدرس|المحادثة)|في هذه المحادثة|وفقاً للمتحدث|بحسب المتحدث|في الموقع المذكور)"""
+    )
+
+    private val EXPLANATION_PREFIX_REGEX = Regex(
+        """^(?:in this (?:context|dialogue|conversation|audio|episode|recording|transcript|lesson)|in the (?:context|dialogue|conversation|audio|episode|recording|transcript|lesson)|according to the (?:speaker|audio|dialogue|recording|transcript))[,\s]+""",
+        RegexOption.IGNORE_CASE
+    )
+
+    private val ARABIC_EXPLANATION_PREFIX_REGEX = Regex(
+        """^(?:في هذا (?:السياق|الحوار|المقطع|التسجيل|الدرس|المحادثة)|في هذه (?:المحادثة|الحلقة)|وفقاً للمتحدث|بحسب المتحدث)[،,\s]+"""
+    )
+
+    private val EXPLANATION_CLEAN_REGEX = Regex(
+        """[,\s]*(?:as used when the speaker describes|as mentioned by the speaker|as stated by the speaker|as said in the (?:dialogue|audio|conversation|lesson))\b.*$""",
+        RegexOption.IGNORE_CASE
+    )
+
+    private val ARABIC_EXPLANATION_CLEAN_REGEX = Regex(
+        """[،,\s]*(?:كما ذكر المتحدث|كما ورد في الحوار|وفقاً لما قاله المتحدث).*$"""
+    )
+
+    private fun capitalizeFirstLetter(text: String): String {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return trimmed
+        val firstChar = trimmed[0]
+        return if ((firstChar == '\'' || firstChar == '"' || firstChar == '“' || firstChar == '‘') && trimmed.length > 1) {
+            "$firstChar${trimmed[1].uppercaseChar()}${trimmed.substring(2)}"
+        } else {
+            trimmed.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        }
+    }
+
+    fun sanitizeVocabularyQuestion(
+        rawQuestion: String,
+        targetWord: String?,
+        contextSentence: String?
+    ): String {
+        var q = rawQuestion.trim()
+        if (q.isBlank()) return q
+
+        // 1. Remove leading dialogue / speaker prefixes
+        if (DIALOGUE_PREFIX_REGEX.containsMatchIn(q)) {
+            q = q.replace(DIALOGUE_PREFIX_REGEX, "").trim()
+            if (q.isNotEmpty()) {
+                q = capitalizeFirstLetter(q)
+            }
+        }
+        if (ARABIC_DIALOGUE_PREFIX_REGEX.containsMatchIn(q)) {
+            q = q.replace(ARABIC_DIALOGUE_PREFIX_REGEX, "").trim()
+        }
+
+        // 2. Remove mid-sentence / trailing references
+        q = q.replace(DIALOGUE_PHRASE_REGEX, "").trim()
+        q = q.replace(ARABIC_DIALOGUE_PHRASE_REGEX, "").trim()
+
+        // 3. Clean up spaces and punctuation artifacts
+        q = q.replace(Regex("""\s+"""), " ")
+            .replace(" ,", ",")
+            .replace(" ?", "?")
+            .replace(" .", ".")
+            .replace(" ؛", "؛")
+            .replace(" ؟", "؟")
+            .trim()
+
+        // 4. Handle dangling "in this context" or "here" when question has no embedded sentence
+        val hasEmbeddedSentence = q.contains("In the sentence", ignoreCase = true) ||
+                q.contains("في الجملة", ignoreCase = true) ||
+                (contextSentence != null && contextSentence.isNotBlank() && q.contains(contextSentence))
+
+        val wordToUse = targetWord?.trim()?.ifBlank { null }
+        if (!hasEmbeddedSentence && !contextSentence.isNullOrBlank() && wordToUse != null) {
+            val asksContextSpecifically = q.contains("in this context", ignoreCase = true) ||
+                    q.contains("في هذا السياق", ignoreCase = true) ||
+                    q.contains("in context", ignoreCase = true) ||
+                    q.contains("here?", ignoreCase = true)
+            if (asksContextSpecifically) {
+                val isArabic = q.any { it in '\u0600'..'\u06FF' }
+                q = if (isArabic) {
+                    "في الجملة: \"${contextSentence.trim()}\"، ما معنى كلمة \"$wordToUse\"؟"
+                } else {
+                    "In the sentence: \"${contextSentence.trim()}\", what does the word \"$wordToUse\" mean?"
+                }
+            }
+        }
+
+        return q
+    }
+
+    fun sanitizeExplanation(rawExplanation: String): String {
+        var exp = rawExplanation.trim()
+        if (exp.isBlank()) return exp
+
+        // 1. Remove leading prefix like "In this context, ", "In this dialogue, "
+        if (EXPLANATION_PREFIX_REGEX.containsMatchIn(exp)) {
+            exp = exp.replace(EXPLANATION_PREFIX_REGEX, "").trim()
+            if (exp.isNotEmpty()) {
+                exp = capitalizeFirstLetter(exp)
+            }
+        }
+        if (ARABIC_EXPLANATION_PREFIX_REGEX.containsMatchIn(exp)) {
+            exp = exp.replace(ARABIC_EXPLANATION_PREFIX_REGEX, "").trim()
+        }
+
+        // 2. Remove trailing speaker/dialogue clauses
+        exp = exp.replace(EXPLANATION_CLEAN_REGEX, "").trim()
+        exp = exp.replace(ARABIC_EXPLANATION_CLEAN_REGEX, "").trim()
+        exp = exp.replace(DIALOGUE_PHRASE_REGEX, "").trim()
+        exp = exp.replace(ARABIC_DIALOGUE_PHRASE_REGEX, "").trim()
+        exp = exp.replace(Regex("""\s+"""), " ")
+            .replace(" ,", ",")
+            .replace(" .", ".")
+            .trim()
+
+        if (exp.isNotEmpty() && !exp.endsWith(".") && !exp.endsWith("!") && !exp.endsWith("?") && !exp.endsWith("؟")) {
+            exp += "."
+        }
+        return exp
+    }
+}
+

@@ -256,5 +256,158 @@ class GeminiQuizAndHttpRetryTest {
         ).getOrThrow()
         assertEquals("VOCABULARY", parsedVocabOnly[0].category)
     }
+
+    @Test
+    fun vocabularyPrompt_enforcesIsolationAndNoExternalDialogueReferences() {
+        val vocabSource = dummyTranscriptSource.copy(questionCount = 3, focusMode = QuizFocusMode.VOCABULARY_ONLY)
+        val (_, transcriptPrompt) = GeminiPrompts.buildUnifiedQuizPrompt(vocabSource, "en")
+
+        assertTrue(transcriptPrompt.contains("MANDATORY VOCABULARY ISOLATION"))
+        assertTrue(transcriptPrompt.contains("ZERO EXTERNAL DIALOGUE REFERENCES"))
+        assertTrue(transcriptPrompt.contains("PRESERVE TARGET SENSE & MEANING"))
+        assertTrue(transcriptPrompt.contains("FLEXIBLE CONTEXT SENTENCE GENERATION"))
+        assertTrue(transcriptPrompt.contains("FORBIDDEN: 'in this dialogue'"))
+
+        // Test Arabic mandate
+        val (_, arabicPrompt) = GeminiPrompts.buildUnifiedQuizPrompt(vocabSource, "ar")
+        assertTrue(arabicPrompt.contains("STRICT ARABIC ISOLATION MANDATE"))
+        assertTrue(arabicPrompt.contains("ممنوع: 'في هذا الحوار'"))
+
+        // Test NotebookNotes prompt isolation and removal of Source Lesson
+        val notesSource = QuizContentSource.NotebookNotes(
+            notes = listOf(
+                NoteInputForQuiz(
+                    id = 101L,
+                    text = "meticulous",
+                    comment = "very careful",
+                    tags = listOf("vocab"),
+                    trackId = 5L,
+                    trackName = "Dialogue_01_Audio",
+                    startTimestampMs = 12000L,
+                    targetWord = "meticulous",
+                    meaning = "very careful and precise",
+                    contextSentence = "She was meticulous in her work."
+                )
+            ),
+            maxQuestions = 2
+        )
+        val (_, notesPrompt) = GeminiPrompts.buildUnifiedQuizPrompt(notesSource, "en")
+        assertFalse(
+            "Prompt must not leak Source Lesson to prevent dialogue referencing",
+            notesPrompt.contains("Source Lesson:")
+        )
+        assertTrue(notesPrompt.contains("CRITICAL VOCABULARY ISOLATION & SENSE RETENTION MANDATE"))
+        assertTrue(notesPrompt.contains("FLEXIBLE CONTEXT SENTENCE GENERATION"))
+    }
+
+    @Test
+    fun quizSanitizer_stripsExternalDialoguePrefixesAndMidSentenceReferences() {
+        // Test prefix stripping
+        assertEquals(
+            "What does the word 'resilient' mean?",
+            QuizSanitizer.sanitizeVocabularyQuestion(
+                rawQuestion = "In this dialogue, what does the word 'resilient' mean?",
+                targetWord = "resilient",
+                contextSentence = null
+            )
+        )
+        assertEquals(
+            "What does 'pilot' mean?",
+            QuizSanitizer.sanitizeVocabularyQuestion(
+                rawQuestion = "According to the speaker, what does 'pilot' mean?",
+                targetWord = "pilot",
+                contextSentence = null
+            )
+        )
+        assertEquals(
+            "Which word means 'agreement'?",
+            QuizSanitizer.sanitizeVocabularyQuestion(
+                rawQuestion = "Which word in this dialogue means 'agreement'?",
+                targetWord = null,
+                contextSentence = null
+            )
+        )
+
+        // Test Arabic prefix stripping
+        assertEquals(
+            "ما معنى كلمة 'resilient'؟",
+            QuizSanitizer.sanitizeVocabularyQuestion(
+                rawQuestion = "في هذا الحوار، ما معنى كلمة 'resilient'؟",
+                targetWord = "resilient",
+                contextSentence = null
+            )
+        )
+
+        // Test auto-embedding when asking about context specifically without providing it
+        val withEmbeddedSentence = QuizSanitizer.sanitizeVocabularyQuestion(
+            rawQuestion = "What does the word 'strike' mean in this context?",
+            targetWord = "strike",
+            contextSentence = "The union decided to strike after talks failed."
+        )
+        assertEquals(
+            "In the sentence: \"The union decided to strike after talks failed.\", what does the word \"strike\" mean?",
+            withEmbeddedSentence
+        )
+
+        // Test explanation sanitizing
+        val cleanedExplanation = QuizSanitizer.sanitizeExplanation(
+            "In this context, 'pilot' means an experimental trial, as used when the speaker describes the new project."
+        )
+        assertEquals(
+            "'Pilot' means an experimental trial.",
+            cleanedExplanation
+        )
+
+        val cleanedArabicExp = QuizSanitizer.sanitizeExplanation(
+            "تعني الكلمة برنامجاً تجريبياً، كما ذكر المتحدث في الحوار."
+        )
+        assertEquals(
+            "تعني الكلمة برنامجاً تجريبياً.",
+            cleanedArabicExp
+        )
+    }
+
+    @Test
+    fun parseQuizQuestionsFromResponse_extractsContextSentenceFromQuestion_andSanitizes() {
+        val rawResponse = wrapCandidateJson(
+            """
+            {
+              "questions": [
+                {
+                  "category": "VOCABULARY",
+                  "type": "MCQ",
+                  "question": "In this dialogue, in the sentence: 'The committee launched a pilot project before the rollout', what does 'pilot' mean?",
+                  "options": ["Experimental trial", "Airplane driver", "Guide", "Announcer"],
+                  "correctIndex": 0,
+                  "explanation": "'Pilot' means experimental trial, as mentioned by the speaker in the dialogue.",
+                  "targetWord": "pilot"
+                }
+              ]
+            }
+            """.trimIndent()
+        )
+
+        val parsed = GeminiQuiz.parseQuizQuestionsFromResponse(
+            responseBody = rawResponse,
+            source = dummyTranscriptSource.copy(focusMode = QuizFocusMode.VOCABULARY_ONLY),
+            notesMap = emptyMap()
+        ).getOrThrow()
+
+        val item = parsed[0]
+        assertEquals("VOCABULARY", item.category)
+        assertEquals(
+            "In the sentence: 'The committee launched a pilot project before the rollout', what does 'pilot' mean?",
+            item.question
+        )
+        assertEquals(
+            "'Pilot' means experimental trial.",
+            item.explanation
+        )
+        assertEquals(
+            "The committee launched a pilot project before the rollout",
+            item.contextSentence
+        )
+    }
 }
+
 
