@@ -79,7 +79,7 @@ internal fun LazyListScope.quizNoteSelectorItems(
                             fontWeight = FontWeight.SemiBold
                         )
                         val subtitleText = if (totalFilterCount > 0 || selectedTagFilter != null) {
-                            "${selectedNoteIds.size}/${allNotes.size} ${Loc.getText("selected")} • ${filteredNotes.size} ${Loc.getText("active_days_count")?.let { "" } ?: ""}${Loc.getText("matches") ?: "matched"}"
+                            "${selectedNoteIds.size}/${allNotes.size} ${Loc.getText("selected")} • ${filteredNotes.size} ${Loc.getText("matches") ?: "matched"}"
                         } else {
                             "${selectedNoteIds.size}/${allNotes.size} ${Loc.getText("selected")}"
                         }
