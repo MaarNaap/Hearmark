@@ -399,13 +399,6 @@ fun GeminiChatSheet(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
-                        Spacer(modifier = Modifier.height(3.dp))
-                        Text(
-                            text = Loc.getText("ai_create_subtitles_desc"),
-                            fontSize = 11.sp,
-                            lineHeight = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                         Spacer(modifier = Modifier.height(6.dp))
 
                         if (isGeneratingSubtitles) {

@@ -80,15 +80,6 @@ fun VocabReviewHubView(
         contentPadding = PaddingValues(top = 16.dp, bottom = 48.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Clean, minimal description
-        item {
-            Text(
-                text = Loc.getText("vocab_review_desc"),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
         // 1. Prominent Hero Due Today Card
         item {
             if (dueCount > 0) {
@@ -348,20 +339,13 @@ fun VocabReviewHubView(
                                 modifier = Modifier.size(24.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = Loc.getText("vocab_review_quick_quiz"),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "A focused, bite-sized 10-question flash drill",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Text(
+                            text = Loc.getText("vocab_review_quick_quiz"),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
                         Icon(
                             imageVector = Icons.Filled.ChevronRight,
                             contentDescription = null,

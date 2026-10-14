@@ -540,14 +540,6 @@ fun UnifiedAiHubSheet(
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = Loc.getText("ai_hub_context_free_desc"),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.padding(horizontal = 16.dp)
-                                )
                             }
                         }
                     }
@@ -557,33 +549,6 @@ fun UnifiedAiHubSheet(
                             modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            if (selectedFunction == AiFunctionType.SCENES) {
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.MovieCreation,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Text(
-                                            text = Loc.getText("ai_hub_scenes_desc"),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-
                             // Hierarchy Tree File Picker (Folders collapsed by default, with Collapse All / Expand All toggle)
                             HierarchyFilePicker(
                                 folders = allFolders,

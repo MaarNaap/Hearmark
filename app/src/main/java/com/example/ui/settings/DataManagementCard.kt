@@ -76,9 +76,7 @@ fun DataManagementCard(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(Loc.getText("backup_restore_title"), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(Loc.getText("backup_restore_desc"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)

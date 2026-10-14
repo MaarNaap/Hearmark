@@ -341,14 +341,6 @@ fun ListeningActivityLineChart(
                     }
                 }
             }
-
-            Text(
-                text = Loc.getText("chart_drag_hint"),
-                fontSize = 10.sp,
-                color = onSurfaceVariantColor.copy(alpha = 0.7f),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
         }
     }
 }

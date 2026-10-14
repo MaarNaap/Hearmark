@@ -118,12 +118,6 @@ internal fun TrackQuizTabContent(
                             }
                         }
                     }
-
-                    Text(
-                        text = Loc.getText("unified_quiz_track_desc"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
         }
@@ -265,17 +259,6 @@ internal fun TrackQuizTabContent(
                             modifier = Modifier.weight(1f).testTag("quiz_focus_comp_chip")
                         )
                     }
-
-                    Text(
-                        text = when (selectedFocusMode) {
-                            QuizFocusMode.BOTH -> Loc.getText("quiz_focus_both_desc")
-                            QuizFocusMode.VOCABULARY_ONLY -> Loc.getText("quiz_focus_vocab_desc")
-                            QuizFocusMode.COMPREHENSION_ONLY -> Loc.getText("quiz_focus_comp_desc")
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.5.sp
-                    )
                 }
             }
         }
@@ -297,19 +280,11 @@ internal fun TrackQuizTabContent(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = Loc.getText("notebook_quiz_question_count"),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = Loc.getText("notebook_quiz_count_range_hint"),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 11.5.sp
-                        )
-                    }
+                    Text(
+                        text = Loc.getText("notebook_quiz_question_count"),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,

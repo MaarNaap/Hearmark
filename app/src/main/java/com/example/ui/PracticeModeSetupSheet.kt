@@ -135,12 +135,6 @@ fun PracticeModeSetupSheet(
                 }
             }
 
-            Text(
-                text = Loc.getText("practice_setup_desc"),
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
             // SECTION 1: SOURCE SELECTION CARDS
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -212,19 +206,12 @@ fun PracticeModeSetupSheet(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = Loc.getText("pause_multiplier_title"),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = Loc.getText("pause_multiplier_desc"),
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = Loc.getText("pause_multiplier_title"),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                 }
 
                 // Stepper: Minus, Center Value Chip, Plus
@@ -309,19 +296,12 @@ fun PracticeModeSetupSheet(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = Loc.getText("segment_repeat_count_title"),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = Loc.getText("segment_repeat_count_desc"),
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = Loc.getText("segment_repeat_count_title"),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                 }
 
                 // Stepper: Minus, Center Value Chip (Unlimited), Plus

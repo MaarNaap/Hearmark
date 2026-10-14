@@ -68,11 +68,6 @@ fun PracticeSettingsCard(
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Text(
-                text = Loc.getText("segment_source_desc"),
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
 
             listOf(
                 "SILENCE" to Loc.getText("segment_source_silence"),
@@ -131,11 +126,6 @@ fun PracticeSettingsCard(
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = Loc.getText("pause_multiplier_desc"),
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             // Stepper: Minus button, center chip holding value, Plus button
@@ -215,11 +205,6 @@ fun PracticeSettingsCard(
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = Loc.getText("segment_repeat_count_desc"),
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             // Stepper: Minus button, center chip with number (unlimited), Plus button
@@ -310,11 +295,6 @@ fun PracticeSettingsCard(
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
-            Text(
-                text = Loc.getText("silence_analysis_tuning_desc"),
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
 
             // 1. Word Ending Safety Buffer (Padding)
             Text(

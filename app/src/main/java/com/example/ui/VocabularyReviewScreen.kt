@@ -268,18 +268,11 @@ fun VocabularyReviewContent(
                         )
                     }
                     Spacer(modifier = Modifier.width(4.dp))
-                    Column {
-                        Text(
-                            text = Loc.getText("vocab_review_title"),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp
-                        )
-                        Text(
-                            text = Loc.getText("vocab_review_subtitle"),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = Loc.getText("vocab_review_title"),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
                 }
 
                 // Shuffle Toggle Button

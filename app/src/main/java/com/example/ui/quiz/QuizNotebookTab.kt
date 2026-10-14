@@ -118,19 +118,11 @@ internal fun NotebookQuizTabContent(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = Loc.getText("notebook_quiz_question_count"),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = Loc.getText("notebook_quiz_count_range_hint"),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 11.5.sp
-                        )
-                    }
+                    Text(
+                        text = Loc.getText("notebook_quiz_question_count"),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
