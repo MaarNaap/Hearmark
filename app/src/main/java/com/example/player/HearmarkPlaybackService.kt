@@ -49,6 +49,8 @@ class HearmarkPlaybackService : Service() {
             }
         } catch (e: Exception) {
             Log.w("HearmarkPlaybackService", "startForeground failed: ${e.message}")
+            stopSelf()
+            return START_NOT_STICKY
         }
         return START_STICKY
     }

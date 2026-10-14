@@ -35,7 +35,8 @@ object GeminiKeyStore {
     data class StoredKeyData(
         val savedKeysJson: String,
         val activeKeyId: String,
-        val legacyCustomKey: String
+        val legacyCustomKey: String,
+        val decryptionFailed: Boolean = false
     )
 
     @Synchronized
@@ -43,48 +44,65 @@ object GeminiKeyStore {
         val securePrefs = context.getSharedPreferences(SECURE_PREFS_NAME, Context.MODE_PRIVATE)
         val legacyPrefs = context.getSharedPreferences(LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
 
+        val rawSaved = securePrefs.getString(PREF_SAVED_KEYS, "") ?: ""
+        val rawCustom = securePrefs.getString(PREF_CUSTOM_KEY, "") ?: ""
+        val activeKeyId = securePrefs.getString(PREF_ACTIVE_KEY_ID, "") ?: ""
+
+        val savedDecryptResult = decryptValue(rawSaved)
+        val customDecryptResult = decryptValue(rawCustom)
+
+        if (savedDecryptResult.isFailure || customDecryptResult.isFailure) {
+            Log.e(TAG, "Keystore decryption failed for saved API keys; preserving stored encrypted payload without overwriting.")
+            return StoredKeyData(
+                savedKeysJson = "",
+                activeKeyId = activeKeyId,
+                legacyCustomKey = "",
+                decryptionFailed = true
+            )
+        }
+
         // One-time migration from legacy plaintext app_settings if present
         val legacySavedJson = legacyPrefs.getString(PREF_SAVED_KEYS, null)
         val legacyCustom = legacyPrefs.getString(PREF_CUSTOM_KEY, null)
         val legacyActiveId = legacyPrefs.getString(PREF_ACTIVE_KEY_ID, null)
 
         if (!legacySavedJson.isNullOrBlank() || !legacyCustom.isNullOrBlank()) {
-            val currentSecureJson = decryptValue(securePrefs.getString(PREF_SAVED_KEYS, "") ?: "")
-            val currentSecureCustom = decryptValue(securePrefs.getString(PREF_CUSTOM_KEY, "") ?: "")
+            val currentSecureJson = savedDecryptResult.getOrDefault("")
+            val currentSecureCustom = customDecryptResult.getOrDefault("")
 
             val migratedJson = if (currentSecureJson.isNotBlank()) currentSecureJson else (legacySavedJson ?: "")
             val migratedCustom = if (currentSecureCustom.isNotBlank()) currentSecureCustom else (legacyCustom ?: "")
-            val migratedActiveId = securePrefs.getString(PREF_ACTIVE_KEY_ID, null)
-                ?.takeIf { it.isNotBlank() }
-                ?: (legacyActiveId ?: "")
+            val migratedActiveId = activeKeyId.takeIf { it.isNotBlank() } ?: (legacyActiveId ?: "")
 
-            securePrefs.edit()
-                .putString(PREF_SAVED_KEYS, encryptValue(migratedJson))
-                .putString(PREF_CUSTOM_KEY, encryptValue(migratedCustom))
-                .putString(PREF_ACTIVE_KEY_ID, migratedActiveId)
-                .apply()
+            val encSaved = encryptValue(migratedJson)
+            val encCustom = encryptValue(migratedCustom)
+            if (encSaved != null && encCustom != null) {
+                securePrefs.edit()
+                    .putString(PREF_SAVED_KEYS, encSaved)
+                    .putString(PREF_CUSTOM_KEY, encCustom)
+                    .putString(PREF_ACTIVE_KEY_ID, migratedActiveId)
+                    .apply()
 
-            legacyPrefs.edit()
-                .remove(PREF_SAVED_KEYS)
-                .remove(PREF_CUSTOM_KEY)
-                .remove(PREF_ACTIVE_KEY_ID)
-                .apply()
+                legacyPrefs.edit()
+                    .remove(PREF_SAVED_KEYS)
+                    .remove(PREF_CUSTOM_KEY)
+                    .remove(PREF_ACTIVE_KEY_ID)
+                    .apply()
+            }
 
             return StoredKeyData(
                 savedKeysJson = migratedJson,
                 activeKeyId = migratedActiveId,
-                legacyCustomKey = migratedCustom
+                legacyCustomKey = migratedCustom,
+                decryptionFailed = false
             )
         }
 
-        val savedKeysJson = decryptValue(securePrefs.getString(PREF_SAVED_KEYS, "") ?: "")
-        val customKey = decryptValue(securePrefs.getString(PREF_CUSTOM_KEY, "") ?: "")
-        val activeKeyId = securePrefs.getString(PREF_ACTIVE_KEY_ID, "") ?: ""
-
         return StoredKeyData(
-            savedKeysJson = savedKeysJson,
+            savedKeysJson = savedDecryptResult.getOrDefault(""),
             activeKeyId = activeKeyId,
-            legacyCustomKey = customKey
+            legacyCustomKey = customDecryptResult.getOrDefault(""),
+            decryptionFailed = false
         )
     }
 
@@ -94,12 +112,19 @@ object GeminiKeyStore {
         savedKeysJson: String,
         activeKeyId: String,
         activeKeyString: String
-    ) {
+    ): Boolean {
+        val encryptedSaved = encryptValue(savedKeysJson)
+        val encryptedCustom = encryptValue(activeKeyString)
+        if (encryptedSaved == null || encryptedCustom == null) {
+            Log.e(TAG, "Cannot save keys: Keystore encryption failed. Aborting write to prevent data loss or plaintext leakage.")
+            return false
+        }
+
         val securePrefs = context.getSharedPreferences(SECURE_PREFS_NAME, Context.MODE_PRIVATE)
         securePrefs.edit()
-            .putString(PREF_SAVED_KEYS, encryptValue(savedKeysJson))
+            .putString(PREF_SAVED_KEYS, encryptedSaved)
             .putString(PREF_ACTIVE_KEY_ID, activeKeyId)
-            .putString(PREF_CUSTOM_KEY, encryptValue(activeKeyString))
+            .putString(PREF_CUSTOM_KEY, encryptedCustom)
             .apply()
 
         // Ensure legacy plaintext keys are removed
@@ -111,6 +136,7 @@ object GeminiKeyStore {
                 .remove(PREF_ACTIVE_KEY_ID)
                 .apply()
         }
+        return true
     }
 
     @Synchronized
@@ -147,14 +173,14 @@ object GeminiKeyStore {
             keyGenerator.init(spec)
             keyGenerator.generateKey()
         } catch (e: Exception) {
-            Log.w(TAG, "AndroidKeyStore unavailable, falling back to obfuscated storage: ${e.message}")
+            Log.e(TAG, "AndroidKeyStore AES-256 key generation or access failed: ${e.message}", e)
             null
         }
     }
 
-    internal fun encryptValue(plainText: String): String {
+    internal fun encryptValue(plainText: String): String? {
         if (plainText.isEmpty()) return ""
-        val secretKey = getOrCreateSecretKey() ?: return plainText
+        val secretKey = getOrCreateSecretKey() ?: return null
         return try {
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.ENCRYPT_MODE, secretKey)
@@ -165,27 +191,30 @@ object GeminiKeyStore {
             System.arraycopy(cipherBytes, 0, combined, iv.size, cipherBytes.size)
             ENCRYPTED_PREFIX + Base64.encodeToString(combined, Base64.NO_WRAP)
         } catch (e: Exception) {
-            Log.w(TAG, "Encryption failed, returning fallback: ${e.message}")
-            plainText
+            Log.e(TAG, "Encryption failed: ${e.message}", e)
+            null
         }
     }
 
-    internal fun decryptValue(storedValue: String): String {
-        if (storedValue.isEmpty()) return ""
-        if (!storedValue.startsWith(ENCRYPTED_PREFIX)) return storedValue
-        val secretKey = getOrCreateSecretKey() ?: return ""
+    internal fun decryptValue(storedValue: String): Result<String> {
+        if (storedValue.isEmpty()) return Result.success("")
+        if (!storedValue.startsWith(ENCRYPTED_PREFIX)) return Result.success(storedValue)
+        val secretKey = getOrCreateSecretKey()
+            ?: return Result.failure(IllegalStateException("AndroidKeyStore unavailable"))
         return try {
             val encoded = storedValue.removePrefix(ENCRYPTED_PREFIX)
             val combined = Base64.decode(encoded, Base64.NO_WRAP)
-            if (combined.size <= GCM_IV_LENGTH) return ""
+            if (combined.size <= GCM_IV_LENGTH) {
+                return Result.failure(IllegalArgumentException("Corrupted ciphertext in secure storage"))
+            }
             val iv = combined.copyOfRange(0, GCM_IV_LENGTH)
             val cipherBytes = combined.copyOfRange(GCM_IV_LENGTH, combined.size)
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
-            String(cipher.doFinal(cipherBytes), Charsets.UTF_8)
+            Result.success(String(cipher.doFinal(cipherBytes), Charsets.UTF_8))
         } catch (e: Exception) {
-            Log.w(TAG, "Decryption failed: ${e.message}")
-            ""
+            Log.e(TAG, "Decryption failed: ${e.message}", e)
+            Result.failure(e)
         }
     }
 }

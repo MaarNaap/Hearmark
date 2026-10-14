@@ -19,29 +19,25 @@ object AutoBackupManager {
     private const val PREF_LAST_BACKED_UP_VERSION = "last_backed_up_version"
 
     /**
-     * Checks if the database needs a pre-migration backup for [targetVersion] and dispatches
-     * the file copy on Dispatchers.IO so process startup is never blocked on the main thread.
+     * Checks if the database needs a pre-migration backup for [targetVersion] and executes
+     * the backup synchronously before Room opens and migrates the database files.
      */
-    fun scheduleSafetyBackupIfNeeded(context: Context, targetVersion: Int = 19) {
-        val appCtx = context.applicationContext
-        val prefs = appCtx.getSharedPreferences(DB_BACKUP_META_PREFS, Context.MODE_PRIVATE)
-        if (prefs.getInt(PREF_LAST_BACKED_UP_VERSION, 0) >= targetVersion) return
-
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-            safetyBackupDatabaseFile(appCtx, targetVersion)
-        }
+    fun scheduleSafetyBackupIfNeeded(context: Context, targetVersion: Int = 21): Boolean {
+        return safetyBackupDatabaseFile(context.applicationContext, targetVersion)
     }
 
     /**
-     * Safely copies the SQLite database file and WAL journal when upgrading to a new schema version.
-     * Keeps one version-specific snapshot per schema upgrade plus the latest pre_migration.bak file.
+     * Safely and synchronously copies the SQLite database file, WAL journal, and SHM index
+     * before Room opens and migrates the database to [targetVersion].
+     * Only marks [PREF_LAST_BACKED_UP_VERSION] when the file copy actually succeeds,
+     * avoiding race conditions with migrations.
      */
     @Synchronized
-    fun safetyBackupDatabaseFile(context: Context, targetVersion: Int = 19) {
+    fun safetyBackupDatabaseFile(context: Context, targetVersion: Int = 21): Boolean {
         try {
             val prefs = context.getSharedPreferences(DB_BACKUP_META_PREFS, Context.MODE_PRIVATE)
             val lastVersion = prefs.getInt(PREF_LAST_BACKED_UP_VERSION, 0)
-            if (lastVersion >= targetVersion) return
+            if (lastVersion >= targetVersion) return true
 
             val dbFile = context.getDatabasePath("smart_audio_tasks_db")
             if (dbFile.exists() && dbFile.length() > 0) {
@@ -62,13 +58,24 @@ object AutoBackupManager {
                     walFile.copyTo(latestWal, overwrite = true)
                 }
 
-                prefs.edit().putInt(PREF_LAST_BACKED_UP_VERSION, targetVersion).apply()
-                Log.d(TAG, "Safety backup of database created for v$targetVersion (${dbFile.length()} bytes)")
+                val shmFile = context.getDatabasePath("smart_audio_tasks_db-shm")
+                if (shmFile.exists() && shmFile.length() > 0) {
+                    val versionedShm = File(safetyDir, "smart_audio_tasks_db.v${targetVersion}.pre_migration.bak-shm")
+                    shmFile.copyTo(versionedShm, overwrite = true)
+                    val latestShm = File(safetyDir, "smart_audio_tasks_db.pre_migration.bak-shm")
+                    shmFile.copyTo(latestShm, overwrite = true)
+                }
+
+                prefs.edit().putInt(PREF_LAST_BACKED_UP_VERSION, targetVersion).commit()
+                Log.d(TAG, "Safety backup of database created synchronously for v$targetVersion (${dbFile.length()} bytes)")
+                return true
             } else {
-                prefs.edit().putInt(PREF_LAST_BACKED_UP_VERSION, targetVersion).apply()
+                prefs.edit().putInt(PREF_LAST_BACKED_UP_VERSION, targetVersion).commit()
+                return true
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to create database safety backup", e)
+            Log.e(TAG, "Failed to create database safety backup for v$targetVersion", e)
+            return false
         }
     }
 

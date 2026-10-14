@@ -36,8 +36,8 @@ abstract class AppDatabase : RoomDatabase() {
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                // Safeguard existing SQLite database asynchronously when upgrading schema versions
-                com.example.util.AutoBackupManager.scheduleSafetyBackupIfNeeded(
+                // Safeguard existing SQLite database synchronously before Room opens or migrates it
+                com.example.util.AutoBackupManager.safetyBackupDatabaseFile(
                     context.applicationContext,
                     DATABASE_VERSION
                 )

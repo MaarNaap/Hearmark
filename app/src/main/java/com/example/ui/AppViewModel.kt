@@ -297,12 +297,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             array.put(obj)
         }
         val activeKeyString = keys.firstOrNull { it.id == activeId }?.key ?: ""
-        com.example.ai.GeminiKeyStore.saveKeys(
+        val saved = com.example.ai.GeminiKeyStore.saveKeys(
             context = getApplication(),
             savedKeysJson = array.toString(),
             activeKeyId = activeId,
             activeKeyString = activeKeyString
         )
+        if (!saved) {
+            Log.e("AppViewModel", "Failed to encrypt and persist API keys via Android Keystore; aborting write to prevent key loss.")
+        }
 
         savedApiKeys = keys
         activeApiKeyId = activeId
@@ -356,46 +359,50 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         
         // Load saved API keys and active selection from encrypted, backup-excluded store
         val storedKeyData = com.example.ai.GeminiKeyStore.loadStoredKeys(application)
-        val savedKeysJson = storedKeyData.savedKeysJson
-        val legacyKey = storedKeyData.legacyCustomKey
-        val activeKeyIdFromPref = storedKeyData.activeKeyId
-
-        val parsedKeys = mutableListOf<SavedApiKey>()
-        if (savedKeysJson.isNotBlank()) {
-            try {
-                val array = JSONArray(savedKeysJson)
-                for (i in 0 until array.length()) {
-                    val obj = array.getJSONObject(i)
-                    val id = obj.optString("id", UUID.randomUUID().toString())
-                    val name = obj.optString("name", "Key ${i + 1}")
-                    val key = obj.optString("key", "")
-                    if (key.isNotBlank()) {
-                        parsedKeys.add(SavedApiKey(id, name, key))
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w("AppViewModel", "Failed to parse saved API keys: ${e.message}")
-            }
-        }
-
-        if (parsedKeys.isEmpty() && legacyKey.isNotBlank()) {
-            val initial = SavedApiKey(name = "Key 1", key = legacyKey)
-            parsedKeys.add(initial)
-            savedApiKeys = parsedKeys
-            activeApiKeyId = initial.id
-            customGeminiApiKey = legacyKey
-            persistApiKeys(parsedKeys, initial.id)
+        if (storedKeyData.decryptionFailed) {
+            Log.e("AppViewModel", "Failed to decrypt saved API keys from Android Keystore; preserving stored data without overwriting.")
         } else {
-            savedApiKeys = parsedKeys
-            val active = parsedKeys.firstOrNull { it.id == activeKeyIdFromPref } ?: parsedKeys.firstOrNull()
-            if (active != null) {
-                activeApiKeyId = active.id
-                customGeminiApiKey = active.key
-            } else {
-                activeApiKeyId = ""
-                customGeminiApiKey = ""
+            val savedKeysJson = storedKeyData.savedKeysJson
+            val legacyKey = storedKeyData.legacyCustomKey
+            val activeKeyIdFromPref = storedKeyData.activeKeyId
+
+            val parsedKeys = mutableListOf<SavedApiKey>()
+            if (savedKeysJson.isNotBlank()) {
+                try {
+                    val array = JSONArray(savedKeysJson)
+                    for (i in 0 until array.length()) {
+                        val obj = array.getJSONObject(i)
+                        val id = obj.optString("id", UUID.randomUUID().toString())
+                        val name = obj.optString("name", "Key ${i + 1}")
+                        val key = obj.optString("key", "")
+                        if (key.isNotBlank()) {
+                            parsedKeys.add(SavedApiKey(id, name, key))
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("AppViewModel", "Failed to parse saved API keys: ${e.message}")
+                }
             }
-            GeminiService.setConfiguredApiKeys(customGeminiApiKey, parsedKeys.map { it.key })
+
+            if (parsedKeys.isEmpty() && legacyKey.isNotBlank()) {
+                val initial = SavedApiKey(name = "Key 1", key = legacyKey)
+                parsedKeys.add(initial)
+                savedApiKeys = parsedKeys
+                activeApiKeyId = initial.id
+                customGeminiApiKey = legacyKey
+                persistApiKeys(parsedKeys, initial.id)
+            } else {
+                savedApiKeys = parsedKeys
+                val active = parsedKeys.firstOrNull { it.id == activeKeyIdFromPref } ?: parsedKeys.firstOrNull()
+                if (active != null) {
+                    activeApiKeyId = active.id
+                    customGeminiApiKey = active.key
+                } else {
+                    activeApiKeyId = ""
+                    customGeminiApiKey = ""
+                }
+                GeminiService.setConfiguredApiKeys(customGeminiApiKey, parsedKeys.map { it.key })
+            }
         }
 
         Loc.currentLanguage = sharedPref.getString("language", "en") ?: "en"

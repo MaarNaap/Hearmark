@@ -9,8 +9,10 @@ import java.io.File
 class AppRepository(
     val dao: AppDao,
     val vocabDao: VocabularyItemDao? = null,
-    private val database: AppDatabase? = null
+    val database: AppDatabase? = null
 ) {
+    suspend fun <R> withTransaction(block: suspend () -> R): R = runInTransaction(block)
+
     private suspend fun <R> runInTransaction(block: suspend () -> R): R {
         return if (database != null) {
             database.withTransaction { block() }

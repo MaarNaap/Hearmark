@@ -32,9 +32,9 @@ Hearmark is an Android application built with Kotlin, Jetpack Compose (Material 
 ## Configuration & Building
 
 ### 1. Gemini API Key Setup
-Hearmark reads optional build-time keys from `.env` (via the Secrets Gradle Plugin) or user-supplied keys entered in the in-app **Settings → Gemini API Keys** screen:
-1. Copy `.env.example` to `.env` (or configure `GEMINI_API_KEY` in the AI Studio Secrets panel).
-2. Alternatively, add one or more Gemini API keys directly inside the app's Settings screen. User-supplied keys are encrypted with the Android Keystore and stored in `gemini_secure_prefs.xml` (excluded from cloud backup and device transfer).
+Hearmark supports both development-time configuration and secure in-app key management:
+1. **Local Development Builds**: Copy `.env.example` to `.env` (or configure `GEMINI_API_KEY` in the AI Studio Secrets panel). Note that build-time keys compiled into `BuildConfig.GEMINI_API_KEY` are embedded in the APK binary and suitable for private local testing.
+2. **Production & Distributed Releases**: Add one or more Gemini API keys directly inside the in-app **Settings → Gemini API Keys** screen. User-supplied keys are encrypted at rest using an Android Keystore 256-bit AES-GCM key (`AES/GCM/NoPadding`), never stored in plaintext, and isolated in `gemini_secure_prefs.xml` (excluded from Android Cloud Backup and device-to-device transfer).
 
 ### 2. Running Unit & Robolectric Tests
 Run the local JVM and Robolectric test suite with:

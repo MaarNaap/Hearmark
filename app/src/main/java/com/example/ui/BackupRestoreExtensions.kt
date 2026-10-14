@@ -225,15 +225,15 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                 return defaultVal
             }
 
-            var historyCount = 0
-            var tasksCount = 0
-            var progressCount = 0
-            var tagsCount = 0
-            var notesCount = 0
-            var labelsCount = 0
-            var dailyProgressCount = 0
-            var vocabCount = 0
-            var quizQuestionsCount = 0
+            val parsedHistory = mutableListOf<PlaybackHistory>()
+            val parsedTasks = mutableListOf<Task>()
+            val parsedProgress = mutableListOf<TaskTrackProgress>()
+            val parsedNotes = mutableListOf<Note>()
+            val parsedTags = mutableListOf<Pair<String, String?>>()
+            val parsedLabels = mutableListOf<String>()
+            val parsedDailyProgress = mutableListOf<TaskDailyProgress>()
+            val parsedVocab = mutableListOf<VocabularyItem>()
+            val parsedQuizQuestions = mutableListOf<QuizQuestion>()
 
             suspend fun parseQuizQuestionItem(obj: org.json.JSONObject) {
                 val question = optStringSafe(obj, "question", defaultVal = "")
@@ -264,8 +264,7 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                         srLapses = optIntSafe(obj, "srLapses", "sr_lapses", defaultVal = 0),
                         srNextReviewAt = optNullableLongSafe(obj, "srNextReviewAt", "sr_next_review_at")
                     )
-                    repository.dao.insertQuizQuestion(q)
-                    quizQuestionsCount++
+                    parsedQuizQuestions.add(q)
                 }
             }
 
@@ -289,8 +288,7 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                     actualListenedMs = actualListenedMs,
                     activeTasks = activeTasks
                 )
-                repository.insertPlaybackHistory(history)
-                historyCount++
+                parsedHistory.add(history)
             }
 
             suspend fun parseTaskItem(obj: org.json.JSONObject) {
@@ -331,8 +329,7 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                     labels = labels,
                     dailyTargetValue = dailyTargetValue
                 )
-                repository.insertTask(task)
-                tasksCount++
+                parsedTasks.add(task)
             }
 
             suspend fun parseTaskProgressItem(obj: org.json.JSONObject) {
@@ -365,8 +362,7 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                         completedDays = mergedDays,
                         isTrackCompleted = mergedCompleted
                     )
-                    repository.insertTaskProgress(p)
-                    progressCount++
+                    parsedProgress.add(p)
                 }
             }
 
@@ -407,8 +403,7 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                         meaning = meaning,
                         contextSentence = contextSentence
                     )
-                    repository.insertNote(note)
-                    notesCount++
+                    parsedNotes.add(note)
                 }
             }
 
@@ -417,12 +412,10 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                     val name = optStringSafe(item, "name", "tag", "tagName")
                     if (name.isNotEmpty()) {
                         val colorHex = optNullableStringSafe(item, "colorHex", "color_hex", "color")
-                        repository.insertTag(name, colorHex)
-                        tagsCount++
+                        parsedTags.add(Pair(name, colorHex))
                     }
                 } else if (item is String && item.isNotBlank()) {
-                    repository.insertTag(item.trim(), null)
-                    tagsCount++
+                    parsedTags.add(Pair(item.trim(), null))
                 }
             }
 
@@ -433,8 +426,7 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                     else -> ""
                 }
                 if (name.isNotEmpty()) {
-                    repository.dao.insertTaskLabel(TaskLabel(name = name))
-                    labelsCount++
+                    parsedLabels.add(name)
                 }
             }
 
@@ -443,8 +435,7 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                 val date = optStringSafe(obj, "date", defaultVal = "")
                 val completedPlayCount = optIntSafe(obj, "completedPlayCount", "completed_play_count", defaultVal = 0)
                 if (taskId > 0L && date.isNotEmpty()) {
-                    repository.insertTaskDailyProgress(TaskDailyProgress(taskId = taskId, date = date, completedPlayCount = completedPlayCount))
-                    dailyProgressCount++
+                    parsedDailyProgress.add(TaskDailyProgress(taskId = taskId, date = date, completedPlayCount = completedPlayCount))
                 }
             }
 
@@ -466,8 +457,7 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                         lastReviewedAt = optNullableLongSafe(obj, "lastReviewedAt", "last_reviewed_at"),
                         createdAt = optLongSafe(obj, "createdAt", "created_at", defaultVal = System.currentTimeMillis())
                     )
-                    repository.insertVocabularyItem(item)
-                    vocabCount++
+                    parsedVocab.add(item)
                 }
             }
 
@@ -573,11 +563,6 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                             e.printStackTrace()
                         }
                     }
-                    try {
-                        repository.relinkNotesToActiveTracks()
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
                 }
 
                 // 5. Note Tags
@@ -659,6 +644,41 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                     }
                 }
             }
+
+            // ATOMIC DATABASE WRITE:
+            // Write all validated and parsed records in a single database transaction.
+            // Using NonCancellable ensures that if the user exits the screen mid-restore,
+            // the transaction either completes cleanly or rolls back without leaving a partial state.
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                repository.withTransaction {
+                    for (h in parsedHistory) repository.insertPlaybackHistory(h)
+                    for (t in parsedTasks) repository.insertTask(t)
+                    for (p in parsedProgress) repository.insertTaskProgress(p)
+                    for (n in parsedNotes) repository.insertNote(n)
+                    for (tag in parsedTags) repository.insertTag(tag.first, tag.second)
+                    for (lbl in parsedLabels) repository.dao.insertTaskLabel(TaskLabel(name = lbl))
+                    for (dp in parsedDailyProgress) repository.insertTaskDailyProgress(dp)
+                    for (v in parsedVocab) repository.insertVocabularyItem(v)
+                    for (q in parsedQuizQuestions) repository.dao.insertQuizQuestion(q)
+                    if (parsedNotes.isNotEmpty()) {
+                        try {
+                            repository.relinkNotesToActiveTracks()
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+            }
+
+            var historyCount = parsedHistory.size
+            var tasksCount = parsedTasks.size
+            var progressCount = parsedProgress.size
+            var tagsCount = parsedTags.size
+            var notesCount = parsedNotes.size
+            var labelsCount = parsedLabels.size
+            var dailyProgressCount = parsedDailyProgress.size
+            var vocabCount = parsedVocab.size
+            var quizQuestionsCount = parsedQuizQuestions.size
 
             // If tasks were restored, sync labels and reschedule active alarms
             if (tasksCount > 0) {
