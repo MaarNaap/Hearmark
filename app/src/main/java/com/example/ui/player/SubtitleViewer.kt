@@ -413,9 +413,9 @@ fun SubtitlesPageContent(
                                         lineHeightMultiplier = 1.4,
                                         fontWeight = if (isCurrentSearchMatch) FontWeight.SemiBold else FontWeight.Normal,
                                         textColor = if (isDarkBg) {
-                                            if (isActive) Color.White else Color(0xFFF8FAFC)
+                                            if (isActive) Color.White else Color(0xFFCBD5E1)
                                         } else {
-                                            if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                            if (isActive) Color(0xFF0F172A) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.82f)
                                         },
                                         modifier = Modifier.fillMaxWidth()
                                     )
