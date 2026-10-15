@@ -22,8 +22,8 @@ object GeminiSubtitleParsing {
             text = text.substring(0, trailingFences).trim()
         }
 
-        // Find the start of the first cue index line or timestamp
-        val firstCueRegex = Regex("""(?m)^\s*1\s*[\r\n]+\s*\d{1,2}:\d{2}:\d{2}""")
+        // Find the start of the first cue index line or timestamp (matching any cue index number)
+        val firstCueRegex = Regex("""(?m)^\s*\d+\s*[\r\n]+\s*\d{1,2}:\d{2}:\d{2}""")
         val match = firstCueRegex.find(text)
         if (match != null) {
             text = text.substring(match.range.first).trim()
@@ -35,6 +35,97 @@ object GeminiSubtitleParsing {
             }
         }
         return text
+    }
+
+    /**
+     * Sanitizes and enforces strictly forward-advancing chronological order for subtitle cues.
+     * Guarantees:
+     * 1. Strictly increasing timeline (startMs[i] >= startMs[i-1]).
+     * 2. Positive, valid duration for every cue (endMs > startMs).
+     * 3. Overlap resolution between adjacent cues.
+     * 4. Deduplication of accidental repeat lines.
+     * 5. Clean 1-based sequential re-indexing.
+     */
+    fun sanitizeAndOrderCues(rawCues: List<com.example.player.SubtitleCue>): List<com.example.player.SubtitleCue> {
+        val validTimed = rawCues.filter { it.isTimed && it.startMs >= 0L && it.text.isNotBlank() }
+        if (validTimed.isEmpty()) return emptyList()
+
+        // Sort primarily by start timestamp, secondary by end timestamp
+        val sorted = validTimed.sortedWith(compareBy({ it.startMs }, { it.endMs }))
+        val sanitized = mutableListOf<com.example.player.SubtitleCue>()
+
+        for (cue in sorted) {
+            val cleanText = cue.text.trim()
+            if (cleanText.isEmpty()) continue
+
+            // Deduplicate immediately adjacent identical text cues within close proximity
+            if (sanitized.isNotEmpty()) {
+                val lastCue = sanitized.last()
+                val isIdenticalText = lastCue.text.trim().equals(cleanText, ignoreCase = true)
+                val isCloseTime = (cue.startMs - lastCue.endMs) < 2000L
+                if (isIdenticalText && isCloseTime) {
+                    // Extend the last cue's end time rather than having a duplicate cue
+                    sanitized[sanitized.lastIndex] = lastCue.copy(
+                        endMs = maxOf(lastCue.endMs, cue.endMs)
+                    )
+                    continue
+                }
+            }
+
+            var start = cue.startMs.coerceAtLeast(0L)
+            var end = cue.endMs
+
+            // Fix inverted or missing duration
+            if (end <= start) {
+                val charLength = cleanText.length
+                val estimatedDur = (charLength * 55L).coerceIn(1200L, 8000L)
+                end = start + estimatedDur
+            } else if ((end - start) < 200L) {
+                end = start + 200L
+            }
+
+            if (sanitized.isNotEmpty()) {
+                val prev = sanitized.last()
+
+                // Enforce strictly non-regressive start time
+                if (start < prev.startMs) {
+                    start = prev.startMs + 50L
+                }
+
+                // Resolve overlaps with previous cue
+                if (start < prev.endMs) {
+                    val overlap = prev.endMs - start
+                    if (overlap > 100L) {
+                        // If the previous cue was long enough, trim its end time to avoid overlapping
+                        if (prev.endMs - prev.startMs > 600L) {
+                            val newPrevEnd = maxOf(prev.startMs + 300L, start - 30L)
+                            sanitized[sanitized.lastIndex] = prev.copy(endMs = newPrevEnd)
+                            start = maxOf(start, newPrevEnd + 30L)
+                        } else {
+                            // Otherwise push current cue forward slightly
+                            start = prev.endMs + 30L
+                        }
+                    }
+                }
+
+                // Re-verify positive duration after any start adjustments
+                if (end <= start) {
+                    end = start + 300L
+                }
+            }
+
+            sanitized.add(
+                com.example.player.SubtitleCue(
+                    id = sanitized.size + 1,
+                    startMs = start,
+                    endMs = end,
+                    text = cleanText,
+                    isTimed = true
+                )
+            )
+        }
+
+        return sanitized
     }
 
     fun parseSseSubtitleStream(

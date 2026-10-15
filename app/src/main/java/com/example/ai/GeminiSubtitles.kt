@@ -236,14 +236,14 @@ object GeminiSubtitles {
                 null
             }
 
-            // Up to 10 minutes (600 seconds) is processed in a single pass; longer tracks use 8-minute chunks.
-            val singlePassMaxSeconds = 600
+            // Up to 25 minutes (1500 seconds) is processed in a single pass; longer tracks use 10-minute chunks.
+            val singlePassMaxSeconds = 1500
             val chunkWindows = mutableListOf<Pair<Int, Int>>()
 
             if (durationSeconds <= singlePassMaxSeconds) {
                 chunkWindows.add(Pair(0, durationSeconds))
             } else {
-                val chunkWindowSec = 480 // 8 minutes per chunk
+                val chunkWindowSec = 600 // 10 minutes per chunk
                 var curStart = 0
                 while (curStart < durationSeconds) {
                     val curEnd = (curStart + chunkWindowSec).coerceAtMost(durationSeconds)
@@ -449,15 +449,44 @@ object GeminiSubtitles {
                 val chunkCues = SubtitleParser.parseContent(cleanedSrt)
 
                 if (chunkCues.isNotEmpty()) {
-                    val firstStart = chunkCues.first().startMs
-                    val needsOffsetShift = isSliced || (totalChunks > 1 && winStartMs > 30000L && firstStart < 15000L)
+                    val isMultiChunk = totalChunks > 1
+                    val hasWindowOffset = winStartMs > 5000L
+
+                    val needsOffsetShift: Boolean = if (!isMultiChunk || !hasWindowOffset) {
+                        false
+                    } else if (isSliced) {
+                        true // physically sliced audio always starts from 00:00:00
+                    } else {
+                        // Check if timestamps in chunk are relative (< winStartMs - 10000L) or absolute
+                        val firstStart = chunkCues.first().startMs
+                        val medianStart = chunkCues[chunkCues.size / 2].startMs
+                        firstStart < (winStartMs - 10000L) || medianStart < (winStartMs - 10000L)
+                    }
+
                     val offsetToAdd = if (needsOffsetShift) winStartMs else 0L
 
                     for (cue in chunkCues) {
                         val shiftedStart = (cue.startMs + offsetToAdd).coerceAtLeast(0L)
                         val shiftedEnd = (cue.endMs + offsetToAdd).coerceAtLeast(shiftedStart + 200L)
 
-                        if (allAccumulatedCues.isNotEmpty() && shiftedStart <= allAccumulatedCues.last().startMs) {
+                        if (allAccumulatedCues.isEmpty()) {
+                            allAccumulatedCues.add(
+                                SubtitleCue(
+                                    id = globalCueIndex++,
+                                    startMs = shiftedStart,
+                                    endMs = shiftedEnd,
+                                    text = cue.text
+                                )
+                            )
+                            continue
+                        }
+
+                        val last = allAccumulatedCues.last()
+                        val isDuplicateBoundaryText = cue.text.trim().equals(last.text.trim(), ignoreCase = true)
+                        if (isDuplicateBoundaryText && kotlin.math.abs(shiftedStart - last.startMs) < 6000L) {
+                            allAccumulatedCues[allAccumulatedCues.lastIndex] = last.copy(
+                                endMs = maxOf(last.endMs, shiftedEnd)
+                            )
                             continue
                         }
 
@@ -477,10 +506,13 @@ object GeminiSubtitles {
                 return@withContext Result.failure(Exception("Gemini returned invalid or empty subtitle format."))
             }
 
-            allAccumulatedCues.sortBy { it.startMs }
-            val reindexed = allAccumulatedCues.mapIndexed { idx, cue -> cue.copy(id = idx + 1) }
-            val finalSrtOutput = SubtitleParser.exportCuesToSrt(reindexed)
+            // Strictly enforce chronological ordering, positive durations, boundary overlap resolution and sequential reindexing
+            val sanitizedCues = GeminiSubtitleParsing.sanitizeAndOrderCues(allAccumulatedCues)
+            if (sanitizedCues.isEmpty()) {
+                return@withContext Result.failure(Exception("Gemini returned invalid or empty subtitle format."))
+            }
 
+            val finalSrtOutput = SubtitleParser.exportCuesToSrt(sanitizedCues)
             Result.success(finalSrtOutput)
         } catch (e: Exception) {
             Log.e(TAG, "Error generating subtitles", e)

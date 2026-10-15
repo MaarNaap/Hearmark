@@ -498,36 +498,43 @@ Take for granted: To fail to properly appreciate someone or something, especiall
                 append("TOTAL TRACK DURATION: ${SubtitleParser.formatSrtTimestamp(calculatedDurationMs)}\n\n")
             }
 
-            append("MANDATORY ACOUSTIC TIMING RULES (SHARP ACCURACY):\n")
-            append("1. ACOUSTIC ONSET & OFFSET LOCK:\n")
+            append("MANDATORY ACOUSTIC TIMING & ORDER RULES (STRICT ACCURACY):\n")
+            append("1. STRICT CHRONOLOGICAL ORDER (ZERO OUT-OF-ORDER JUMPS):\n")
+            append("   - Cues MUST appear in exact forward chronological order matching audio playback.\n")
+            append("   - Every cue's start timestamp MUST be greater than or equal to the preceding cue's start timestamp.\n")
+            append("   - End timestamp MUST always be strictly greater than start timestamp (end > start).\n")
+            append("   - Never place a subtitle cue out of order or regress to an earlier timestamp.\n\n")
+
+            append("2. ACOUSTIC ONSET & OFFSET LOCK:\n")
             append("   - Start Timestamp: Lock strictly to the exact millisecond when the speaker begins phonation of the first syllable. Never place the start timestamp earlier in silence or noise.\n")
             append("   - End Timestamp: Lock strictly to the millisecond when vocal sound finishes. NEVER extend the end timestamp into silent pauses or breathing before the next phrase.\n")
             append("   - SILENCE GAPS: Any silence or musical interlude longer than 0.3 seconds MUST be empty with no subtitle displayed.\n\n")
 
-            append("2. SENTENCE SEGMENTATION:\n")
+            append("3. SENTENCE SEGMENTATION:\n")
             append("   - Keep each complete grammatical sentence in exactly ONE subtitle cue whenever possible.\n")
             append("   - Do NOT split a single continuous sentence across multiple cues.\n")
             append("   - Do NOT merge two separate sentences into the same cue.\n\n")
 
             if (!cleanReferenceText.isNullOrBlank()) {
-                append("3. REFERENCE TRANSCRIPT (WORDING ONLY):\n")
+                append("4. REFERENCE TRANSCRIPT (WORDING ONLY):\n")
                 append("   - Use the text below strictly for correct words, spelling, vocabulary, and sentence structure:\n")
                 append("--- REFERENCE TRANSCRIPT START ---\n")
                 append(cleanReferenceText.trim())
                 append("\n--- REFERENCE TRANSCRIPT END ---\n")
                 append("   - DO NOT copy or infer timestamps from any previous subtitles. Determine start and end timestamps purely by listening to the speech audio waveform.\n\n")
             } else {
-                append("3. HIGH-FIDELITY TRANSCRIPTION:\n")
+                append("4. HIGH-FIDELITY TRANSCRIPTION:\n")
                 append("   - Transcribe every spoken word faithfully with proper punctuation and casing.\n\n")
             }
 
-            append("4. FORMAT:\n")
+            append("5. FORMAT:\n")
             append("   - Output ONLY valid SubRip (.srt) format starting with cue index $globalCueIndex.\n")
             append("   - Timestamps format: HH:MM:SS,mmm --> HH:MM:SS,mmm\n")
+            append("   - Separate each subtitle cue with a blank line.\n")
             append("   - Absolutely no commentary, greetings, or markdown fences.\n")
         }
 
-        val systemInstruction = "You are a professional audio transcriptionist and pinpoint subtitle timing specialist. You generate sharp, millisecond-accurate SubRip (.srt) subtitles synchronized with acoustic speech boundaries. Output strictly valid SRT content."
+        val systemInstruction = "You are a professional audio transcriptionist and pinpoint subtitle timing specialist. You generate sharp, millisecond-accurate SubRip (.srt) subtitles in strictly forward chronological order synchronized with acoustic speech boundaries. Output strictly valid SRT content."
         return Pair(systemInstruction, prompt)
     }
 }
