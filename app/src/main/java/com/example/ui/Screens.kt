@@ -815,6 +815,10 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                             AudioPlayerManager.playTrack(track)
                             AudioPlayerManager.seekTo(ts)
                             AudioPlayerManager.resume()
+                        },
+                        onOpenAiHub = { function, tr ->
+                            viewModel.closeQuizSheet()
+                            viewModel.openAiHub(function = function, track = tr)
                         }
                     )
                 }

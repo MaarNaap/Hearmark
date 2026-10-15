@@ -24,7 +24,8 @@ fun UnifiedQuizSheet(
     allFolders: List<com.example.data.Folder> = emptyList(),
     onDismiss: () -> Unit,
     onOpenVocabularyReview: (() -> Unit)? = null,
-    onPlayTrackInMainPlayer: ((AudioTrack, Long) -> Unit)? = null
+    onPlayTrackInMainPlayer: ((AudioTrack, Long) -> Unit)? = null,
+    onOpenAiHub: ((AiFunctionType, AudioTrack?) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -224,7 +225,8 @@ fun UnifiedQuizSheet(
                                 onTogglePlayAudio = togglePlayAudio,
                                 isPlayingAudio = isPlayingAudio,
                                 currentlyPlayingTs = currentlyPlayingTs,
-                                onNavigateToTab = { mode -> quizViewModel.setQuizTabMode(mode) }
+                                onNavigateToTab = { mode -> quizViewModel.setQuizTabMode(mode) },
+                                onOpenAiHub = onOpenAiHub
                             )
                         }
                     }

@@ -1061,8 +1061,15 @@ object Loc {
         "ai_hub_execute_action" to mapOf("en" to "Run", "ar" to "تشغيل"),
         "ai_hub_current_playing_badge" to mapOf("en" to "Playing Now", "ar" to "قيد التشغيل"),
         "ai_hub_notes_count_badge" to mapOf("en" to "%d notes selected", "ar" to "%d ملاحظة محددة"),
-        "ai_hub_all_notes_badge" to mapOf("en" to "All Notes (%d)", "ar" to "كل الملاحظات (%d)"),
         "ai_hub_independent_tracks" to mapOf("en" to "Tracks", "ar" to "المقاطع الفردية"),
+        "generate_quiz_ai_hub" to mapOf("en" to "Generate Questions with AI Hub", "ar" to "توليد أسئلة عبر مركز الذكاء الاصطناعي"),
+        "generate_more_quiz_ai_hub" to mapOf("en" to "Generate More Questions", "ar" to "توليد المزيد من الأسئلة"),
+        "quiz_no_track_questions" to mapOf("en" to "No quiz questions for this file yet.", "ar" to "لا توجد أسئلة اختبار لهذا الملف بعد."),
+        "quick_ai_ask" to mapOf("en" to "Ask AI about Track", "ar" to "اسأل الذكاء الاصطناعي عن المقطع"),
+        "quick_ai_quiz" to mapOf("en" to "Generate Quiz Questions", "ar" to "توليد أسئلة اختبار"),
+        "quick_ai_scenes" to mapOf("en" to "Split Track into Scenes", "ar" to "تقسيم المقطع إلى مشاهد"),
+        "quick_ai_subtitles" to mapOf("en" to "Generate Subtitles", "ar" to "توليد ملف الترجمة"),
+        "quick_ai_open_hub" to mapOf("en" to "Open Full AI Hub...", "ar" to "فتح مركز الذكاء الاصطناعي..."),
 
         // Additional missing and UI action keys
         "close" to mapOf("en" to "Close", "ar" to "إغلاق"),

@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -23,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.AudioTrack
 import com.example.data.QuizQuestion
+import com.example.ui.AiFunctionType
 import com.example.ui.Loc
 import com.example.ui.QuizTabMode
 
@@ -37,7 +39,8 @@ internal fun QuizBankBrowserView(
     onTogglePlayAudio: (Long, Long?) -> Unit,
     isPlayingAudio: Boolean,
     currentlyPlayingTs: Long?,
-    onNavigateToTab: ((QuizTabMode) -> Unit)? = null
+    onNavigateToTab: ((QuizTabMode) -> Unit)? = null,
+    onOpenAiHub: ((AiFunctionType, AudioTrack?) -> Unit)? = null
 ) {
     var viewAllVocab by remember { mutableStateOf(targetTrack == null) }
     var questionIdToDelete by remember { mutableStateOf<Long?>(null) }
@@ -95,17 +98,43 @@ internal fun QuizBankBrowserView(
             }
         }
 
-        // Start practice button
+        // Start practice button & AI Hub generate more shortcut
         if (displayList.isNotEmpty()) {
             item {
-                Button(
-                    onClick = { onStartPractice(displayList) },
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("${Loc.getText("unified_quiz_start_session")} (${displayList.size})", fontWeight = FontWeight.Bold)
+                    Button(
+                        onClick = { onStartPractice(displayList) },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                    ) {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("${Loc.getText("unified_quiz_start_session")} (${displayList.size})", fontWeight = FontWeight.Bold)
+                    }
+
+                    if (onOpenAiHub != null && targetTrack != null) {
+                        OutlinedButton(
+                            onClick = { onOpenAiHub(AiFunctionType.QUIZ, targetTrack) },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().height(42.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.AutoAwesome,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = Loc.getText("generate_more_quiz_ai_hub"),
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -145,11 +174,31 @@ internal fun QuizBankBrowserView(
                         }
 
                         Text(
-                            text = Loc.getText("quiz_empty_bank_prompt"),
+                            text = if (!viewAllVocab && targetTrack != null) Loc.getText("quiz_no_track_questions") else Loc.getText("quiz_empty_bank_prompt"),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
                         )
+
+                        if (onOpenAiHub != null && targetTrack != null) {
+                            Button(
+                                onClick = { onOpenAiHub(AiFunctionType.QUIZ, targetTrack) },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().height(46.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.AutoAwesome,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = Loc.getText("generate_quiz_ai_hub"),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.5.sp
+                                )
+                            }
+                        }
 
                         if (onNavigateToTab != null) {
                             Row(

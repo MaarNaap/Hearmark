@@ -103,16 +103,41 @@ fun UnifiedAiHubSheet(
     }
 
     // Selected Targets for Each Context Type
-    var selectedTrack by remember(initialTrack, currentTrackState, allTracks) {
+    // Initialize once upon sheet entry so periodic playback progress ticks never override user selection
+    var selectedTrack by remember {
         mutableStateOf(initialTrack ?: currentTrackState ?: allTracks.firstOrNull())
+    }
+
+    LaunchedEffect(allTracks) {
+        val currentSelectedId = selectedTrack?.id
+        if (currentSelectedId != null) {
+            val updated = allTracks.find { it.id == currentSelectedId }
+            if (updated != null && updated !== selectedTrack) {
+                selectedTrack = updated
+            }
+        } else if (selectedTrack == null && allTracks.isNotEmpty()) {
+            selectedTrack = initialTrack ?: currentTrackState ?: allTracks.firstOrNull()
+        }
     }
 
     var selectedNotesList by remember(initialNotes) {
         mutableStateOf(initialNotes ?: emptyList())
     }
 
-    var selectedTask by remember(initialTask, activeTasks) {
+    var selectedTask by remember {
         mutableStateOf(initialTask ?: activeTasks.firstOrNull())
+    }
+
+    LaunchedEffect(activeTasks) {
+        val currentTaskId = selectedTask?.id
+        if (currentTaskId != null) {
+            val updated = activeTasks.find { it.id == currentTaskId }
+            if (updated != null && updated !== selectedTask) {
+                selectedTask = updated
+            }
+        } else if (selectedTask == null && activeTasks.isNotEmpty()) {
+            selectedTask = initialTask ?: activeTasks.firstOrNull()
+        }
     }
 
     // Dropdown expansion states

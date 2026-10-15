@@ -186,12 +186,7 @@ class QuizViewModel(
                 if (trackQuestions.isNotEmpty()) {
                     startQuizSession(trackQuestions)
                 } else {
-                    val vocabQuestions = repository.getAllVocabularyQuestionsDirect()
-                    if (vocabQuestions.isNotEmpty()) {
-                        startQuizSession(vocabQuestions)
-                    } else {
-                        isSessionActive.value = false
-                    }
+                    isSessionActive.value = false
                 }
                 isQuizSheetOpen.value = true
                 isUnifiedQuizSheetOpen.value = true
