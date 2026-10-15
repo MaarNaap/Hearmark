@@ -411,7 +411,7 @@ fun SubtitlesPageContent(
                                         isCurrentMatch = isCurrentSearchMatch,
                                         fontSize = fontSize,
                                         lineHeightMultiplier = 1.4,
-                                        fontWeight = if (isActive || isCurrentSearchMatch) FontWeight.SemiBold else FontWeight.Normal,
+                                        fontWeight = if (isCurrentSearchMatch) FontWeight.SemiBold else FontWeight.Normal,
                                         textColor = if (isDarkBg) {
                                             if (isActive) Color.White else Color(0xFFF8FAFC)
                                         } else {
