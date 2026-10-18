@@ -317,6 +317,23 @@ fun PlayerTopBarAndFocusHeader(
                                 }
                             )
 
+                            // 5. Story from Vocab
+                            DropdownMenuItem(
+                                text = { Text(Loc.getText("ai_hub_function_story"), fontSize = 13.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showAiQuickMenu = false
+                                    viewModel.openAiHub(function = AiFunctionType.STORY, track = track)
+                                }
+                            )
+
                             HorizontalDivider(
                                 modifier = Modifier.padding(vertical = 4.dp),
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)

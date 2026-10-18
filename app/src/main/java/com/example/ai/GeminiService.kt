@@ -217,10 +217,16 @@ object GeminiService {
         language: String = "en",
         modelName: String = FALLBACK_MODEL,
         onProgressUpdate: ((String) -> Unit)? = null
-    ): Result<String> = GeminiSubtitles.generateSubtitles(
-        audioFile = audioFile,
-        existingSubtitleText = existingSubtitleText,
-        totalDurationMs = totalDurationMs,
+    suspend fun generateVocabularyStory(
+        targetWords: List<com.example.data.StoryTargetWord>,
+        options: com.example.data.StoryOptions,
+        customApiKey: String? = null,
+        language: String = "en",
+        modelName: String = DEFAULT_MODEL,
+        onProgressUpdate: ((String) -> Unit)? = null
+    ): Result<com.example.data.VocabularyStory> = GeminiStory.generateVocabularyStory(
+        targetWords = targetWords,
+        options = options,
         customApiKey = customApiKey,
         language = language,
         modelName = modelName,

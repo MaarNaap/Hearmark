@@ -45,7 +45,10 @@ fun AiBackgroundStatusBar(
     val sceneStatus by viewModel.sceneDetectionStatus.collectAsStateWithLifecycle()
     val sceneTrackName by viewModel.detectingTrackName.collectAsStateWithLifecycle()
 
-    val isAnyAiActive = isGeneratingSubtitles || isDetectingScenes
+    val isGeneratingStory by viewModel.isGeneratingStory.collectAsStateWithLifecycle()
+    val storyStatus by viewModel.storyGenerationStatus.collectAsStateWithLifecycle()
+
+    val isAnyAiActive = isGeneratingSubtitles || isDetectingScenes || isGeneratingStory
 
     AnimatedVisibility(
         visible = isAnyAiActive,
@@ -53,16 +56,19 @@ fun AiBackgroundStatusBar(
         exit = fadeOut() + shrinkVertically()
     ) {
         val title = when {
+            isGeneratingStory -> Loc.getText("ai_hub_function_story")
             isGeneratingSubtitles -> Loc.getText("ai_hub_function_subtitles")
             else -> Loc.getText("ai_hub_action_scenes")
         }
 
         val trackLabel = when {
+            isGeneratingStory -> Loc.getText("ai_hub_function_story")
             isGeneratingSubtitles -> subtitleTrack?.getDisplayTitle() ?: Loc.getText("tracks")
             else -> sceneTrackName ?: Loc.getText("tracks")
         }
 
         val statusDescription = when {
+            isGeneratingStory -> storyStatus.ifBlank { Loc.getText("story_generating_background") }
             isGeneratingSubtitles -> subtitleStatus.ifBlank { Loc.getText("ai_creating_subtitles") }
             else -> sceneStatus?.ifBlank { Loc.getText("scenes_analyzing_status") } ?: Loc.getText("scenes_analyzing_status")
         }
@@ -168,7 +174,9 @@ fun AiBackgroundStatusBar(
                     // Right: Cancel button
                     IconButton(
                         onClick = {
-                            if (isGeneratingSubtitles) {
+                            if (isGeneratingStory) {
+                                viewModel.cancelStoryGeneration()
+                            } else if (isGeneratingSubtitles) {
                                 viewModel.cancelSubtitleGeneration()
                             } else {
                                 viewModel.cancelSceneDetection()

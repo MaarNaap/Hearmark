@@ -234,6 +234,30 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
             val parsedDailyProgress = mutableListOf<TaskDailyProgress>()
             val parsedVocab = mutableListOf<VocabularyItem>()
             val parsedQuizQuestions = mutableListOf<QuizQuestion>()
+            val parsedStories = mutableListOf<VocabularyStory>()
+
+            suspend fun parseStoryItem(obj: org.json.JSONObject) {
+                val title = optStringSafe(obj, "title", defaultVal = "Untitled Story")
+                val storyText = optStringSafe(obj, "storyText", "story_text", "story", "text", defaultVal = "")
+                if (storyText.isNotBlank()) {
+                    val targetWordsJson = optStringSafe(obj, "targetWordsJson", "target_words_json", "targetWords", defaultVal = "[]")
+                    val optionsJson = optStringSafe(obj, "optionsJson", "options_json", "options", defaultVal = "{}")
+                    val missingWordsJson = optNullableStringSafe(obj, "missingWordsJson", "missing_words_json", "missingWords")
+                    val audioFilePath = optNullableStringSafe(obj, "audioFilePath", "audio_file_path")
+                    val createdAt = optLongSafe(obj, "createdAt", "created_at", defaultVal = System.currentTimeMillis())
+                    val s = VocabularyStory(
+                        id = optLongSafe(obj, "id", defaultVal = 0L),
+                        title = title,
+                        storyText = storyText,
+                        targetWordsJson = targetWordsJson,
+                        optionsJson = optionsJson,
+                        missingWordsJson = missingWordsJson,
+                        audioFilePath = audioFilePath,
+                        createdAt = createdAt
+                    )
+                    parsedStories.add(s)
+                }
+            }
 
             suspend fun parseQuizQuestionItem(obj: org.json.JSONObject) {
                 val question = optStringSafe(obj, "question", defaultVal = "")
@@ -480,6 +504,8 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                             parseDailyProgressItem(obj)
                         } else if (obj.has("question") && (obj.has("optionsJson") || obj.has("options_json") || obj.has("correctIndex") || obj.has("questionType"))) {
                             parseQuizQuestionItem(obj)
+                        } else if (obj.has("storyText") || obj.has("story_text") || (obj.has("targetWordsJson") && obj.has("title"))) {
+                            parseStoryItem(obj)
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -643,6 +669,21 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                         }
                     }
                 }
+
+                // 10. Vocabulary Stories
+                val storiesArr = effectiveRoot.optJSONArray("vocabularyStories")
+                    ?: effectiveRoot.optJSONArray("vocabulary_stories")
+                    ?: effectiveRoot.optJSONArray("stories")
+                if (storiesArr != null) {
+                    for (i in 0 until storiesArr.length()) {
+                        try {
+                            val obj = storiesArr.optJSONObject(i) ?: continue
+                            parseStoryItem(obj)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
             }
 
             // ATOMIC DATABASE WRITE:
@@ -660,6 +701,7 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                     for (dp in parsedDailyProgress) repository.insertTaskDailyProgress(dp)
                     for (v in parsedVocab) repository.insertVocabularyItem(v)
                     for (q in parsedQuizQuestions) repository.dao.insertQuizQuestion(q)
+                    for (s in parsedStories) repository.insertVocabularyStory(s)
                     if (parsedNotes.isNotEmpty()) {
                         try {
                             repository.relinkNotesToActiveTracks()
@@ -679,6 +721,7 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
             var dailyProgressCount = parsedDailyProgress.size
             var vocabCount = parsedVocab.size
             var quizQuestionsCount = parsedQuizQuestions.size
+            var storiesCount = parsedStories.size
 
             // If tasks were restored, sync labels and reschedule active alarms
             if (tasksCount > 0) {
@@ -700,7 +743,7 @@ fun AppViewModel.restoreBackupFromJsonString(jsonString: String, isAutoRecovery:
                 e.printStackTrace()
             }
 
-            val totalRestored = historyCount + tasksCount + progressCount + notesCount + tagsCount + labelsCount + dailyProgressCount + vocabCount + quizQuestionsCount
+            val totalRestored = historyCount + tasksCount + progressCount + notesCount + tagsCount + labelsCount + dailyProgressCount + vocabCount + quizQuestionsCount + storiesCount
             if (!isAutoRecovery) {
                 com.example.util.AutoBackupManager.saveAutoBackupFromRepository(getApplication(), repository)
                 withContext(Dispatchers.Main) {

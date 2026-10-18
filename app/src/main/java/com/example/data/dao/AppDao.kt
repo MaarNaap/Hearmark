@@ -566,4 +566,26 @@ interface AppDao {
 
     @Query("UPDATE quiz_questions SET trackId = :trackId, trackName = :trackName WHERE id = :questionId")
     suspend fun updateQuizQuestionTrackAndName(questionId: Long, trackId: Long, trackName: String)
+
+    // Vocabulary Stories
+    @Query("SELECT * FROM vocabulary_stories ORDER BY createdAt DESC")
+    fun getAllVocabularyStoriesFlow(): Flow<List<VocabularyStory>>
+
+    @Query("SELECT * FROM vocabulary_stories ORDER BY createdAt DESC")
+    suspend fun getAllVocabularyStoriesDirect(): List<VocabularyStory>
+
+    @Query("SELECT * FROM vocabulary_stories WHERE id = :id LIMIT 1")
+    suspend fun getVocabularyStoryById(id: Long): VocabularyStory?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertVocabularyStory(story: VocabularyStory): Long
+
+    @Update
+    suspend fun updateVocabularyStory(story: VocabularyStory)
+
+    @Delete
+    suspend fun deleteVocabularyStory(story: VocabularyStory)
+
+    @Query("DELETE FROM vocabulary_stories WHERE id = :id")
+    suspend fun deleteVocabularyStoryById(id: Long)
 }

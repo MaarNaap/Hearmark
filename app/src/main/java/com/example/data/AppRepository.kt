@@ -1172,4 +1172,25 @@ class AppRepository(
 
         return relinkedCount
     }
+
+    // Vocabulary Stories
+    val allVocabularyStories: Flow<List<VocabularyStory>> = dao.getAllVocabularyStoriesFlow()
+
+    suspend fun getAllVocabularyStoriesDirect(): List<VocabularyStory> =
+        dao.getAllVocabularyStoriesDirect()
+
+    suspend fun getVocabularyStoryById(id: Long): VocabularyStory? =
+        dao.getVocabularyStoryById(id)
+
+    suspend fun insertVocabularyStory(story: VocabularyStory): Long =
+        dao.insertVocabularyStory(story)
+
+    suspend fun updateVocabularyStory(story: VocabularyStory) =
+        dao.updateVocabularyStory(story)
+
+    suspend fun deleteVocabularyStory(story: VocabularyStory) =
+        dao.deleteVocabularyStory(story)
+
+    suspend fun deleteVocabularyStoryById(id: Long) =
+        dao.deleteVocabularyStoryById(id)
 }

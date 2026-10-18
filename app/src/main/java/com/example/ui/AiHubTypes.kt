@@ -4,7 +4,8 @@ enum class AiFunctionType {
     CHAT,
     SUBTITLES,
     SCENES,
-    QUIZ
+    QUIZ,
+    STORY
 }
 
 enum class AiContextType {

@@ -370,6 +370,22 @@ object AutoBackupManager {
         }
         root.put("quizQuestions", quizQuestionsArray)
 
+        val storiesList = repository.dao.getAllVocabularyStoriesDirect()
+        val storiesArray = org.json.JSONArray()
+        storiesList.forEach { s ->
+            val obj = org.json.JSONObject()
+            obj.put("id", s.id)
+            obj.put("title", s.title)
+            obj.put("storyText", s.storyText)
+            obj.put("targetWordsJson", s.targetWordsJson)
+            obj.put("optionsJson", s.optionsJson)
+            if (s.missingWordsJson != null) obj.put("missingWordsJson", s.missingWordsJson)
+            if (s.audioFilePath != null) obj.put("audioFilePath", s.audioFilePath)
+            obj.put("createdAt", s.createdAt)
+            storiesArray.put(obj)
+        }
+        root.put("vocabularyStories", storiesArray)
+
         return root
     }
 

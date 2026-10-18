@@ -82,7 +82,8 @@ fun NotebookScreen(
                 onSearchExpandedChange = { isSearchExpanded = it },
                 onOpenFilter = { showFilterDialog = true },
                 onOpenTagFilter = { showTagFilterDialog = true },
-                onAddNoteClicked = onAddNoteClicked
+                onAddNoteClicked = onAddNoteClicked,
+                onOpenStories = { viewModel.openStoryList() }
             )
 
             NotebookFilterChips(

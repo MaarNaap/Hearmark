@@ -19,9 +19,10 @@ import androidx.room.RoomDatabase
         TaskLabel::class,
         TaskDailyProgress::class,
         QuizQuestion::class,
-        VocabularyItem::class
+        VocabularyItem::class,
+        VocabularyStory::class
     ],
-    version = 21,
+    version = 22,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -29,7 +30,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun vocabularyItemDao(): VocabularyItemDao
 
     companion object {
-        const val DATABASE_VERSION = 21
+        const val DATABASE_VERSION = 22
 
         @Volatile
         private var INSTANCE: AppDatabase? = null

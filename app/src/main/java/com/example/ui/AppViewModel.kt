@@ -169,6 +169,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    val storyViewModel by lazy {
+        StoryViewModel(
+            application = getApplication(),
+            repository = repository,
+            apiKeyProvider = { customGeminiApiKey },
+            languageProvider = { Loc.currentLanguage }
+        )
+    }
+
     // Gemini Chatbot State & Actions (Delegated to mediaAiViewModel)
     val chatMessages: StateFlow<List<ChatMessage>> get() = mediaAiViewModel.chatMessages
     val isGeneratingAiResponse: StateFlow<Boolean> get() = mediaAiViewModel.isGeneratingAiResponse
@@ -253,6 +262,34 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun openUnifiedQuizSheet(initialTrack: AudioTrack? = null, initialNotes: List<Note>? = null) =
         quizViewModel.openUnifiedQuizSheet(initialTrack, initialNotes)
     fun closeUnifiedQuizSheet() = quizViewModel.closeUnifiedQuizSheet()
+
+    // Vocabulary Stories State & Actions (Delegated to storyViewModel)
+    val vocabularyStories: StateFlow<List<VocabularyStory>> get() = storyViewModel.stories
+    val isGeneratingStory: StateFlow<Boolean> get() = storyViewModel.isGenerating
+    val storyGenerationStatus: StateFlow<String> get() = storyViewModel.generationStatus
+    val storyGenerationError: StateFlow<String?> get() = storyViewModel.generationError
+    val activeReadingStory: StateFlow<VocabularyStory?> get() = storyViewModel.activeReaderStory
+    val isStoryReaderOpen: MutableStateFlow<Boolean> get() = storyViewModel.isReaderOpen
+    val isStoryListOpen: MutableStateFlow<Boolean> get() = storyViewModel.isStoryListOpen
+
+    fun cancelStoryGeneration() = storyViewModel.cancelGeneration()
+    fun openStoryReader(story: VocabularyStory) = storyViewModel.openReader(story)
+    fun closeStoryReader() = storyViewModel.closeReader()
+    fun openStoryList() = storyViewModel.openStoryList()
+    fun closeStoryList() = storyViewModel.closeStoryList()
+    fun generateVocabularyStory(
+        targetWords: List<StoryTargetWord>,
+        options: StoryOptions,
+        onSuccess: ((VocabularyStory) -> Unit)? = null,
+        onError: ((String) -> Unit)? = null
+    ) = storyViewModel.generateStory(targetWords, options, onSuccess, onError)
+    fun regenerateVocabularyStory(
+        story: VocabularyStory,
+        onSuccess: ((VocabularyStory) -> Unit)? = null,
+        onError: ((String) -> Unit)? = null
+    ) = storyViewModel.regenerateStory(story, onSuccess, onError)
+    fun updateVocabularyStory(story: VocabularyStory) = storyViewModel.updateStory(story)
+    fun deleteVocabularyStory(story: VocabularyStory) = storyViewModel.deleteStory(story)
 
     // Unified AI Hub State & Controls
     val isAiHubOpen = MutableStateFlow(false)

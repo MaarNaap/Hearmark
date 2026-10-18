@@ -450,6 +450,24 @@ internal object DatabaseMigrations {
         }
     }
 
+    val MIGRATION_21_22 = object : Migration(21, 22) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `vocabulary_stories` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `title` TEXT NOT NULL,
+                    `storyText` TEXT NOT NULL,
+                    `targetWordsJson` TEXT NOT NULL,
+                    `optionsJson` TEXT NOT NULL,
+                    `missingWordsJson` TEXT,
+                    `audioFilePath` TEXT,
+                    `createdAt` INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_vocabulary_stories_createdAt` ON `vocabulary_stories` (`createdAt`)")
+        }
+    }
+
     val ALL_MIGRATIONS = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -470,6 +488,7 @@ internal object DatabaseMigrations {
         MIGRATION_17_18,
         MIGRATION_18_19,
         MIGRATION_19_20,
-        MIGRATION_20_21
+        MIGRATION_20_21,
+        MIGRATION_21_22
     )
 }

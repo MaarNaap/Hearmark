@@ -18,7 +18,9 @@ fun executeAiAction(
     contextType: AiContextType,
     track: AudioTrack?,
     notes: List<Note>,
-    task: Task?
+    task: Task?,
+    storyWords: List<com.example.data.StoryTargetWord> = emptyList(),
+    storyOptions: com.example.data.StoryOptions = com.example.data.StoryOptions()
 ) {
     when (function) {
         AiFunctionType.CHAT -> {
@@ -155,6 +157,47 @@ fun executeAiAction(
                     )
                 }
             }
+        }
+
+        AiFunctionType.STORY -> {
+            val effectiveWords = if (storyWords.isNotEmpty()) {
+                storyWords
+            } else {
+                val map = linkedMapOf<String, com.example.data.StoryTargetWord>()
+                notes.forEach { n ->
+                    val w = n.getIsolatedTargetWord().trim()
+                    if (w.isNotBlank()) {
+                        val key = w.lowercase()
+                        if (!map.containsKey(key)) {
+                            map[key] = com.example.data.StoryTargetWord(
+                                word = w,
+                                meaning = n.getIsolatedMeaning().trim(),
+                                contextSentence = n.getIsolatedContextSentence().trim(),
+                                noteId = n.id
+                            )
+                        }
+                    }
+                }
+                map.values.toList()
+            }
+
+            if (effectiveWords.isEmpty()) {
+                Toast.makeText(context, "No vocabulary words selected for story.", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            Toast.makeText(context, Loc.getText("story_generating_background"), Toast.LENGTH_SHORT).show()
+            viewModel.generateVocabularyStory(
+                targetWords = effectiveWords,
+                options = storyOptions,
+                onSuccess = { createdStory ->
+                    Toast.makeText(context, "✓ " + Loc.getText("story_generating_success") + ": ${createdStory.title}", Toast.LENGTH_LONG).show()
+                    viewModel.openStoryReader(createdStory)
+                },
+                onError = { err ->
+                    Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                }
+            )
         }
     }
 }

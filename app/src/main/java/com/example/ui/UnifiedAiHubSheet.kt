@@ -43,9 +43,12 @@ import com.example.ai.AudioContextSummary
 import com.example.data.AudioTrack
 import com.example.data.Folder
 import com.example.data.Note
+import com.example.data.StoryOptions
+import com.example.data.StoryTargetWord
 import com.example.data.Task
 import com.example.player.AudioPlayerManager
 import com.example.player.SubtitleParser
+import com.example.ui.story.StoryVocabPicker
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,6 +66,7 @@ fun UnifiedAiHubSheet(
     val allFolders by viewModel.folders.collectAsStateWithLifecycle()
     val allNotes by viewModel.notes.collectAsStateWithLifecycle()
     val activeTasks by viewModel.activeTasks.collectAsStateWithLifecycle()
+    val savedStories by viewModel.vocabularyStories.collectAsStateWithLifecycle()
 
     // 1. Function Selection (First Step)
     var selectedFunction by remember { mutableStateOf(initialFunction) }
@@ -73,6 +77,7 @@ fun UnifiedAiHubSheet(
             AiFunctionType.SUBTITLES -> listOf(AiContextType.TRACK)
             AiFunctionType.SCENES -> listOf(AiContextType.TRACK)
             AiFunctionType.QUIZ -> listOf(AiContextType.TRACK, AiContextType.NOTEBOOK)
+            AiFunctionType.STORY -> listOf(AiContextType.NOTEBOOK)
             AiFunctionType.CHAT -> listOf(AiContextType.FREE, AiContextType.TRACK, AiContextType.NOTEBOOK, AiContextType.TASK)
         }
     }
@@ -84,15 +89,22 @@ fun UnifiedAiHubSheet(
             initialTask != null -> AiContextType.TASK
             initialTrack != null -> AiContextType.TRACK
             initialFunction == AiFunctionType.SUBTITLES || initialFunction == AiFunctionType.SCENES -> AiContextType.TRACK
+            initialFunction == AiFunctionType.STORY -> AiContextType.NOTEBOOK
             else -> null
         }
         mutableStateOf<AiContextType?>(initialCtx)
     }
 
+    // Story state
+    var selectedStoryWords by remember { mutableStateOf<List<StoryTargetWord>>(emptyList()) }
+    var selectedStoryOptions by remember { mutableStateOf(StoryOptions()) }
+
     // Ensure selectedContextType is always compatible with selectedFunction
     LaunchedEffect(selectedFunction) {
         if (selectedFunction == AiFunctionType.SUBTITLES || selectedFunction == AiFunctionType.SCENES) {
             selectedContextType = AiContextType.TRACK
+        } else if (selectedFunction == AiFunctionType.STORY) {
+            selectedContextType = AiContextType.NOTEBOOK
         } else if (selectedContextType != null && !allowedContexts.contains(selectedContextType)) {
             selectedContextType = if (allowedContexts.size == 1) {
                 allowedContexts.first()
@@ -270,6 +282,7 @@ fun UnifiedAiHubSheet(
                                         AiFunctionType.SUBTITLES -> Icons.Filled.Subtitles
                                         AiFunctionType.SCENES -> Icons.Filled.MovieCreation
                                         AiFunctionType.QUIZ -> Icons.AutoMirrored.Filled.HelpOutline
+                                        AiFunctionType.STORY -> Icons.AutoMirrored.Filled.MenuBook
                                     },
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary,
@@ -281,6 +294,7 @@ fun UnifiedAiHubSheet(
                                         AiFunctionType.SUBTITLES -> Loc.getText("ai_hub_function_subtitles")
                                         AiFunctionType.SCENES -> Loc.getText("ai_hub_function_scenes")
                                         AiFunctionType.QUIZ -> Loc.getText("ai_hub_function_quiz")
+                                        AiFunctionType.STORY -> Loc.getText("ai_hub_function_story")
                                     },
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.SemiBold,
@@ -348,6 +362,19 @@ fun UnifiedAiHubSheet(
                             },
                             onClick = {
                                 selectedFunction = AiFunctionType.QUIZ
+                                functionMenuExpanded = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = Loc.getText("ai_hub_function_story"),
+                                    fontWeight = if (selectedFunction == AiFunctionType.STORY) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            onClick = {
+                                selectedFunction = AiFunctionType.STORY
+                                selectedContextType = AiContextType.NOTEBOOK
                                 functionMenuExpanded = false
                             }
                         )
@@ -585,14 +612,31 @@ fun UnifiedAiHubSheet(
                     }
 
                     AiContextType.NOTEBOOK -> {
-                        // Rich Notebook Notes Preview with Expandable Search Icon & Folder/File filter
-                        NotebookNotesPicker(
-                            allNotes = allNotes,
-                            selectedNotes = selectedNotesList,
-                            allFolders = allFolders,
-                            allTracks = allTracks,
-                            onSelectionChanged = { selectedNotesList = it }
-                        )
+                        if (selectedFunction == AiFunctionType.STORY) {
+                            StoryVocabPicker(
+                                allNotes = allNotes,
+                                allFolders = allFolders,
+                                allTracks = allTracks,
+                                selectedWords = selectedStoryWords,
+                                options = selectedStoryOptions,
+                                onOptionsChanged = { selectedStoryOptions = it },
+                                onWordsChanged = { selectedStoryWords = it },
+                                onOpenSavedStories = {
+                                    onDismiss()
+                                    viewModel.openStoryList()
+                                },
+                                savedStoriesCount = savedStories.size
+                            )
+                        } else {
+                            // Rich Notebook Notes Preview with Expandable Search Icon & Folder/File filter
+                            NotebookNotesPicker(
+                                allNotes = allNotes,
+                                selectedNotes = selectedNotesList,
+                                allFolders = allFolders,
+                                allTracks = allTracks,
+                                onSelectionChanged = { selectedNotesList = it }
+                            )
+                        }
                     }
 
                     AiContextType.TASK -> {
@@ -617,7 +661,9 @@ fun UnifiedAiHubSheet(
                         contextType = selectedContextType ?: AiContextType.TRACK,
                         track = selectedTrack,
                         notes = selectedNotesList,
-                        task = selectedTask
+                        task = selectedTask,
+                        storyWords = selectedStoryWords,
+                        storyOptions = selectedStoryOptions
                     )
                 },
                 modifier = Modifier
@@ -635,6 +681,7 @@ fun UnifiedAiHubSheet(
                         AiFunctionType.SUBTITLES -> Icons.Filled.Subtitles
                         AiFunctionType.SCENES -> Icons.Filled.MovieCreation
                         AiFunctionType.QUIZ -> Icons.Filled.PlayArrow
+                        AiFunctionType.STORY -> Icons.AutoMirrored.Filled.MenuBook
                     },
                     contentDescription = null,
                     modifier = Modifier.size(18.dp)
@@ -646,6 +693,7 @@ fun UnifiedAiHubSheet(
                         AiFunctionType.SUBTITLES -> Loc.getText("ai_hub_function_subtitles")
                         AiFunctionType.SCENES -> Loc.getText("ai_hub_scenes_action")
                         AiFunctionType.QUIZ -> Loc.getText("ai_hub_function_quiz")
+                        AiFunctionType.STORY -> Loc.getText("ai_hub_story_action")
                     },
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp

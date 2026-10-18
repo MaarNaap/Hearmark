@@ -835,6 +835,67 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                     )
                 }
 
+                // VOCABULARY STORY READER SHEET
+                val isStoryReaderOpen by viewModel.isStoryReaderOpen.collectAsStateWithLifecycle()
+                val activeReadingStory by viewModel.activeReadingStory.collectAsStateWithLifecycle()
+                if (isStoryReaderOpen && activeReadingStory != null) {
+                    com.example.ui.story.StoryReaderSheet(
+                        story = activeReadingStory!!,
+                        onDismiss = { viewModel.closeStoryReader() },
+                        onRegenerate = {
+                            viewModel.regenerateVocabularyStory(
+                                story = activeReadingStory!!,
+                                onSuccess = {
+                                    Toast.makeText(context, "✓ " + Loc.getText("story_generating_success"), Toast.LENGTH_SHORT).show()
+                                },
+                                onError = { err ->
+                                    Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                                }
+                            )
+                        },
+                        onUpdate = { updated ->
+                            viewModel.updateVocabularyStory(updated)
+                        },
+                        onDelete = {
+                            viewModel.deleteVocabularyStory(activeReadingStory!!)
+                        }
+                    )
+                }
+
+                // VOCABULARY STORY LIST SHEET
+                val isStoryListOpen by viewModel.isStoryListOpen.collectAsStateWithLifecycle()
+                val vocabularyStories by viewModel.vocabularyStories.collectAsStateWithLifecycle()
+                if (isStoryListOpen) {
+                    com.example.ui.story.StoryListSheet(
+                        stories = vocabularyStories,
+                        onDismiss = { viewModel.closeStoryList() },
+                        onOpenStory = { story ->
+                            viewModel.closeStoryList()
+                            viewModel.openStoryReader(story)
+                        },
+                        onRegenerateStory = { story ->
+                            viewModel.regenerateVocabularyStory(
+                                story = story,
+                                onSuccess = {
+                                    Toast.makeText(context, "✓ " + Loc.getText("story_generating_success"), Toast.LENGTH_SHORT).show()
+                                },
+                                onError = { err ->
+                                    Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                                }
+                            )
+                        },
+                        onUpdateStory = { updated ->
+                            viewModel.updateVocabularyStory(updated)
+                        },
+                        onDeleteStory = { story ->
+                            viewModel.deleteVocabularyStory(story)
+                        },
+                        onCreateNewStory = {
+                            viewModel.openAiHub(function = AiFunctionType.STORY)
+                        }
+                    )
+                }
+
                 // AI operations run asynchronously in background via AiBackgroundStatusBar without blocking application interactions or audio playback
             }
         }

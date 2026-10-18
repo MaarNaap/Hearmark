@@ -24,6 +24,7 @@ fun NotebookTopBar(
     onOpenFilter: () -> Unit = {},
     onOpenTagFilter: () -> Unit,
     onAddNoteClicked: () -> Unit,
+    onOpenStories: () -> Unit = {},
     selectedFolderCount: Int = selectedFilterCount,
     onOpenFolderFilter: () -> Unit = onOpenFilter
 ) {
@@ -186,6 +187,21 @@ fun NotebookTopBar(
                             tint = if (selectedTagCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                }
+
+                // Stories Library Icon Button
+                IconButton(
+                    onClick = onOpenStories,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .testTag("notebook_stories_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                        contentDescription = Loc.getText("ai_hub_function_story"),
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
 
                 // Single Add Note Icon Button
