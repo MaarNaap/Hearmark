@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -226,14 +227,6 @@ fun PlayerTopBarAndFocusHeader(
                             // 1. Chat about Track
                             DropdownMenuItem(
                                 text = { Text(Loc.getText("quick_ai_ask"), fontSize = 13.sp) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Filled.AutoAwesome,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                },
                                 onClick = {
                                     showAiQuickMenu = false
                                     val fullSubtitles = AudioPlayerManager.getCurrentSubtitlesRawText()
@@ -269,14 +262,6 @@ fun PlayerTopBarAndFocusHeader(
                             // 2. Generate Questions
                             DropdownMenuItem(
                                 text = { Text(Loc.getText("quick_ai_quiz"), fontSize = 13.sp) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Filled.Quiz,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                },
                                 onClick = {
                                     showAiQuickMenu = false
                                     viewModel.openAiHub(function = AiFunctionType.QUIZ, track = track)
@@ -286,14 +271,6 @@ fun PlayerTopBarAndFocusHeader(
                             // 3. Virtual Scenes
                             DropdownMenuItem(
                                 text = { Text(Loc.getText("quick_ai_scenes"), fontSize = 13.sp) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Filled.MovieCreation,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                },
                                 onClick = {
                                     showAiQuickMenu = false
                                     viewModel.openAiHub(function = AiFunctionType.SCENES, track = track)
@@ -303,14 +280,6 @@ fun PlayerTopBarAndFocusHeader(
                             // 4. Subtitles
                             DropdownMenuItem(
                                 text = { Text(Loc.getText("quick_ai_subtitles"), fontSize = 13.sp) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Filled.Subtitles,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                },
                                 onClick = {
                                     showAiQuickMenu = false
                                     viewModel.openAiHub(function = AiFunctionType.SUBTITLES, track = track)
@@ -320,14 +289,6 @@ fun PlayerTopBarAndFocusHeader(
                             // 5. Story from Vocab
                             DropdownMenuItem(
                                 text = { Text(Loc.getText("ai_hub_function_story"), fontSize = 13.sp) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                },
                                 onClick = {
                                     showAiQuickMenu = false
                                     viewModel.openAiHub(function = AiFunctionType.STORY, track = track)
@@ -339,17 +300,9 @@ fun PlayerTopBarAndFocusHeader(
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                             )
 
-                            // 5. Open Full AI Hub
+                            // 6. Open Full AI Hub
                             DropdownMenuItem(
                                 text = { Text(Loc.getText("quick_ai_open_hub"), fontWeight = FontWeight.SemiBold, fontSize = 13.sp) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Filled.Apps,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                },
                                 onClick = {
                                     showAiQuickMenu = false
                                     viewModel.openAiHub(function = AiFunctionType.CHAT, track = track)
