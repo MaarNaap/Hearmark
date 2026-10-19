@@ -128,7 +128,8 @@ fun getTrackFileIcon(filePath: String, isVirtualScene: Boolean = false): ImageVe
 @Composable
 fun AppNavigationContainer(viewModel: AppViewModel) {
     val context = LocalContext.current
-    var currentScreen by remember { mutableStateOf("home") } // home, library, tasks, notebook, stats, settings
+    var currentScreen by remember { mutableStateOf("home") } // home, library, tasks, notebook, stats, settings, stories
+    var previousScreen by remember { mutableStateOf("home") }
     var activeFolderIdForDetails by remember { mutableStateOf<Long?>(null) }
     var activePlaylistIdForDetails by remember { mutableStateOf<Long?>(null) }
     var activeTaskForDetails by remember { mutableStateOf<Task?>(null) }
@@ -160,6 +161,18 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
     val pendingOpenTaskId by viewModel.pendingOpenTaskId.collectAsStateWithLifecycle()
     val pendingOpenVocabReview by viewModel.pendingOpenVocabReview.collectAsStateWithLifecycle()
     val isVocabReviewOpen by viewModel.isVocabReviewOpen.collectAsStateWithLifecycle()
+    val isStoryListOpen by viewModel.isStoryListOpen.collectAsStateWithLifecycle()
+    val isStoryReaderOpen by viewModel.isStoryReaderOpen.collectAsStateWithLifecycle()
+
+    LaunchedEffect(isStoryListOpen) {
+        if (isStoryListOpen) {
+            if (currentScreen != "stories") {
+                previousScreen = currentScreen
+                currentScreen = "stories"
+            }
+            viewModel.closeStoryList()
+        }
+    }
 
     LaunchedEffect(pendingOpenVocabReview) {
         if (pendingOpenVocabReview) {
@@ -448,6 +461,8 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                     BackHandler { isFullPlayerExpanded = false }
                 } else if (isVocabReviewOpen) {
                     BackHandler { viewModel.closeVocabularyReview() }
+                } else if (isStoryReaderOpen) {
+                    BackHandler { viewModel.closeStoryReader() }
                 } else if (editingTaskTarget != null) {
                     BackHandler { editingTaskTarget = null }
                 } else if (isCreatingTask) {
@@ -462,6 +477,8 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                     BackHandler { activePlaylistIdForDetails = null }
                 } else if (activeFolderIdForDetails != null) {
                     BackHandler { activeFolderIdForDetails = null }
+                } else if (currentScreen == "stories") {
+                    BackHandler { currentScreen = previousScreen }
                 } else if (currentScreen != "home") {
                     BackHandler { currentScreen = "home" }
                 }
@@ -618,6 +635,36 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                                 currentScreen = "home"
                             }
                             Box(modifier = Modifier.fillMaxSize())
+                        }
+                        screen == "stories" -> {
+                            val vocabularyStories by viewModel.vocabularyStories.collectAsStateWithLifecycle()
+                            com.example.ui.story.StoryListScreen(
+                                stories = vocabularyStories,
+                                onBack = { currentScreen = previousScreen },
+                                onOpenStory = { story ->
+                                    viewModel.openStoryReader(story)
+                                },
+                                onRegenerateStory = { story ->
+                                    viewModel.regenerateVocabularyStory(
+                                        story = story,
+                                        onSuccess = {
+                                            Toast.makeText(context, "✓ " + Loc.getText("story_generating_success"), Toast.LENGTH_SHORT).show()
+                                        },
+                                        onError = { err ->
+                                            Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                                        }
+                                    )
+                                },
+                                onUpdateStory = { updated ->
+                                    viewModel.updateVocabularyStory(updated)
+                                },
+                                onDeleteStory = { story ->
+                                    viewModel.deleteVocabularyStory(story)
+                                },
+                                onCreateNewStory = {
+                                    viewModel.openAiHub(function = AiFunctionType.STORY)
+                                }
+                            )
                         }
                     }
                 }
@@ -862,39 +909,7 @@ fun AppNavigationContainer(viewModel: AppViewModel) {
                     )
                 }
 
-                // VOCABULARY STORY LIST SHEET
-                val isStoryListOpen by viewModel.isStoryListOpen.collectAsStateWithLifecycle()
-                val vocabularyStories by viewModel.vocabularyStories.collectAsStateWithLifecycle()
-                if (isStoryListOpen) {
-                    com.example.ui.story.StoryListSheet(
-                        stories = vocabularyStories,
-                        onDismiss = { viewModel.closeStoryList() },
-                        onOpenStory = { story ->
-                            viewModel.closeStoryList()
-                            viewModel.openStoryReader(story)
-                        },
-                        onRegenerateStory = { story ->
-                            viewModel.regenerateVocabularyStory(
-                                story = story,
-                                onSuccess = {
-                                    Toast.makeText(context, "✓ " + Loc.getText("story_generating_success"), Toast.LENGTH_SHORT).show()
-                                },
-                                onError = { err ->
-                                    Toast.makeText(context, err, Toast.LENGTH_LONG).show()
-                                }
-                            )
-                        },
-                        onUpdateStory = { updated ->
-                            viewModel.updateVocabularyStory(updated)
-                        },
-                        onDeleteStory = { story ->
-                            viewModel.deleteVocabularyStory(story)
-                        },
-                        onCreateNewStory = {
-                            viewModel.openAiHub(function = AiFunctionType.STORY)
-                        }
-                    )
-                }
+
 
                 // AI operations run asynchronously in background via AiBackgroundStatusBar without blocking application interactions or audio playback
             }
