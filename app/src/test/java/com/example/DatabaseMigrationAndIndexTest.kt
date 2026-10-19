@@ -238,18 +238,23 @@ class DatabaseMigrationAndIndexTest {
         val schema19Stream = loader.getResourceAsStream("com.example.data.AppDatabase/19.json")
         val schema20Stream = loader.getResourceAsStream("com.example.data.AppDatabase/20.json")
         val schema21Stream = loader.getResourceAsStream("com.example.data.AppDatabase/21.json")
+        val schema22Stream = loader.getResourceAsStream("com.example.data.AppDatabase/22.json")
         assertNotNull("Expected 19.json schema resource on test classpath", schema19Stream)
         assertNotNull("Expected 20.json schema resource on test classpath", schema20Stream)
         assertNotNull("Expected 21.json schema resource on test classpath", schema21Stream)
+        assertNotNull("Expected 22.json schema resource on test classpath", schema22Stream)
         val schema19 = schema19Stream!!.bufferedReader().use { it.readText() }
         val schema20 = schema20Stream!!.bufferedReader().use { it.readText() }
         val schema21 = schema21Stream!!.bufferedReader().use { it.readText() }
+        val schema22 = schema22Stream!!.bufferedReader().use { it.readText() }
         assertTrue(schema19.contains("\"formatVersion\": 1"))
         assertTrue(schema19.contains("\"version\": 19"))
         assertTrue(schema20.contains("\"version\": 20"))
         assertTrue(schema20.contains("srNextReviewAt"))
         assertTrue(schema21.contains("\"version\": 21"))
         assertTrue(schema21.contains("trackName"))
+        assertTrue(schema22.contains("\"version\": 22"))
+        assertTrue(schema22.contains("vocabulary_stories"))
     }
 
     @Test
@@ -300,6 +305,70 @@ class DatabaseMigrationAndIndexTest {
                 assertEquals(500L, cursor.getLong(0))
                 assertEquals("parent_file", cursor.getString(1))
             }
+        } finally {
+            roomDb.close()
+        }
+    }
+
+    @Test
+    fun migration21To22_createsVocabularyStoriesTableAndIndexAndPreservesData() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val roomDb = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val sqlDb = roomDb.openHelper.writableDatabase
+
+            // 1. Verify pre-existing data (e.g. notes and tasks) is unharmed
+            val repo = AppRepository(roomDb.appDao(), roomDb.vocabularyItemDao(), roomDb)
+            val noteId = repo.insertNote(
+                Note(
+                    text = "Existing vocabulary word note",
+                    comment = "Meaning test",
+                    startTimestampMs = 1000,
+                    endTimestampMs = 2000,
+                    tags = "vocab",
+                    createdAt = 5000L,
+                    updatedAt = 5000L
+                )
+            )
+
+            // 2. Run MIGRATION_21_22
+            DatabaseMigrations.MIGRATION_21_22.migrate(sqlDb)
+
+            // 3. Verify index_vocabulary_stories_createdAt exists
+            val storyIndices = getIndexNames(sqlDb, "vocabulary_stories")
+            assertTrue(storyIndices.contains("index_vocabulary_stories_createdAt"))
+
+            // 4. Verify vocabulary_stories can be inserted and queried through Room DAO without schema mismatch
+            val story = VocabularyStory(
+                title = "The Journey",
+                storyText = "Once upon a time in a tranquil forest...",
+                targetWordsJson = """[{"word":"tranquil","meaning":"calm and peaceful","contextSentence":"The lake was tranquil."}]""",
+                optionsJson = """{"length":"SHORT","level":"BEGINNER","genre":"ADVENTURE"}""",
+                createdAt = 123456789L
+            )
+            val storyId = repo.insertVocabularyStory(story)
+            assertTrue(storyId > 0)
+
+            val retrieved = repo.getVocabularyStoryById(storyId)
+            assertNotNull(retrieved)
+            assertEquals("The Journey", retrieved!!.title)
+            assertEquals("Once upon a time in a tranquil forest...", retrieved.storyText)
+            assertEquals(1, retrieved.getTargetWords().size)
+            assertEquals("tranquil", retrieved.getTargetWords()[0].word)
+            assertEquals(123456789L, retrieved.createdAt)
+
+            // 5. Verify existing data was untouched (no data loss)
+            val retrievedNote = repo.getNoteById(noteId)
+            assertNotNull(retrievedNote)
+            assertEquals("Existing vocabulary word note", retrievedNote!!.text)
+
+            // 6. Verify idempotency: running migration again does not throw or destroy data
+            DatabaseMigrations.MIGRATION_21_22.migrate(sqlDb)
+            val storyAfterSecondMigrate = repo.getVocabularyStoryById(storyId)
+            assertNotNull(storyAfterSecondMigrate)
+            assertEquals("The Journey", storyAfterSecondMigrate!!.title)
         } finally {
             roomDb.close()
         }

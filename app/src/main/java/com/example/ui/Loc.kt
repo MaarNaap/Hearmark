@@ -1107,8 +1107,11 @@ object Loc {
         "story_empty_list" to mapOf("en" to "No saved stories yet. Generate your first story from your notebook vocabulary!", "ar" to "لا توجد قصص بعد. قم بتوليد قصتك الأولى من مفردات الملاحظات!"),
         "story_review_words" to mapOf("en" to "Review Words (%d)", "ar" to "مراجعة الكلمات (%d)"),
         "story_words_included" to mapOf("en" to "%d words included", "ar" to "%d كلمة متضمنة"),
-        "story_batch_prefix" to mapOf("en" to "Batch %d", "ar" to "الدفعة %d"),
         "story_delete_confirm" to mapOf("en" to "Are you sure you want to delete this story?", "ar" to "هل أنت متأكد من رغبتك في حذف هذه القصة؟"),
+        "story_vocabulary_title" to mapOf("en" to "Target Vocabulary", "ar" to "المفردات المستهدفة"),
+        "story_tap_word_hint" to mapOf("en" to "Tap any highlighted word to view meaning", "ar" to "المس أي كلمة مظللة لعرض معناها"),
+        "story_completed_badge" to mapOf("en" to "Story Finished", "ar" to "اكتملت القصة"),
+        "story_font_size" to mapOf("en" to "Text Size", "ar" to "حجم الخط"),
 
 
         // Additional missing and UI action keys

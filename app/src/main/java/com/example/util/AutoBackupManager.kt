@@ -201,6 +201,7 @@ object AutoBackupManager {
         val labelsList = repository.dao.getAllTaskLabelsDirect()
         val vocabList = repository.vocabDao?.getAllVocabularyItemsDirect() ?: emptyList()
         val quizQuestionsList = repository.dao.getAllQuizQuestionsDirect()
+        val storiesList = repository.dao.getAllVocabularyStoriesDirect()
 
         if (requireNonEmpty &&
             tasksList.isEmpty() &&
@@ -208,7 +209,8 @@ object AutoBackupManager {
             historyList.isEmpty() &&
             notesList.isEmpty() &&
             vocabList.isEmpty() &&
-            quizQuestionsList.isEmpty()
+            quizQuestionsList.isEmpty() &&
+            storiesList.isEmpty()
         ) {
             return null
         }
@@ -370,7 +372,6 @@ object AutoBackupManager {
         }
         root.put("quizQuestions", quizQuestionsArray)
 
-        val storiesList = repository.dao.getAllVocabularyStoriesDirect()
         val storiesArray = org.json.JSONArray()
         storiesList.forEach { s ->
             val obj = org.json.JSONObject()

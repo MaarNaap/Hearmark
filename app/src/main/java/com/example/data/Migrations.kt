@@ -461,7 +461,7 @@ internal object DatabaseMigrations {
                     `optionsJson` TEXT NOT NULL,
                     `missingWordsJson` TEXT,
                     `audioFilePath` TEXT,
-                    `createdAt` INTEGER NOT NULL DEFAULT 0
+                    `createdAt` INTEGER NOT NULL
                 )
             """.trimIndent())
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_vocabulary_stories_createdAt` ON `vocabulary_stories` (`createdAt`)")

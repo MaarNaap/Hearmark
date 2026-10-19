@@ -1,12 +1,11 @@
 package com.example.ui.story
 
 import android.content.Intent
+import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,7 +19,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.*
@@ -28,14 +26,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ai.GeminiStory
 import com.example.data.StoryTargetWord
 import com.example.data.VocabularyStory
 import com.example.ui.Loc
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun StoryReaderSheet(
     story: VocabularyStory,
@@ -52,9 +49,15 @@ fun StoryReaderSheet(
     var selectedWordForDetails by remember { mutableStateOf<StoryTargetWord?>(null) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showVocabDrawer by remember { mutableStateOf(false) }
+
+    // Adjustable font size scale for reading comfort (0.9x, 1.0x, 1.15x, 1.3x)
+    var fontScaleIndex by remember { mutableIntStateOf(1) }
+    val fontScales = listOf(0.9f, 1.0f, 1.15f, 1.3f)
+    val currentFontScale = fontScales[fontScaleIndex % fontScales.size]
 
     val formattedDate = remember(story.createdAt) {
-        val sdf = SimpleDateFormat("MMM d, yyyy • hh:mm a", Locale.getDefault())
+        val sdf = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
         sdf.format(Date(story.createdAt))
     }
 
@@ -107,7 +110,7 @@ fun StoryReaderSheet(
                     styles = TextLinkStyles(
                         style = SpanStyle(
                             color = primaryColor,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.SemiBold,
                             background = primaryContainerColor
                         )
                     ),
@@ -129,31 +132,33 @@ fun StoryReaderSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
         containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 2.dp,
         modifier = Modifier.testTag("story_reader_sheet")
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 6.dp)
+                .padding(horizontal = 22.dp, vertical = 4.dp)
         ) {
-            // HEADER BAR: Title, Actions (Share, Edit, Regenerate, Delete, Close)
+            // TOP CONTROLS & ACTIONS BAR
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
+                // Header Identity Icon & Label
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.weight(1f)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(8.dp))
                             .background(MaterialTheme.colorScheme.primaryContainer),
                         contentAlignment = Alignment.Center
                     ) {
@@ -161,27 +166,35 @@ fun StoryReaderSheet(
                             imageVector = Icons.AutoMirrored.Filled.MenuBook,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Text(
+                        text = Loc.getText("story_reader_title"),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                // Action Buttons Row (Font size, Share, Edit, Regenerate, Delete, Close)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    // Font Size Toggle
+                    IconButton(
+                        onClick = { fontScaleIndex = (fontScaleIndex + 1) % fontScales.size },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.FormatSize,
+                            contentDescription = Loc.getText("story_font_size"),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(20.dp)
                         )
                     }
-                    Column {
-                        Text(
-                            text = story.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = formattedDate,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
 
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     // Share button
                     IconButton(
                         onClick = {
@@ -204,41 +217,65 @@ fun StoryReaderSheet(
                             }
                             context.startActivity(Intent.createChooser(intent, Loc.getText("story_share")))
                         },
-                        modifier = Modifier.size(32.dp).testTag("story_share_btn")
+                        modifier = Modifier.size(36.dp).testTag("story_share_btn")
                     ) {
-                        Icon(Icons.Filled.Share, contentDescription = Loc.getText("story_share"), modifier = Modifier.size(18.dp))
+                        Icon(
+                            Icons.Filled.Share,
+                            contentDescription = Loc.getText("story_share"),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(19.dp)
+                        )
                     }
 
                     // Edit button
                     IconButton(
                         onClick = { showEditDialog = true },
-                        modifier = Modifier.size(32.dp).testTag("story_edit_btn")
+                        modifier = Modifier.size(36.dp).testTag("story_edit_btn")
                     ) {
-                        Icon(Icons.Filled.Edit, contentDescription = Loc.getText("story_edit"), modifier = Modifier.size(18.dp))
+                        Icon(
+                            Icons.Filled.Edit,
+                            contentDescription = Loc.getText("story_edit"),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(19.dp)
+                        )
                     }
 
                     // Regenerate button
                     IconButton(
                         onClick = onRegenerate,
-                        modifier = Modifier.size(32.dp).testTag("story_regenerate_btn")
+                        modifier = Modifier.size(36.dp).testTag("story_regenerate_btn")
                     ) {
-                        Icon(Icons.Filled.Refresh, contentDescription = Loc.getText("story_regenerate"), modifier = Modifier.size(18.dp))
+                        Icon(
+                            Icons.Filled.Refresh,
+                            contentDescription = Loc.getText("story_regenerate"),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(19.dp)
+                        )
                     }
 
                     // Delete button
                     IconButton(
                         onClick = { showDeleteConfirmDialog = true },
-                        modifier = Modifier.size(32.dp).testTag("story_delete_btn")
+                        modifier = Modifier.size(36.dp).testTag("story_delete_btn")
                     ) {
-                        Icon(Icons.Filled.DeleteOutline, contentDescription = Loc.getText("story_delete"), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                        Icon(
+                            Icons.Filled.DeleteOutline,
+                            contentDescription = Loc.getText("story_delete"),
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(19.dp)
+                        )
                     }
 
                     // Close button
                     IconButton(
                         onClick = onDismiss,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(36.dp)
                     ) {
-                        Icon(Icons.Filled.Close, contentDescription = Loc.getText("close"), modifier = Modifier.size(18.dp))
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = Loc.getText("close"),
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             }
@@ -246,46 +283,163 @@ fun StoryReaderSheet(
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                 thickness = 0.5.dp,
-                modifier = Modifier.padding(vertical = 8.dp)
+                modifier = Modifier.padding(top = 8.dp, bottom = 14.dp)
             )
 
-            // METADATA BADGES ROW: Genre, Level, Length, Target words count
+            // EDITORIAL STORY TITLE
+            Text(
+                text = story.title,
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = (22 * currentFontScale).sp,
+                    lineHeight = (28 * currentFontScale).sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // REVISED METADATA & REFINED VOCABULARY PILL
+            // Instead of a prominent horizontal list of words dominating before reading,
+            // we present clean metadata and a compact, expandable vocabulary pill.
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Genre badge
                 SuggestionChip(
                     onClick = {},
-                    label = { Text(options.genre, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
-                )
-                SuggestionChip(
-                    onClick = {},
-                    label = { Text(options.level, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
-                )
-                SuggestionChip(
-                    onClick = {},
-                    label = { Text(options.length, fontSize = 11.sp) }
+                    label = { Text(options.genre, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                    modifier = Modifier.height(28.dp)
                 )
 
-                val includedCount = targetWords.size - missingWords.size
+                // Level badge
                 SuggestionChip(
                     onClick = {},
-                    label = { Text(Loc.getFormattedText("story_words_included", includedCount), fontSize = 11.sp) },
-                    colors = SuggestionChipDefaults.suggestionChipColors(
-                        containerColor = if (missingWords.isEmpty()) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                        else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
-                    )
+                    label = { Text(options.level, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                    modifier = Modifier.height(28.dp)
+                )
+
+                // Expandable Vocabulary Pill: Clean & unobtrusive
+                AssistChip(
+                    onClick = { showVocabDrawer = !showVocabDrawer },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Filled.Spellcheck,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    },
+                    label = {
+                        Text(
+                            text = Loc.getFormattedText("story_review_words", targetWords.size),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    },
+                    trailingIcon = {
+                        Icon(
+                            if (showVocabDrawer) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = if (showVocabDrawer) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                        else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f)
+                    ),
+                    border = null,
+                    modifier = Modifier.height(28.dp)
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // Date label
+                Text(
+                    text = formattedDate,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            // MISSING WORDS WARNING (if any are still missing after retry)
+            // EXPANDABLE VOCABULARY DRAWER (Only shows when user intentionally opens it)
+            AnimatedVisibility(
+                visible = showVocabDrawer,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = Loc.getText("story_vocabulary_title"),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = Loc.getText("story_tap_word_hint"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            targetWords.forEach { tw ->
+                                val isPresent = !missingWords.contains(tw.word)
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isPresent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                                    else MaterialTheme.colorScheme.surfaceVariant,
+                                    border = BorderStroke(
+                                        0.5.dp,
+                                        if (isPresent) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                                        else MaterialTheme.colorScheme.outlineVariant
+                                    ),
+                                    modifier = Modifier.clickable { selectedWordForDetails = tw }
+                                ) {
+                                    Text(
+                                        text = tw.word,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (isPresent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // MISSING WORDS WARNING (if any)
             if (missingWords.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.35f)),
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f),
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.35f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -293,7 +447,12 @@ fun StoryReaderSheet(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(14.dp))
+                        Icon(
+                            Icons.Filled.Warning,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(14.dp)
+                        )
                         Text(
                             text = Loc.getFormattedText("story_missing_words_notice", missingWords.joinToString(", ")),
                             style = MaterialTheme.typography.labelSmall,
@@ -303,69 +462,101 @@ fun StoryReaderSheet(
                 }
             }
 
-            // QUICK VOCABULARY CHIPS ROW: Tap any word to view meaning
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Tap any highlighted word below to see its meaning:",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            // READING TIP HINT (Subtle indicator that words in story are interactive)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)
             ) {
-                items(targetWords, key = { it.word.lowercase() }) { tw ->
-                    val isPresent = !missingWords.contains(tw.word)
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (isPresent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                        else MaterialTheme.colorScheme.surfaceVariant,
-                        border = BorderStroke(
-                            0.5.dp,
-                            if (isPresent) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                            else MaterialTheme.colorScheme.outlineVariant
-                        ),
-                        modifier = Modifier.clickable { selectedWordForDetails = tw }
-                    ) {
-                        Text(
-                            text = tw.word,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isPresent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                    }
-                }
+                Icon(
+                    imageVector = Icons.Filled.TouchApp,
+                    contentDescription = null,
+                    modifier = Modifier.size(13.dp),
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                )
+                Text(
+                    text = Loc.getText("story_tap_word_hint"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+                )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            // NATURAL STORY TEXT (Rendered directly on main container - NO artificial empty boxed surface)
+            SelectionContainer {
+                Text(
+                    text = annotatedStory,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = (17 * currentFontScale).sp,
+                        lineHeight = (28 * currentFontScale).sp,
+                        letterSpacing = 0.2.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, bottom = 28.dp)
+                        .testTag("story_body_text")
+                )
+            }
 
-            // STORY TEXT CONTAINER (Rich reading surface with comfortable line height)
+            // ELEGANT END-OF-STORY COMPLETION FOOTER
             Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.4f),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                    .padding(bottom = 24.dp)
             ) {
-                SelectionContainer {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(16.dp)
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text(
-                            text = annotatedStory,
-                            style = MaterialTheme.typography.bodyLarge.copy(
-                                fontSize = 16.5.sp,
-                                lineHeight = 27.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            ),
-                            modifier = Modifier.testTag("story_body_text")
+                        Icon(
+                            Icons.Filled.CheckCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
                         )
+                        Text(
+                            text = Loc.getText("story_completed_badge"),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    Text(
+                        text = Loc.getFormattedText("story_words_included", targetWords.size - missingWords.size),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { showVocabDrawer = true },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Filled.Spellcheck, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(Loc.getFormattedText("story_review_words", targetWords.size), fontSize = 12.sp)
+                        }
+
+                        Button(
+                            onClick = onRegenerate,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(Loc.getText("story_regenerate"), fontSize = 12.sp)
+                        }
                     }
                 }
             }
@@ -379,7 +570,7 @@ fun StoryReaderSheet(
             icon = {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(44.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center
@@ -388,7 +579,7 @@ fun StoryReaderSheet(
                         imageVector = Icons.Filled.Spellcheck,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             },
@@ -401,7 +592,7 @@ fun StoryReaderSheet(
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (targetWord.meaning.isNotBlank()) {
                         Column {
                             Text(
@@ -410,7 +601,7 @@ fun StoryReaderSheet(
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Spacer(modifier = Modifier.height(2.dp))
+                            Spacer(modifier = Modifier.height(3.dp))
                             Text(
                                 text = targetWord.meaning,
                                 style = MaterialTheme.typography.bodyMedium,
@@ -427,9 +618,9 @@ fun StoryReaderSheet(
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Spacer(modifier = Modifier.height(2.dp))
+                            Spacer(modifier = Modifier.height(3.dp))
                             Surface(
-                                shape = RoundedCornerShape(6.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                             ) {
                                 Text(
@@ -437,7 +628,7 @@ fun StoryReaderSheet(
                                     style = MaterialTheme.typography.bodySmall,
                                     fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(8.dp)
+                                    modifier = Modifier.padding(10.dp)
                                 )
                             }
                         }
@@ -461,7 +652,7 @@ fun StoryReaderSheet(
             onDismissRequest = { showEditDialog = false },
             title = { Text(Loc.getText("story_edit"), fontWeight = FontWeight.Bold) },
             text = {
-                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
                         value = editedTitle,
                         onValueChange = { editedTitle = it },
@@ -474,7 +665,7 @@ fun StoryReaderSheet(
                         onValueChange = { editedText = it },
                         label = { Text("Story Text") },
                         minLines = 6,
-                        maxLines = 12,
+                        maxLines = 14,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
