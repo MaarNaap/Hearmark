@@ -38,6 +38,29 @@ import com.example.ui.Loc
 
 private const val MAX_WORDS_PER_STORY_CAP = 20
 
+internal fun formatStoryGenre(genre: String): String = when (genre.uppercase()) {
+    "SLICE_OF_LIFE" -> Loc.getText("story_genre_slice_of_life")
+    "MYSTERY" -> Loc.getText("story_genre_mystery")
+    "ADVENTURE" -> Loc.getText("story_genre_adventure")
+    "SCI_FI" -> Loc.getText("story_genre_sci_fi")
+    "HUMOROUS" -> Loc.getText("story_genre_humorous")
+    "INSPIRATIONAL" -> Loc.getText("story_genre_inspirational")
+    "HISTORICAL" -> Loc.getText("story_genre_historical")
+    else -> genre.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
+}
+
+internal fun formatStoryLevel(level: String): String = when (level.uppercase()) {
+    "BEGINNER" -> Loc.getText("story_level_beginner")
+    "ADVANCED" -> Loc.getText("story_level_advanced")
+    else -> Loc.getText("story_level_intermediate")
+}
+
+internal fun formatStoryLength(length: String): String = when (length.uppercase()) {
+    "SHORT" -> Loc.getText("story_length_short")
+    "LONG" -> Loc.getText("story_length_long")
+    else -> Loc.getText("story_length_medium")
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun StoryVocabPicker(
@@ -199,57 +222,29 @@ fun StoryVocabPicker(
             .testTag("story_vocab_picker"),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // TOP BAR: Saved Stories button + Story Options Configure button
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        // TOP BAR: Show only story options (saved stories button/badge removed)
+        FilledTonalButton(
+            onClick = { showOptionsDialog = true },
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(36.dp)
+                .testTag("story_configure_options_btn"),
+            shape = RoundedCornerShape(8.dp)
         ) {
-            // Saved Stories button
-            OutlinedButton(
-                onClick = onOpenSavedStories,
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                modifier = Modifier
-                    .height(34.dp)
-                    .testTag("story_saved_library_btn"),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                    contentDescription = null,
-                    modifier = Modifier.size(15.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "${Loc.getText("ai_hub_story_saved_stories")} ($savedStoriesCount)",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            // Story Options Configure button
-            FilledTonalButton(
-                onClick = { showOptionsDialog = true },
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                modifier = Modifier
-                    .height(34.dp)
-                    .testTag("story_configure_options_btn"),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Tune,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "${options.genre} • ${options.level}",
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            Icon(
+                imageVector = Icons.Filled.Tune,
+                contentDescription = null,
+                modifier = Modifier.size(15.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "${Loc.getText("story_options_title")}: ${formatStoryGenre(options.genre)} • ${formatStoryLevel(options.level)}",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
 
         // PROMINENT SOURCE FILTER CARD (Explicitly filter by file or folder)
@@ -689,28 +684,6 @@ private fun StoryOptionsDialog(
         "SLICE_OF_LIFE", "MYSTERY", "ADVENTURE", "SCI_FI", "HUMOROUS", "INSPIRATIONAL", "HISTORICAL"
     )
 
-    fun lengthLabel(l: String) = when (l) {
-        "SHORT" -> Loc.getText("story_length_short")
-        "LONG" -> Loc.getText("story_length_long")
-        else -> Loc.getText("story_length_medium")
-    }
-
-    fun levelLabel(lv: String) = when (lv) {
-        "BEGINNER" -> Loc.getText("story_level_beginner")
-        "ADVANCED" -> Loc.getText("story_level_advanced")
-        else -> Loc.getText("story_level_intermediate")
-    }
-
-    fun genreLabel(g: String) = when (g) {
-        "MYSTERY" -> Loc.getText("story_genre_mystery")
-        "ADVENTURE" -> Loc.getText("story_genre_adventure")
-        "SCI_FI" -> Loc.getText("story_genre_sci_fi")
-        "HUMOROUS" -> Loc.getText("story_genre_humorous")
-        "INSPIRATIONAL" -> Loc.getText("story_genre_inspirational")
-        "HISTORICAL" -> Loc.getText("story_genre_historical")
-        else -> Loc.getText("story_genre_slice_of_life")
-    }
-
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -732,7 +705,7 @@ private fun StoryOptionsDialog(
                             FilterChip(
                                 selected = selectedLength == l,
                                 onClick = { selectedLength = l },
-                                label = { Text(lengthLabel(l), fontSize = 11.sp) },
+                                label = { Text(formatStoryLength(l), fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -747,7 +720,7 @@ private fun StoryOptionsDialog(
                             FilterChip(
                                 selected = selectedLevel == lv,
                                 onClick = { selectedLevel = lv },
-                                label = { Text(levelLabel(lv), fontSize = 11.sp) },
+                                label = { Text(formatStoryLevel(lv), fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -766,7 +739,7 @@ private fun StoryOptionsDialog(
                             FilterChip(
                                 selected = selectedGenre == g,
                                 onClick = { selectedGenre = g },
-                                label = { Text(genreLabel(g), fontSize = 11.sp) }
+                                label = { Text(formatStoryGenre(g), fontSize = 11.sp) }
                             )
                         }
                     }

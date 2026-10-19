@@ -109,21 +109,42 @@ class StoryViewModel(
     ) {
         val words = story.getTargetWords()
         val options = story.getOptions()
-        generateStory(
-            targetWords = words,
-            options = options,
-            onSuccess = { newStory ->
-                viewModelScope.launch {
-                    val updated = newStory.copy(id = story.id)
+        generationJob?.cancel()
+        generationJob = viewModelScope.launch {
+            _isGenerating.value = true
+            _generationError.value = null
+            _generationStatus.value = if (languageProvider() == "ar") "جارٍ إعادة تأليف القصة بواسطة الذكاء الاصطناعي..." else "Regenerating story..."
+
+            val result = GeminiService.generateVocabularyStory(
+                targetWords = words,
+                options = options,
+                customApiKey = apiKeyProvider().ifBlank { null },
+                language = languageProvider(),
+                onProgressUpdate = { status -> _generationStatus.value = status }
+            )
+
+            _isGenerating.value = false
+            _generationStatus.value = ""
+
+            result.fold(
+                onSuccess = { generatedStory ->
+                    val updated = generatedStory.copy(
+                        id = story.id,
+                        createdAt = story.createdAt
+                    )
                     repository.updateVocabularyStory(updated)
                     if (_activeReaderStory.value?.id == story.id) {
                         _activeReaderStory.value = updated
                     }
                     onSuccess?.invoke(updated)
+                },
+                onFailure = { err ->
+                    val msg = err.message ?: "Failed to regenerate story."
+                    _generationError.value = msg
+                    onError?.invoke(msg)
                 }
-            },
-            onError = onError
-        )
+            )
+        }
     }
 
     fun updateStory(story: VocabularyStory) {

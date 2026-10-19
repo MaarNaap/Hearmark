@@ -362,25 +362,15 @@ fun StoryReaderSheet(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // EDITORIAL METADATA SUBTITLE (Formatted gracefully without raw ALL_CAPS chips)
-            Row(
+            // EDITORIAL METADATA SUBTITLE (Clean, single-line date & style without redundant word count)
+            Text(
+                text = "$formattedGenre • $formattedLevel • $formattedDate",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 6.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = "$formattedGenre • $formattedLevel • ${targetWords.size} ${Loc.getText("story_vocabulary_title")}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "• $formattedDate",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
-            }
+                    .padding(top = 4.dp, bottom = 12.dp)
+            )
 
             // MISSING WORDS WARNING (if any)
             if (missingWords.isNotEmpty()) {
@@ -499,27 +489,14 @@ fun StoryReaderSheet(
                         }
                     }
 
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    FilledTonalButton(
+                        onClick = { showVocabListSheet = true },
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                         modifier = Modifier.padding(top = 4.dp)
                     ) {
-                        OutlinedButton(
-                            onClick = { showVocabListSheet = true },
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
-                        ) {
-                            Icon(Icons.Filled.Spellcheck, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(Loc.getFormattedText("story_review_words", targetWords.size), fontSize = 13.sp)
-                        }
-
-                        Button(
-                            onClick = onRegenerate,
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
-                        ) {
-                            Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(Loc.getText("story_regenerate"), fontSize = 13.sp)
-                        }
+                        Icon(Icons.Filled.Spellcheck, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(Loc.getFormattedText("story_review_words", targetWords.size), fontSize = 13.sp)
                     }
                 }
             }

@@ -1114,7 +1114,7 @@ object Loc {
         "story_font_size" to mapOf("en" to "Text Size", "ar" to "حجم الخط"),
         "story_source_label" to mapOf("en" to "Vocabulary Source", "ar" to "مصدر المفردات"),
         "story_source_all" to mapOf("en" to "All Notebook Notes", "ar" to "جميع ملاحظات الدفتر"),
-        "story_filter_by_folder_file" to mapOf("en" to "Filter by File / Folder", "ar" to "تصفية حسب الملف أو المجلد"),
+        "story_filter_by_folder_file" to mapOf("en" to "Filter", "ar" to "تصفية"),
         "story_words_from_source" to mapOf("en" to "%d words from %s", "ar" to "%d كلمات من %s"),
         "story_clear_source_filter" to mapOf("en" to "Reset to All Files", "ar" to "إعادة التعيين لجميع الملفات"),
 

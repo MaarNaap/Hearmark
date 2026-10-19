@@ -238,12 +238,12 @@ fun StoryListSheet(
                                 ) {
                                     SuggestionChip(
                                         onClick = { onOpenStory(item) },
-                                        label = { Text(options.genre, fontSize = 10.sp) },
+                                        label = { Text(formatStoryGenre(options.genre), fontSize = 10.sp) },
                                         modifier = Modifier.height(24.dp)
                                     )
                                     SuggestionChip(
                                         onClick = { onOpenStory(item) },
-                                        label = { Text(options.level, fontSize = 10.sp) },
+                                        label = { Text(formatStoryLevel(options.level), fontSize = 10.sp) },
                                         modifier = Modifier.height(24.dp)
                                     )
                                     val wordCount = targetWords.size
@@ -311,7 +311,7 @@ fun StoryListSheet(
                                             onClick = {
                                                 val shareText = buildString {
                                                     appendLine(item.title)
-                                                    appendLine("${options.genre} • ${options.level}")
+                                                    appendLine("${formatStoryGenre(options.genre)} • ${formatStoryLevel(options.level)}")
                                                     appendLine()
                                                     appendLine(item.storyText)
                                                     appendLine()
