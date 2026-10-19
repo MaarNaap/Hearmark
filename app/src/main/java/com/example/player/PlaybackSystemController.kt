@@ -11,9 +11,11 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
 import android.support.v4.media.session.MediaSessionCompat
+import android.telephony.TelephonyManager
 import android.util.Log
 import android.view.KeyEvent
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.*
 
 internal object PlaybackSystemController {
 
@@ -51,11 +53,53 @@ internal object PlaybackSystemController {
         }
     }
 
+    var isPausedForCall = false
+        internal set
+
+    private var callMonitoringJob: Job? = null
+    internal var modeChangedListener: Any? = null
+
+    fun onCallStarted() {
+        with(AudioPlayerManager) {
+            if (_isPlaying.value) {
+                Log.i(TAG, "Incoming/Active phone call started. Pausing playback immediately.")
+                isPausedForCall = true
+                pause(abandonFocus = false)
+            }
+            callMonitoringJob?.cancel()
+            callMonitoringJob = coroutineScope.launch(Dispatchers.Default) {
+                while (isPausedForCall) {
+                    delay(1000)
+                    val mode = audioManager?.mode ?: AudioManager.MODE_NORMAL
+                    if (mode == AudioManager.MODE_NORMAL) {
+                        withContext(Dispatchers.Main) {
+                            onCallEnded()
+                        }
+                        break
+                    }
+                }
+            }
+        }
+    }
+
+    fun onCallEnded() {
+        with(AudioPlayerManager) {
+            callMonitoringJob?.cancel()
+            callMonitoringJob = null
+            if (isPausedForCall) {
+                isPausedForCall = false
+                Log.i(TAG, "Phone call ended. Resuming playback.")
+                resume()
+            }
+        }
+    }
+
     val focusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         with(AudioPlayerManager) {
             when (focusChange) {
                 AudioManager.AUDIOFOCUS_LOSS -> {
                     resumeOnFocusGain = false
+                    isPausedForCall = false
                     pause(abandonFocus = true)
                 }
                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
@@ -64,11 +108,14 @@ internal object PlaybackSystemController {
                     resumeOnFocusGain = wasPlaying
                 }
                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                    mediaPlayer?.setVolume(0.2f, 0.2f)
+                    // Educational/speech audio must pause rather than duck so user never misses words or calls
+                    val wasPlaying = _isPlaying.value
+                    pause(abandonFocus = false)
+                    resumeOnFocusGain = wasPlaying
                 }
                 AudioManager.AUDIOFOCUS_GAIN -> {
                     mediaPlayer?.setVolume(1.0f, 1.0f)
-                    if (resumeOnFocusGain) {
+                    if (resumeOnFocusGain && !isPausedForCall) {
                         resumeOnFocusGain = false
                         resume()
                     }
@@ -88,6 +135,7 @@ internal object PlaybackSystemController {
                 audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                     .setAudioAttributes(playbackAttributes)
                     .setAcceptsDelayedFocusGain(true)
+                    .setWillPauseWhenDucked(true)
                     .setOnAudioFocusChangeListener(focusChangeListener)
                     .build()
                 audioManager?.requestAudioFocus(audioFocusRequest!!) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
@@ -228,6 +276,25 @@ internal object PlaybackSystemController {
         }
     }
 
+    val phoneStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == TelephonyManager.ACTION_PHONE_STATE_CHANGED ||
+                intent?.action == "android.intent.action.PHONE_STATE") {
+                val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
+                Log.d("AudioPlayerManager", "Phone state broadcast: state=$state")
+                when (state) {
+                    TelephonyManager.EXTRA_STATE_RINGING,
+                    TelephonyManager.EXTRA_STATE_OFFHOOK -> {
+                        onCallStarted()
+                    }
+                    TelephonyManager.EXTRA_STATE_IDLE -> {
+                        onCallEnded()
+                    }
+                }
+            }
+        }
+    }
+
     fun registerSystemReceiversAndSession(context: Context) {
         with(AudioPlayerManager) {
             // Initialize MediaSessionCompat for headset buttons & system media control
@@ -280,6 +347,49 @@ internal object PlaybackSystemController {
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Error registering control receiver: ${e.message}")
+            }
+
+            // Register Phone State Broadcast Receiver for incoming and active calls
+            try {
+                val phoneFilter = IntentFilter().apply {
+                    addAction(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
+                    addAction("android.intent.action.PHONE_STATE")
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    ContextCompat.registerReceiver(
+                        context.applicationContext,
+                        phoneStateReceiver,
+                        phoneFilter,
+                        ContextCompat.RECEIVER_EXPORTED
+                    )
+                } else {
+                    context.applicationContext.registerReceiver(phoneStateReceiver, phoneFilter)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error registering phoneStateReceiver: ${e.message}")
+            }
+
+            // Register OnModeChangedListener on Android 12+ (API 31+) to catch calls in silent/vibrate mode
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                try {
+                    val listener = AudioManager.OnModeChangedListener { mode ->
+                        Log.d(TAG, "AudioManager mode changed: mode=$mode")
+                        when (mode) {
+                            AudioManager.MODE_RINGTONE,
+                            AudioManager.MODE_IN_CALL,
+                            AudioManager.MODE_IN_COMMUNICATION -> {
+                                onCallStarted()
+                            }
+                            AudioManager.MODE_NORMAL -> {
+                                onCallEnded()
+                            }
+                        }
+                    }
+                    audioManager?.addOnModeChangedListener(ContextCompat.getMainExecutor(context), listener)
+                    modeChangedListener = listener
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error registering OnModeChangedListener: ${e.message}")
+                }
             }
         }
     }

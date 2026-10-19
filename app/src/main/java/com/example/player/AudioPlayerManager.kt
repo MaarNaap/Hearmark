@@ -1,6 +1,7 @@
 package com.example.player
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
@@ -398,6 +399,15 @@ object AudioPlayerManager {
             }
 
             mediaPlayer = MediaPlayer().apply {
+                try {
+                    val playbackAttributes = AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                    setAudioAttributes(playbackAttributes)
+                } catch (e: Exception) {
+                    Log.w(TAG, "setAudioAttributes failed: ${e.message}")
+                }
                 appContext?.let { ctx ->
                     try {
                         setWakeMode(ctx.applicationContext, android.os.PowerManager.PARTIAL_WAKE_LOCK)
@@ -587,6 +597,7 @@ object AudioPlayerManager {
     fun pause(abandonFocus: Boolean = true) {
         if (abandonFocus) {
             resumeOnFocusGain = false
+            PlaybackSystemController.isPausedForCall = false
         }
         accumulatePracticePauseTime()
         lastPracticePauseTimestamp = 0L
@@ -624,6 +635,7 @@ object AudioPlayerManager {
 
     fun stop() {
         resumeOnFocusGain = false
+        PlaybackSystemController.isPausedForCall = false
         accumulatePracticePauseTime()
         lastPracticePauseTimestamp = 0L
         practicePauseJob?.cancel()

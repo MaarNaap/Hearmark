@@ -1,5 +1,6 @@
 package com.example.player
 
+import android.media.AudioManager
 import android.util.Log
 import com.example.data.*
 import kotlinx.coroutines.Dispatchers
@@ -330,6 +331,17 @@ internal object PlaybackProgressEngine {
                         val mp = mediaPlayer
                         val isPlaying = try { mp?.isPlaying == true } catch (e: Exception) { false }
                         if (mp != null && isPlaying) {
+                            // Check for incoming or active phone calls (including in silent/vibrate mode)
+                            val currentAudioMode = audioManager?.mode ?: AudioManager.MODE_NORMAL
+                            if (currentAudioMode == AudioManager.MODE_RINGTONE ||
+                                currentAudioMode == AudioManager.MODE_IN_CALL ||
+                                currentAudioMode == AudioManager.MODE_IN_COMMUNICATION) {
+                                Log.i(TAG, "Audio mode $currentAudioMode detected during active playback. Pausing for call.")
+                                PlaybackSystemController.onCallStarted()
+                                delay(500)
+                                continue
+                            }
+
                             accumulateActiveListeningTime()
                             if (sessionActualListeningMs >= 3000L) {
                                 persistCurrentPlayListeningTime()
