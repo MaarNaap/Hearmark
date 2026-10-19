@@ -4,12 +4,10 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -46,6 +44,7 @@ fun StoryVocabPicker(
     allNotes: List<Note>,
     allFolders: List<Folder>,
     allTracks: List<AudioTrack>,
+    initialTrack: AudioTrack? = null,
     selectedWords: List<StoryTargetWord>,
     options: StoryOptions,
     onOptionsChanged: (StoryOptions) -> Unit,
@@ -58,9 +57,11 @@ fun StoryVocabPicker(
     var searchQuery by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
 
-    // Folder and File filter state (matching folders by ID only)
+    // Folder and File filter state (pre-populate with initialTrack if present)
     var selectedFolderIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
-    var selectedTrackIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var selectedTrackIds by remember(initialTrack) {
+        mutableStateOf(if (initialTrack != null) setOf(initialTrack.id) else emptySet())
+    }
     var showFolderFileFilterDialog by remember { mutableStateOf(false) }
 
     // Tag filter state
@@ -69,66 +70,11 @@ fun StoryVocabPicker(
         allNotes.flatMap { it.getTagsList() }.distinct().sorted()
     }
 
-    // Filter notes according to user criteria:
-    // 1. Folders: match by folder ID only (including subfolders)
-    // 2. Tracks / Lessons / Virtual Scenes
-    // 3. Tag
-    // 4. Search query
-    val candidateNotes = remember(allNotes, allFolders, allTracks, selectedFolderIds, selectedTrackIds, selectedTag, searchQuery) {
-        val allSubfolderIds = if (selectedFolderIds.isEmpty()) emptySet() else {
-            selectedFolderIds.flatMap { folderId ->
-                fun getSubs(id: Long): Set<Long> {
-                    val direct = allFolders.filter { it.parentFolderId == id }.map { it.id }.toSet()
-                    return setOf(id) + direct.flatMap { getSubs(it) }
-                }
-                getSubs(folderId)
-            }.toSet()
-        }
+    val trackById = remember(allTracks) { allTracks.associateBy { it.id } }
+    val folderById = remember(allFolders) { allFolders.associateBy { it.id } }
+    val noteById = remember(allNotes) { allNotes.associateBy { it.id } }
 
-        val trackById = allTracks.associateBy { it.id }
-
-        allNotes.filter { note ->
-            // Must have a non-empty isolated target word
-            val targetWord = note.getIsolatedTargetWord()
-            if (targetWord.isBlank()) return@filter false
-
-            // Tag filter
-            if (selectedTag != null && !note.getTagsList().contains(selectedTag)) {
-                return@filter false
-            }
-
-            // Search query filter
-            if (searchQuery.isNotBlank()) {
-                val q = searchQuery.trim().lowercase()
-                val match = note.text.lowercase().contains(q) ||
-                        note.comment.lowercase().contains(q) ||
-                        targetWord.lowercase().contains(q)
-                if (!match) return@filter false
-            }
-
-            // Folder & Track filter (MATCH FOLDERS BY ID ONLY)
-            val hasFolderOrTrackFilter = selectedFolderIds.isNotEmpty() || selectedTrackIds.isNotEmpty()
-            if (hasFolderOrTrackFilter) {
-                val noteTrack = note.trackId?.let { trackById[it] }
-
-                val matchesFolder = if (selectedFolderIds.isEmpty()) false else {
-                    (note.folderId != null && allSubfolderIds.contains(note.folderId)) ||
-                            (noteTrack?.parentFolderId != null && allSubfolderIds.contains(noteTrack.parentFolderId))
-                }
-
-                val matchesTrack = if (selectedTrackIds.isEmpty()) false else {
-                    (note.trackId != null && selectedTrackIds.contains(note.trackId)) ||
-                            (noteTrack?.id != null && selectedTrackIds.contains(noteTrack.id))
-                }
-
-                if (!matchesFolder && !matchesTrack) return@filter false
-            }
-
-            true
-        }
-    }
-
-    // Convert notes into StoryTargetWords and de-duplicate by lowercase word
+    // Helper to extract de-duplicated StoryTargetWords from a list of notes
     fun extractTargetWords(notes: List<Note>): List<StoryTargetWord> {
         val wordMap = linkedMapOf<String, StoryTargetWord>()
         notes.forEach { note ->
@@ -148,15 +94,104 @@ fun StoryVocabPicker(
         return wordMap.values.toList()
     }
 
+    // Dynamic filtering logic: matches notes to selected folder(s) or file(s), tags, and search
+    fun computeFilteredNotes(
+        folderIds: Set<Long>,
+        trackIds: Set<Long>,
+        tag: String?,
+        query: String
+    ): List<Note> {
+        val allSubfolderIds = if (folderIds.isEmpty()) emptySet() else {
+            folderIds.flatMap { folderId ->
+                fun getSubs(id: Long): Set<Long> {
+                    val direct = allFolders.filter { it.parentFolderId == id }.map { it.id }.toSet()
+                    return setOf(id) + direct.flatMap { getSubs(it) }
+                }
+                getSubs(folderId)
+            }.toSet()
+        }
+
+        return allNotes.filter { note ->
+            val targetWord = note.getIsolatedTargetWord()
+            if (targetWord.isBlank()) return@filter false
+
+            // Tag filter
+            if (tag != null && !note.getTagsList().contains(tag)) {
+                return@filter false
+            }
+
+            // Search query filter
+            if (query.isNotBlank()) {
+                val q = query.trim().lowercase()
+                val match = note.text.lowercase().contains(q) ||
+                        note.comment.lowercase().contains(q) ||
+                        targetWord.lowercase().contains(q)
+                if (!match) return@filter false
+            }
+
+            // Folder & Track filter (MATCH FOLDERS BY ID ONLY)
+            val hasFolderOrTrackFilter = folderIds.isNotEmpty() || trackIds.isNotEmpty()
+            if (hasFolderOrTrackFilter) {
+                val noteTrack = note.trackId?.let { trackById[it] }
+
+                val matchesFolder = if (folderIds.isEmpty()) false else {
+                    (note.folderId != null && allSubfolderIds.contains(note.folderId)) ||
+                            (noteTrack?.parentFolderId != null && allSubfolderIds.contains(noteTrack.parentFolderId))
+                }
+
+                val matchesTrack = if (trackIds.isEmpty()) false else {
+                    (note.trackId != null && trackIds.contains(note.trackId)) ||
+                            (noteTrack?.id != null && trackIds.contains(noteTrack.id))
+                }
+
+                if (!matchesFolder && !matchesTrack) return@filter false
+            }
+
+            true
+        }
+    }
+
+    // Candidate notes based on current active filters
+    val candidateNotes = remember(
+        allNotes, allFolders, allTracks,
+        selectedFolderIds, selectedTrackIds, selectedTag, searchQuery
+    ) {
+        computeFilteredNotes(selectedFolderIds, selectedTrackIds, selectedTag, searchQuery)
+    }
+
     // Auto-select candidate words on initial load if selectedWords is empty
-    LaunchedEffect(candidateNotes) {
-        if (selectedWords.isEmpty() && candidateNotes.isNotEmpty()) {
-            val extracted = extractTargetWords(candidateNotes)
-            onWordsChanged(extracted)
+    LaunchedEffect(Unit) {
+        if (selectedWords.isEmpty()) {
+            val initialFiltered = computeFilteredNotes(selectedFolderIds, selectedTrackIds, selectedTag, searchQuery)
+            onWordsChanged(extractTargetWords(initialFiltered))
         }
     }
 
     var showOptionsDialog by remember { mutableStateOf(false) }
+
+    // Human-readable summary of current source filter
+    val currentSourceLabel = remember(selectedFolderIds, selectedTrackIds, folderById, trackById) {
+        when {
+            selectedFolderIds.isEmpty() && selectedTrackIds.isEmpty() ->
+                Loc.getText("story_source_all")
+            selectedFolderIds.size == 1 && selectedTrackIds.isEmpty() -> {
+                val fName = folderById[selectedFolderIds.first()]?.folderName ?: "Folder"
+                "📁 $fName"
+            }
+            selectedFolderIds.isEmpty() && selectedTrackIds.size == 1 -> {
+                val tName = trackById[selectedTrackIds.first()]?.getDisplayTitle() ?: "Audio Track"
+                "🎵 $tName"
+            }
+            selectedFolderIds.isNotEmpty() && selectedTrackIds.isEmpty() ->
+                "📁 ${selectedFolderIds.size} ${Loc.getText("selected_folders_label")}"
+            selectedFolderIds.isEmpty() && selectedTrackIds.isNotEmpty() ->
+                "🎵 ${selectedTrackIds.size} ${Loc.getText("selected_files_label")}"
+            else ->
+                "${selectedFolderIds.size + selectedTrackIds.size} ${Loc.getText("selected_folders_files_label")}"
+        }
+    }
+
+    val isSpecificSourceFiltered = selectedFolderIds.isNotEmpty() || selectedTrackIds.isNotEmpty()
 
     Column(
         modifier = Modifier
@@ -164,7 +199,7 @@ fun StoryVocabPicker(
             .testTag("story_vocab_picker"),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // TOP CONTROLS: Saved Stories library button + Options summary button
+        // TOP BAR: Saved Stories button + Story Options Configure button
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -217,12 +252,100 @@ fun StoryVocabPicker(
             }
         }
 
-        // FILTER & SEARCH TOOLBAR
+        // PROMINENT SOURCE FILTER CARD (Explicitly filter by file or folder)
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = if (isSpecificSourceFiltered) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+            border = BorderStroke(
+                1.dp,
+                if (isSpecificSourceFiltered) MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = if (isSpecificSourceFiltered) Icons.Filled.FilterAlt else Icons.Filled.Source,
+                            contentDescription = null,
+                            tint = if (isSpecificSourceFiltered) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Column {
+                            Text(
+                                text = Loc.getText("story_source_label"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = currentSourceLabel,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSpecificSourceFiltered) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        // Change Filter Button
+                        Button(
+                            onClick = { showFolderFileFilterDialog = true },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.height(30.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Filled.FilterList, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(Loc.getText("story_filter_by_folder_file"), fontSize = 11.5.sp)
+                        }
+
+                        // Reset Filter Button (if active)
+                        if (isSpecificSourceFiltered) {
+                            IconButton(
+                                onClick = {
+                                    selectedFolderIds = emptySet()
+                                    selectedTrackIds = emptySet()
+                                    val resetNotes = computeFilteredNotes(emptySet(), emptySet(), selectedTag, searchQuery)
+                                    onWordsChanged(extractTargetWords(resetNotes))
+                                },
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Close,
+                                    contentDescription = Loc.getText("story_clear_source_filter"),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // SEARCH & TAG TOOLBAR
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(10.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(
@@ -262,7 +385,7 @@ fun StoryVocabPicker(
                             Icon(Icons.Filled.Close, contentDescription = "Close", modifier = Modifier.size(16.dp))
                         }
                     } else {
-                        // Title + Count
+                        // Word Count Badge
                         Text(
                             text = Loc.getFormattedText("story_review_words", selectedWords.size),
                             style = MaterialTheme.typography.labelMedium,
@@ -274,26 +397,6 @@ fun StoryVocabPicker(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            val totalFilterCount = selectedFolderIds.size + selectedTrackIds.size
-                            // Filter by Folder / Files Dialog Button
-                            IconButton(
-                                onClick = { showFolderFileFilterDialog = true },
-                                modifier = Modifier.size(28.dp).testTag("story_folder_filter_btn")
-                            ) {
-                                BadgedBox(badge = {
-                                    if (totalFilterCount > 0) {
-                                        Badge { Text(totalFilterCount.toString(), fontSize = 9.sp) }
-                                    }
-                                }) {
-                                    Icon(
-                                        imageVector = Icons.Filled.FilterList,
-                                        contentDescription = "Filter Folders/Files",
-                                        tint = if (totalFilterCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(17.dp)
-                                    )
-                                }
-                            }
-
                             // Search Toggle
                             IconButton(
                                 onClick = { isSearchExpanded = true },
@@ -309,23 +412,23 @@ fun StoryVocabPicker(
                                     val combined = (selectedWords + candidateWords).distinctBy { it.word.lowercase() }
                                     onWordsChanged(combined)
                                 },
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                             ) {
-                                Text(Loc.getText("select_all"), fontSize = 11.sp)
+                                Text(Loc.getText("select_all"), fontSize = 11.5.sp)
                             }
 
                             // Deselect All
                             TextButton(
                                 onClick = { onWordsChanged(emptyList()) },
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                             ) {
-                                Text(Loc.getText("deselect_all"), fontSize = 11.sp)
+                                Text(Loc.getText("deselect_all"), fontSize = 11.5.sp)
                             }
                         }
                     }
                 }
 
-                // TAGS FILTER CHIPS ROW (if notes have tags)
+                // TAGS FILTER CHIPS ROW (if tags exist)
                 if (allTags.isNotEmpty()) {
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -334,7 +437,11 @@ fun StoryVocabPicker(
                         item {
                             FilterChip(
                                 selected = selectedTag == null,
-                                onClick = { selectedTag = null },
+                                onClick = {
+                                    selectedTag = null
+                                    val updatedNotes = computeFilteredNotes(selectedFolderIds, selectedTrackIds, null, searchQuery)
+                                    onWordsChanged(extractTargetWords(updatedNotes))
+                                },
                                 label = { Text("All Tags", fontSize = 10.5.sp) },
                                 modifier = Modifier.height(26.dp)
                             )
@@ -342,54 +449,22 @@ fun StoryVocabPicker(
                         items(allTags) { tag ->
                             FilterChip(
                                 selected = selectedTag == tag,
-                                onClick = { selectedTag = if (selectedTag == tag) null else tag },
+                                onClick = {
+                                    val newTag = if (selectedTag == tag) null else tag
+                                    selectedTag = newTag
+                                    val updatedNotes = computeFilteredNotes(selectedFolderIds, selectedTrackIds, newTag, searchQuery)
+                                    onWordsChanged(extractTargetWords(updatedNotes))
+                                },
                                 label = { Text(tag, fontSize = 10.5.sp) },
                                 modifier = Modifier.height(26.dp)
                             )
                         }
                     }
                 }
-
-                // ACTIVE FOLDER / FILE FILTER INDICATOR CHIP
-                val totalFilterCount = selectedFolderIds.size + selectedTrackIds.size
-                if (totalFilterCount > 0) {
-                    val label = when {
-                        selectedFolderIds.isNotEmpty() && selectedTrackIds.isEmpty() ->
-                            "${selectedFolderIds.size} ${Loc.getText("selected_folders_label")}"
-                        selectedFolderIds.isEmpty() && selectedTrackIds.isNotEmpty() ->
-                            "${selectedTrackIds.size} ${Loc.getText("selected_files_label")}"
-                        else ->
-                            "$totalFilterCount ${Loc.getText("selected_folders_files_label")}"
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        FilterChip(
-                            selected = true,
-                            onClick = { showFolderFileFilterDialog = true },
-                            label = { Text(label, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold) },
-                            leadingIcon = { Icon(Icons.Filled.Folder, contentDescription = null, modifier = Modifier.size(12.dp)) },
-                            trailingIcon = {
-                                IconButton(
-                                    onClick = {
-                                        selectedFolderIds = emptySet()
-                                        selectedTrackIds = emptySet()
-                                    },
-                                    modifier = Modifier.size(16.dp)
-                                ) {
-                                    Icon(Icons.Filled.Close, contentDescription = "Clear", modifier = Modifier.size(11.dp))
-                                }
-                            },
-                            modifier = Modifier.height(26.dp)
-                        )
-                    }
-                }
             }
         }
 
-        // CAP WARNING & BATCH SPLIT OFFER (If > 20 words)
+        // CAP WARNING & BATCH SPLIT (If > 20 words selected)
         if (selectedWords.size > MAX_WORDS_PER_STORY_CAP) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -440,7 +515,7 @@ fun StoryVocabPicker(
             }
         }
 
-        // WORD REVIEW LIST: The user can review the resulting word list and remove any word before generating
+        // WORD REVIEW LIST WITH SOURCE FILE BADGE
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -450,12 +525,23 @@ fun StoryVocabPicker(
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
         ) {
             if (selectedWords.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "No words selected. Pick from notes or select all above.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.SearchOff,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Text(
+                            text = "No words found in this source. Change the file filter or reset to All Notes.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             } else {
                 LazyColumn(
@@ -464,6 +550,10 @@ fun StoryVocabPicker(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     items(selectedWords, key = { it.word.lowercase() }) { item ->
+                        val originNote = item.noteId?.let { noteById[it] }
+                        val originSource = originNote?.trackName?.ifBlank { null }
+                            ?: originNote?.folderName?.ifBlank { null }
+
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = MaterialTheme.colorScheme.surface,
@@ -476,14 +566,47 @@ fun StoryVocabPicker(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = item.word,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = item.word,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+
+                                        if (originSource != null) {
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(10.dp),
+                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                    Text(
+                                                        text = originSource,
+                                                        fontSize = 10.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     if (item.meaning.isNotBlank()) {
                                         Text(
                                             text = item.meaning,
@@ -495,6 +618,7 @@ fun StoryVocabPicker(
                                         )
                                     }
                                 }
+
                                 IconButton(
                                     onClick = {
                                         onWordsChanged(selectedWords.filter { it.word.lowercase() != item.word.lowercase() })
@@ -516,7 +640,7 @@ fun StoryVocabPicker(
         }
     }
 
-    // FOLDER / FILE TREE FILTER DIALOG (Matching folders by ID only)
+    // FOLDER / FILE TREE FILTER DIALOG (Hierarchical selection of specific files or folders)
     if (showFolderFileFilterDialog) {
         FolderFileTreeFilterDialog(
             allFolders = allFolders,
@@ -528,6 +652,8 @@ fun StoryVocabPicker(
             onApply = { newFolders, newTracks ->
                 selectedFolderIds = newFolders
                 selectedTrackIds = newTracks
+                val updatedNotes = computeFilteredNotes(newFolders, newTracks, selectedTag, searchQuery)
+                onWordsChanged(extractTargetWords(updatedNotes))
                 showFolderFileFilterDialog = false
             }
         )
@@ -538,30 +664,59 @@ fun StoryVocabPicker(
         StoryOptionsDialog(
             currentOptions = options,
             onDismiss = { showOptionsDialog = false },
-            onApply = { updated ->
-                onOptionsChanged(updated)
+            onSave = { newOptions ->
+                onOptionsChanged(newOptions)
                 showOptionsDialog = false
             }
         )
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun StoryOptionsDialog(
+private fun StoryOptionsDialog(
     currentOptions: StoryOptions,
     onDismiss: () -> Unit,
-    onApply: (StoryOptions) -> Unit
+    onSave: (StoryOptions) -> Unit
 ) {
-    var length by remember { mutableStateOf(currentOptions.length) }
-    var level by remember { mutableStateOf(currentOptions.level) }
-    var genre by remember { mutableStateOf(currentOptions.genre) }
+    var selectedLength by remember { mutableStateOf(currentOptions.length) }
+    var selectedLevel by remember { mutableStateOf(currentOptions.level) }
+    var selectedGenre by remember { mutableStateOf(currentOptions.genre) }
+
+    val lengths = listOf("SHORT", "MEDIUM", "LONG")
+    val levels = listOf("BEGINNER", "INTERMEDIATE", "ADVANCED")
+    val genres = listOf(
+        "SLICE_OF_LIFE", "MYSTERY", "ADVENTURE", "SCI_FI", "HUMOROUS", "INSPIRATIONAL", "HISTORICAL"
+    )
+
+    fun lengthLabel(l: String) = when (l) {
+        "SHORT" -> Loc.getText("story_length_short")
+        "LONG" -> Loc.getText("story_length_long")
+        else -> Loc.getText("story_length_medium")
+    }
+
+    fun levelLabel(lv: String) = when (lv) {
+        "BEGINNER" -> Loc.getText("story_level_beginner")
+        "ADVANCED" -> Loc.getText("story_level_advanced")
+        else -> Loc.getText("story_level_intermediate")
+    }
+
+    fun genreLabel(g: String) = when (g) {
+        "MYSTERY" -> Loc.getText("story_genre_mystery")
+        "ADVENTURE" -> Loc.getText("story_genre_adventure")
+        "SCI_FI" -> Loc.getText("story_genre_sci_fi")
+        "HUMOROUS" -> Loc.getText("story_genre_humorous")
+        "INSPIRATIONAL" -> Loc.getText("story_genre_inspirational")
+        "HISTORICAL" -> Loc.getText("story_genre_historical")
+        else -> Loc.getText("story_genre_slice_of_life")
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Filled.Tune, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                Text(Loc.getText("story_options_title"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(Loc.getText("story_options_title"), fontWeight = FontWeight.Bold)
             }
         },
         text = {
@@ -569,70 +724,65 @@ fun StoryOptionsDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // 1. Length Selector
+                // Length
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(Loc.getText("story_length"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("SHORT" to "story_length_short", "MEDIUM" to "story_length_medium", "LONG" to "story_length_long").forEach { (key, locKey) ->
+                        lengths.forEach { l ->
                             FilterChip(
-                                selected = length == key,
-                                onClick = { length = key },
-                                label = { Text(Loc.getText(locKey), fontSize = 11.sp) },
+                                selected = selectedLength == l,
+                                onClick = { selectedLength = l },
+                                label = { Text(lengthLabel(l), fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                         }
                     }
                 }
 
-                // 2. CEFR Level Selector
+                // Level
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(Loc.getText("story_level"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("BEGINNER" to "story_level_beginner", "INTERMEDIATE" to "story_level_intermediate", "ADVANCED" to "story_level_advanced").forEach { (key, locKey) ->
+                        levels.forEach { lv ->
                             FilterChip(
-                                selected = level == key,
-                                onClick = { level = key },
-                                label = { Text(Loc.getText(locKey), fontSize = 11.sp) },
+                                selected = selectedLevel == lv,
+                                onClick = { selectedLevel = lv },
+                                label = { Text(levelLabel(lv), fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                         }
                     }
                 }
 
-                // 3. Genre / Tone Selector
+                // Genre
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(Loc.getText("story_genre"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                    val genres = listOf(
-                        "SLICE_OF_LIFE" to "story_genre_slice_of_life",
-                        "MYSTERY" to "story_genre_mystery",
-                        "ADVENTURE" to "story_genre_adventure",
-                        "SCI_FI" to "story_genre_sci_fi",
-                        "HUMOROUS" to "story_genre_humorous",
-                        "INSPIRATIONAL" to "story_genre_inspirational",
-                        "HISTORICAL" to "story_genre_historical"
-                    )
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        genres.chunked(2).forEach { row ->
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                row.forEach { (gKey, locKey) ->
-                                    FilterChip(
-                                        selected = genre == gKey,
-                                        onClick = { genre = gKey },
-                                        label = { Text(Loc.getText(locKey), fontSize = 11.sp) },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                                if (row.size == 1) {
-                                    Spacer(modifier = Modifier.weight(1f))
-                                }
-                            }
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        genres.forEach { g ->
+                            FilterChip(
+                                selected = selectedGenre == g,
+                                onClick = { selectedGenre = g },
+                                label = { Text(genreLabel(g), fontSize = 11.sp) }
+                            )
                         }
                     }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = { onApply(StoryOptions(length = length, level = level, genre = genre)) }) {
+            Button(onClick = {
+                onSave(
+                    currentOptions.copy(
+                        length = selectedLength,
+                        level = selectedLevel,
+                        genre = selectedGenre
+                    )
+                )
+            }) {
                 Text(Loc.getText("done"))
             }
         },

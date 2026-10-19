@@ -1112,6 +1112,11 @@ object Loc {
         "story_tap_word_hint" to mapOf("en" to "Tap any highlighted word to view meaning", "ar" to "المس أي كلمة مظللة لعرض معناها"),
         "story_completed_badge" to mapOf("en" to "Story Finished", "ar" to "اكتملت القصة"),
         "story_font_size" to mapOf("en" to "Text Size", "ar" to "حجم الخط"),
+        "story_source_label" to mapOf("en" to "Vocabulary Source", "ar" to "مصدر المفردات"),
+        "story_source_all" to mapOf("en" to "All Notebook Notes", "ar" to "جميع ملاحظات الدفتر"),
+        "story_filter_by_folder_file" to mapOf("en" to "Filter by File / Folder", "ar" to "تصفية حسب الملف أو المجلد"),
+        "story_words_from_source" to mapOf("en" to "%d words from %s", "ar" to "%d كلمات من %s"),
+        "story_clear_source_filter" to mapOf("en" to "Reset to All Files", "ar" to "إعادة التعيين لجميع الملفات"),
 
 
         // Additional missing and UI action keys

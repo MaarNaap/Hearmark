@@ -617,6 +617,7 @@ fun UnifiedAiHubSheet(
                                 allNotes = allNotes,
                                 allFolders = allFolders,
                                 allTracks = allTracks,
+                                initialTrack = selectedTrack ?: initialTrack,
                                 selectedWords = selectedStoryWords,
                                 options = selectedStoryOptions,
                                 onOptionsChanged = { selectedStoryOptions = it },
