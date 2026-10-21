@@ -4,14 +4,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
@@ -44,53 +46,30 @@ internal fun FolderTreeFilterItemRow(
                 else -> ToggleableState.Off
             }
 
+            // Clean folder row matching AI Hub HierarchyFilePicker styling
             Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = if (triState == ToggleableState.On) {
-                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                } else if (triState == ToggleableState.Indeterminate) {
-                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                shape = RoundedCornerShape(8.dp),
+                color = when (triState) {
+                    ToggleableState.On -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                    ToggleableState.Indeterminate -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.20f)
+                    ToggleableState.Off -> Color.Transparent
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = (item.depth * 14).dp)
+                    .padding(start = (item.depth * 14 + 4).dp, end = 6.dp)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(role = Role.Checkbox) {
-                            val willSelect = (triState != ToggleableState.On)
-                            if (willSelect) {
-                                onUpdateSelectedFolders(tempSelectedFolderIds + item.allSubfolderIds)
-                                onUpdateSelectedTracks(tempSelectedTrackIds + item.allRecursiveTrackIds)
-                            } else {
-                                onUpdateSelectedFolders(tempSelectedFolderIds - item.allSubfolderIds)
-                                onUpdateSelectedTracks(tempSelectedTrackIds - item.allRecursiveTrackIds)
-                            }
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            onToggleFolderExpanded(folder.id, item.isExpanded)
                         }
                         .padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (item.hasChildren) {
-                        IconButton(
-                            onClick = {
-                                onToggleFolderExpanded(folder.id, item.isExpanded)
-                            },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (item.isExpanded) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = if (item.isExpanded) Loc.getText("collapse_all") else Loc.getText("expand_all"),
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    } else {
-                        Spacer(modifier = Modifier.width(24.dp))
-                    }
-
+                    // Folder Icon
                     Icon(
                         imageVector = if (item.isExpanded) Icons.Filled.FolderOpen else Icons.Filled.Folder,
                         contentDescription = null,
@@ -98,24 +77,35 @@ internal fun FolderTreeFilterItemRow(
                         modifier = Modifier.size(18.dp)
                     )
 
-                    Spacer(modifier = Modifier.width(6.dp))
+                    // Folder Title
+                    Text(
+                        text = folder.folderName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
 
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = folder.folderName,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "${item.totalTracksCount} 🎵",
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    // Track count badge
+                    Text(
+                        text = "${item.totalTracksCount}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    // Expand / Collapse Chevron
+                    if (item.hasChildren) {
+                        Icon(
+                            imageVector = if (item.isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                            contentDescription = if (item.isExpanded) Loc.getText("collapse_all") else Loc.getText("expand_all"),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(16.dp)
                         )
                     }
 
+                    // Multi-select Checkbox
                     TriStateCheckbox(
                         state = triState,
                         onClick = {
@@ -127,7 +117,8 @@ internal fun FolderTreeFilterItemRow(
                                 onUpdateSelectedFolders(tempSelectedFolderIds - item.allSubfolderIds)
                                 onUpdateSelectedTracks(tempSelectedTrackIds - item.allRecursiveTrackIds)
                             }
-                        }
+                        },
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
@@ -137,50 +128,50 @@ internal fun FolderTreeFilterItemRow(
             val track = item.track
             val isTrackChecked = track.id in tempSelectedTrackIds
 
+            // File / Track Row matching AI Hub FileTrackRowItem styling
             Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = if (isTrackChecked) {
-                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.12f)
+                onClick = {
+                    onUpdateSelectedTracks(
+                        if (isTrackChecked) {
+                            tempSelectedTrackIds - track.id
+                        } else {
+                            tempSelectedTrackIds + track.id
+                        }
+                    )
+                    if (isTrackChecked && track.parentFolderId != null) {
+                        onUpdateSelectedFolders(tempSelectedFolderIds - track.parentFolderId)
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = (item.depth * 14 + 12).dp)
+                    .padding(start = (item.depth * 14 + 10).dp, end = 6.dp, top = 1.dp, bottom = 1.dp),
+                shape = RoundedCornerShape(8.dp),
+                color = if (isTrackChecked) {
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                } else {
+                    Color.Transparent
+                }
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(role = Role.Checkbox) {
-                            onUpdateSelectedTracks(
-                                if (isTrackChecked) {
-                                    tempSelectedTrackIds - track.id
-                                } else {
-                                    tempSelectedTrackIds + track.id
-                                }
-                            )
-                            if (isTrackChecked && track.parentFolderId != null) {
-                                onUpdateSelectedFolders(tempSelectedFolderIds - track.parentFolderId)
-                            }
-                        }
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Icon(
                         imageVector = getTrackFileIcon(track),
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(15.dp)
+                        tint = if (isTrackChecked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
                     )
-
-                    Spacer(modifier = Modifier.width(6.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = track.getDisplayTitle(),
-                            fontSize = 12.sp,
-                            fontWeight = if (isTrackChecked) FontWeight.SemiBold else FontWeight.Normal,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = if (isTrackChecked) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isTrackChecked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -206,7 +197,8 @@ internal fun FolderTreeFilterItemRow(
                             if (!checked && track.parentFolderId != null) {
                                 onUpdateSelectedFolders(tempSelectedFolderIds - track.parentFolderId)
                             }
-                        }
+                        },
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
@@ -214,50 +206,47 @@ internal fun FolderTreeFilterItemRow(
 
         is FolderTreeItem.IndependentHeader -> {
             Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
-                modifier = Modifier.fillMaxWidth()
+                shape = RoundedCornerShape(8.dp),
+                color = Color.Transparent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 4.dp, end = 6.dp)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
                         .clickable(role = Role.Button) { onToggleIndependentExpanded() }
                         .padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    IconButton(
-                        onClick = { onToggleIndependentExpanded() },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (item.isExpanded) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = if (item.isExpanded) Loc.getText("collapse_all") else Loc.getText("expand_all"),
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
                     Icon(
-                        imageVector = Icons.Filled.Folder,
+                        imageVector = if (item.isExpanded) Icons.Filled.FolderOpen else Icons.Filled.Folder,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp)
                     )
 
-                    Spacer(modifier = Modifier.width(6.dp))
-
                     Text(
                         text = Loc.getText("independent_tracks_section"),
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f)
                     )
 
                     Text(
-                        text = "${item.count} 🎵",
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        text = "${item.count}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Icon(
+                        imageVector = if (item.isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }

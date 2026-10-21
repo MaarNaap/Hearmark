@@ -229,28 +229,6 @@ fun StoryReaderSheet(
                         )
                     }
 
-                    // View Words Button (Opens clean vocabulary modal without cluttering reading area)
-                    IconButton(
-                        onClick = { showVocabListSheet = true },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        BadgedBox(
-                            badge = {
-                                Badge(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                ) {
-                                    Text("${targetWords.size}")
-                                }
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Spellcheck,
-                                contentDescription = Loc.getText("story_vocabulary_title"),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
 
                     // Share button
                     IconButton(
