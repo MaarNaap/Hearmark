@@ -280,7 +280,6 @@ fun StoryReaderSheet(
                         ) {
                             DropdownMenuItem(
                                 text = { Text(Loc.getText("story_edit")) },
-                                leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
                                 onClick = {
                                     showOptionsMenu = false
                                     showEditDialog = true
@@ -289,7 +288,6 @@ fun StoryReaderSheet(
                             )
                             DropdownMenuItem(
                                 text = { Text(Loc.getText("story_regenerate")) },
-                                leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
                                 onClick = {
                                     showOptionsMenu = false
                                     onRegenerate()
@@ -302,13 +300,6 @@ fun StoryReaderSheet(
                                     Text(
                                         Loc.getText("story_delete"),
                                         color = MaterialTheme.colorScheme.error
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Filled.DeleteOutline,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.error
                                     )
                                 },
                                 onClick = {
