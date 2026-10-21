@@ -128,7 +128,7 @@ internal fun FolderTreeFilterItemRow(
             val track = item.track
             val isTrackChecked = track.id in tempSelectedTrackIds
 
-            // File / Track Row matching AI Hub FileTrackRowItem styling
+            // File / Track Row: starts from the beginning of the container for maximum space, single row layout
             Surface(
                 onClick = {
                     onUpdateSelectedTracks(
@@ -144,7 +144,7 @@ internal fun FolderTreeFilterItemRow(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = (item.depth * 14 + 10).dp, end = 6.dp, top = 1.dp, bottom = 1.dp),
+                    .padding(start = 6.dp, end = 6.dp, top = 1.dp, bottom = 1.dp),
                 shape = RoundedCornerShape(8.dp),
                 color = if (isTrackChecked) {
                     MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
@@ -166,22 +166,23 @@ internal fun FolderTreeFilterItemRow(
                         modifier = Modifier.size(16.dp)
                     )
 
-                    Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = track.getDisplayTitle(),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = if (isTrackChecked) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isTrackChecked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    if (track.duration > 0L) {
                         Text(
-                            text = track.getDisplayTitle(),
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = if (isTrackChecked) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isTrackChecked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            text = formatStatsDuration(track.duration),
+                            fontSize = 10.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            maxLines = 1
                         )
-                        if (track.duration > 0L) {
-                            Text(
-                                text = formatStatsDuration(track.duration),
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
-                        }
                     }
 
                     Checkbox(

@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.UnfoldLess
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material3.*
@@ -160,8 +161,11 @@ fun FolderFileTreeFilterDialog(
                 val allFolderIds = remember(allFolders) { allFolders.map { it.id }.toSet() }
                 val allTrackIds = remember(allTracks) { allTracks.map { it.id }.toSet() }
                 val isAllExpanded = expandedFolderIds.containsAll(allFolderIds) && independentTracksExpanded
+                val isAllSelected = (allFolderIds.isNotEmpty() || allTrackIds.isNotEmpty()) &&
+                    tempSelectedFolderIds.containsAll(allFolderIds) &&
+                    tempSelectedTrackIds.containsAll(allTrackIds)
 
-                // Quick Action Bar matching AI Hub design
+                // Quick Action Bar: Single Select/Deselect All Toggle on left, Expand/Collapse All on right
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -169,29 +173,30 @@ fun FolderFileTreeFilterDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        TextButton(
-                            onClick = {
-                                tempSelectedFolderIds = allFolderIds
-                                tempSelectedTrackIds = allTrackIds
-                            },
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(Loc.getText("select_all_tasks"), fontSize = 11.5.sp)
-                        }
-
-                        TextButton(
-                            onClick = {
+                    TextButton(
+                        onClick = {
+                            if (isAllSelected) {
                                 tempSelectedFolderIds = emptySet()
                                 tempSelectedTrackIds = emptySet()
-                            },
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(Loc.getText("deselect_all_tasks"), fontSize = 11.5.sp)
-                        }
+                            } else {
+                                tempSelectedFolderIds = allFolderIds
+                                tempSelectedTrackIds = allTrackIds
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isAllSelected) Icons.Filled.Clear else Icons.Filled.SelectAll,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (isAllSelected) Loc.getText("deselect_all_tasks") else Loc.getText("select_all_tasks"),
+                            fontSize = 11.5.sp,
+                            fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Normal
+                        )
                     }
 
                     TextButton(
