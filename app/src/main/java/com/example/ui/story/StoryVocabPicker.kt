@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,6 +59,7 @@ internal fun formatStoryLevel(level: String): String = when (level.uppercase()) 
 internal fun formatStoryLength(length: String): String = when (length.uppercase()) {
     "SHORT" -> Loc.getText("story_length_short")
     "LONG" -> Loc.getText("story_length_long")
+    "VERY_LONG" -> Loc.getText("story_length_very_long")
     else -> Loc.getText("story_length_medium")
 }
 
@@ -239,7 +241,7 @@ fun StoryVocabPicker(
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-                text = "${Loc.getText("story_options_title")}: ${formatStoryGenre(options.genre)} • ${formatStoryLevel(options.level)}",
+                text = "${Loc.getText("story_options_title")}: ${options.targetWordCount} ${Loc.getText("story_words_unit")} • ${formatStoryGenre(options.genre)} • ${formatStoryLevel(options.level)}",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -674,11 +676,10 @@ private fun StoryOptionsDialog(
     onDismiss: () -> Unit,
     onSave: (StoryOptions) -> Unit
 ) {
-    var selectedLength by remember { mutableStateOf(currentOptions.length) }
+    var selectedWordCount by remember { mutableIntStateOf(currentOptions.targetWordCount) }
     var selectedLevel by remember { mutableStateOf(currentOptions.level) }
     var selectedGenre by remember { mutableStateOf(currentOptions.genre) }
 
-    val lengths = listOf("SHORT", "MEDIUM", "LONG")
     val levels = listOf("BEGINNER", "INTERMEDIATE", "ADVANCED")
     val genres = listOf(
         "SLICE_OF_LIFE", "MYSTERY", "ADVENTURE", "SCI_FI", "HUMOROUS", "INSPIRATIONAL", "HISTORICAL"
@@ -697,16 +698,90 @@ private fun StoryOptionsDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Length
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(Loc.getText("story_length"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        lengths.forEach { l ->
-                            FilterChip(
-                                selected = selectedLength == l,
-                                onClick = { selectedLength = l },
-                                label = { Text(formatStoryLength(l), fontSize = 11.sp) },
-                                modifier = Modifier.weight(1f)
+                // Word Count Stepper (Default 100, step 50, categorized under the hood)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = Loc.getText("story_target_words"),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        val lengthCategory = StoryOptions.wordCountToLengthCategory(selectedWordCount)
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                        ) {
+                            Text(
+                                text = formatStoryLength(lengthCategory),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilledTonalIconButton(
+                            onClick = { if (selectedWordCount > 50) selectedWordCount -= 50 },
+                            enabled = selectedWordCount > 50,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .testTag("dec_story_words_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Remove,
+                                contentDescription = "Decrease word count",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    text = "$selectedWordCount",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = Loc.getText("story_words_unit"),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+
+                        FilledTonalIconButton(
+                            onClick = { if (selectedWordCount < 1500) selectedWordCount += 50 },
+                            enabled = selectedWordCount < 1500,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .testTag("inc_story_words_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Add,
+                                contentDescription = "Increase word count",
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
@@ -748,9 +823,11 @@ private fun StoryOptionsDialog(
         },
         confirmButton = {
             Button(onClick = {
+                val lengthCategory = StoryOptions.wordCountToLengthCategory(selectedWordCount)
                 onSave(
                     currentOptions.copy(
-                        length = selectedLength,
+                        targetWordCount = selectedWordCount,
+                        length = lengthCategory,
                         level = selectedLevel,
                         genre = selectedGenre
                     )

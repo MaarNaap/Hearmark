@@ -59,10 +59,21 @@ data class VocabularyStory(
         if (optionsJson.isBlank()) return StoryOptions()
         return try {
             val obj = JSONObject(optionsJson)
+            val parsedCount = if (obj.has("targetWordCount")) {
+                obj.optInt("targetWordCount", 100)
+            } else {
+                StoryOptions.defaultWordCountForLength(obj.optString("length", "SHORT"))
+            }
+            val parsedLength = if (obj.has("length")) {
+                obj.optString("length", StoryOptions.wordCountToLengthCategory(parsedCount))
+            } else {
+                StoryOptions.wordCountToLengthCategory(parsedCount)
+            }
             StoryOptions(
-                length = obj.optString("length", "MEDIUM"),
+                length = parsedLength,
                 level = obj.optString("level", "INTERMEDIATE"),
-                genre = obj.optString("genre", "SLICE_OF_LIFE")
+                genre = obj.optString("genre", "SLICE_OF_LIFE"),
+                targetWordCount = parsedCount
             )
         } catch (_: Exception) {
             StoryOptions()
@@ -85,13 +96,32 @@ data class StoryTargetWord(
 }
 
 data class StoryOptions(
-    val length: String = "MEDIUM",       // SHORT, MEDIUM, LONG
+    val length: String = "SHORT",        // SHORT, MEDIUM, LONG, VERY_LONG
     val level: String = "INTERMEDIATE",   // BEGINNER, INTERMEDIATE, ADVANCED
-    val genre: String = "SLICE_OF_LIFE"  // SLICE_OF_LIFE, MYSTERY, ADVENTURE, SCI_FI, HUMOROUS, INSPIRATIONAL, HISTORICAL
+    val genre: String = "SLICE_OF_LIFE", // SLICE_OF_LIFE, MYSTERY, ADVENTURE, SCI_FI, HUMOROUS, INSPIRATIONAL, HISTORICAL
+    val targetWordCount: Int = 100        // user selected target words, default 100, step 50
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("length", length)
         put("level", level)
         put("genre", genre)
+        put("targetWordCount", targetWordCount)
+    }
+
+    companion object {
+        fun wordCountToLengthCategory(count: Int): String = when {
+            count <= 150 -> "SHORT"
+            count <= 350 -> "MEDIUM"
+            count <= 600 -> "LONG"
+            else -> "VERY_LONG"
+        }
+
+        fun defaultWordCountForLength(length: String): Int = when (length.uppercase()) {
+            "SHORT" -> 100
+            "MEDIUM" -> 250
+            "LONG" -> 500
+            "VERY_LONG" -> 800
+            else -> 100
+        }
     }
 }

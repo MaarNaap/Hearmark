@@ -45,11 +45,8 @@ object GeminiStory {
         targetWords: List<StoryTargetWord>,
         options: StoryOptions
     ): Pair<String, String> {
-        val lengthGuide = when (options.length.uppercase()) {
-            "SHORT" -> "Short story (approx. 180 to 250 words)"
-            "LONG" -> "Longer story (approx. 600 to 800 words)"
-            else -> "Medium-length story (approx. 350 to 500 words)"
-        }
+        val lengthCategory = StoryOptions.wordCountToLengthCategory(options.targetWordCount)
+        val lengthGuide = "Approximately ${options.targetWordCount} words ($lengthCategory length category). Ensure the narrative is well-paced and approximately ${options.targetWordCount} words in length without abrupt truncation."
 
         val levelGuide = when (options.level.uppercase()) {
             "BEGINNER" -> "Beginner (CEFR A1-A2). Use simple sentence structures, clear everyday language, and straightforward storytelling."
@@ -119,7 +116,7 @@ ${missingWords.joinToString("\n") { "- \"${it.word}\"" + (if (it.meaning.isNotBl
 Please rewrite and revise the story so that ALL of the target vocabulary words are explicitly and naturally included:
 ${targetWords.joinToString(", ") { "\"${it.word}\"" }}
 
-Keep the genre (${options.genre}), language level (${options.level}), and target length (${options.length}).
+Keep the genre (${options.genre}), language level (${options.level}), and target length (approximately ${options.targetWordCount} words).
 Output strictly valid JSON:
 {
   \"title\": \"Creative Title\",
